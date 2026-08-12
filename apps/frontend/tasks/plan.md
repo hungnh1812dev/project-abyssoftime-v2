@@ -194,6 +194,27 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     transitively imports `auth()` via `LayoutMain` → `HeaderBar` as of this task). No browser tool
     available to visually confirm the login/logout dropdown cycle — still owed.
 
+14. **T11 closed the live-verification gap Corrections 10–13 flagged (2026-08-12).** `AUTH_SECRET`
+    is now set locally and both cms-api (`:8080`) and the frontend dev server (`:4000`) were already
+    running, so T11 could verify against the real stack instead of stopping at `bun test`/`build`.
+    `bun run build` is fully clean (no `AUTH_SECRET must be set` failure this time). Live curl
+    confirmed every acceptance case: anonymous `GET /secret` → `307` to `/en/auth?returnTo=%2Fsecret`;
+    `/en/auth` itself returns `200` (no redirect loop); `/` and `/cv` (public per the header's
+    `requiresRole`) return `200`; `/cv-2` (`admin`-gated) redirects anonymous visitors the same way
+    `/secret` does. The full role-differentiated matrix (logged in as each role) still needs T1's
+    verified test accounts, so that part of Checkpoint C remains owed — T11 only closes the
+    anonymous-visitor half of the gap.
+    The gate itself lives in a new pure `isAccessDenied(rules, path, roleSlug)` in
+    `nav-rules-cache.ts` (unit-tested, 12 cases), kept separate from the cache/fetch code around it
+    so the security-relevant branching doesn't require mocking `getHeader()` to test. It also carries
+    a `KNOWN_PROTECTED_PATHS` constant — a literal copy of `SessionGuard`'s `PROTECTED_PATHS` — used
+    only when `getNavRouteRules()` returns `null` (the header has never once been fetched
+    successfully, no stale cache to fall back on either): those specific paths deny an anonymous
+    visitor rather than the cache-miss silently behaving like an empty, all-public rule set. This is
+    a narrower, harder-to-hit failure mode than Correction 8's dev-mock fallback (which still applies
+    on every request in this dev environment before that point is ever reached), so it's exercised by
+    unit tests, not by a live outage drill.
+
 ## Resolved open questions
 
 | Q | Resolution |

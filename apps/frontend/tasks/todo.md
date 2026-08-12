@@ -171,7 +171,7 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Files: `src/components/layouts/header/HeaderBar.tsx`
   - Deps: T5, T9. Size: S
 
-- [ ] **T11 — Route guard composed into `proxy.ts`.** ⚠️ Auth.js's docs say
+- [x] **T11 — Route guard composed into `proxy.ts`.** ⚠️ Auth.js's docs say
   `export { auth as proxy }` — that would **delete the health gate and i18n** (plan Correction 4).
   Compose instead: `export const proxy = auth(async (req) => …)`, preserving health-gate →
   role-guard → i18n order, reading the role from `req.auth`. Nav rules come from a
