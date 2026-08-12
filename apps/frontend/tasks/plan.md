@@ -136,6 +136,31 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     change — the existing dev server (already running from an earlier session, without
     `AUTH_SECRET`) is expected to 500 on `/api/auth/*` until that var is set in its environment.
 
+12. **T8's `returnTo` validation lives in a new pure module, not inlined (2026-08-12).** Added
+    `src/lib/auth/safe-return-to.ts` (not in T8's declared `Files:`, same precedent as Correction 9's
+    `nav-filter`/`route-rules` siblings) — a security decision belongs in a directly-testable pure
+    function, matching this repo's `src/lib/auth`/`src/lib/nav` convention. First draft additionally
+    round-tripped every slash-prefixed candidate through `new URL(raw, "http://same-origin.invalid")`
+    and compared origins; empirically (`bun -e` probe) **every** string starting with a single `/`
+    resolves same-origin against any base — the check could never fail, so it was dead code. Removed
+    down to three prefix checks (`startsWith("/")`, not `"//"`, not `"/\\"`), which is what actually
+    blocks the SPEC.md-required `?returnTo=https://evil.com` case.
+    `AuthPage.tsx` uses `next-auth/react`'s `signIn()` directly — confirmed via source
+    (`node_modules/next-auth/react.js`) that `signIn`/`__NEXTAUTH` work without `<SessionProvider>`
+    mounted (that's T9's job, for `useSession()`), so no ordering dependency on T9 despite the plan's
+    T9-depends-on-T8 arrow implying the opposite.
+    **Verification, and its limit:** same infra gap as Corrections 10–11 (`bun test src` — 55 pass
+    across 7 files, `bun run lint`, `bunx tsc --noEmit`, `bun run build` all clean short of the
+    intentional `AUTH_SECRET` guard) plus one new limit — `curl` cannot show this page's real content.
+    This app's dev server ships an intentionally-empty `<main>` in the synchronous HTML with the
+    actual tree (header nav included) carried entirely in the RSC flight payload for client
+    hydration; confirmed this is pre-existing/universal (the header nav, known-working since T3, is
+    equally absent from raw `curl` output) and not something this change broke. The flight payload
+    does show `AuthPage` wired with the correct `{"returnTo":"/"}` prop and no server-side error was
+    logged for the request. No browser-automation tool was available this session to go further
+    (checked; not configured) — an actual login-form + `returnTo` smoke test in a real browser is
+    still owed, same as the curl-based one Corrections 10–11 already carry.
+
 ## Resolved open questions
 
 | Q | Resolution |

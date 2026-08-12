@@ -123,7 +123,7 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Files: `auth.ts`, `src/types/next-auth.d.ts`
   - Deps: T6. Size: S
 
-- [ ] **T8 — Login page.** Replace the passcode form in `AuthPage.tsx` with email + password +
+- [x] **T8 — Login page.** Replace the passcode form in `AuthPage.tsx` with email + password +
   remember-me in the same Card shell, calling `signIn("credentials", { redirect: false })` so errors
   render inline instead of Auth.js's default `?error=CredentialsSignin` redirect.
   - Acceptance: inline error on bad credentials and on unverified account; `returnTo` honoured and
