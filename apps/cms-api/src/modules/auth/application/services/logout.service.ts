@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 
 import { TokenBlacklistService } from "@/common/token-blacklist/token-blacklist.service";
 import { JwtTokenService } from "@/common/token/jwt-token.service";
@@ -6,6 +6,8 @@ import { type RefreshTokenPayload } from "@/common/types/jwt-payload";
 
 @Injectable()
 export class LogoutService {
+  private readonly logger = new Logger(LogoutService.name);
+
   constructor(
     private readonly jwtTokenService: JwtTokenService,
     private readonly tokenBlacklistService: TokenBlacklistService,
@@ -30,11 +32,19 @@ export class LogoutService {
       return;
     }
 
-    await this.tokenBlacklistService.blacklist({
-      jti: payload.jti,
-      userId: payload.sub,
-      expiresAt: new Date(payload.exp * 1000),
-      reason: "logout",
-    });
+    // A transient write failure (e.g. a dropped DB connection) must not turn a public, always-200
+    // route into a 500 — the client still gets a normal logout and its cookie still gets cleared;
+    // the token just stays valid until it naturally expires, same as it would have before this
+    // feature existed.
+    try {
+      await this.tokenBlacklistService.blacklist({
+        jti: payload.jti,
+        userId: payload.sub,
+        expiresAt: new Date(payload.exp * 1000),
+        reason: "logout",
+      });
+    } catch (error) {
+      this.logger.error("Failed to blacklist refresh token on logout", error instanceof Error ? error.stack : String(error));
+    }
   }
 }

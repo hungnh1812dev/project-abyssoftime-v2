@@ -8,7 +8,7 @@ describe("TokenBlacklistService", () => {
   const entry: BlacklistEntry = { jti: "jti-1", userId: "user-1", expiresAt: new Date("2026-01-08T00:00:00.000Z"), reason: "logout" };
 
   beforeEach(() => {
-    store = { blacklist: jest.fn(), isBlacklisted: jest.fn() };
+    store = { blacklist: jest.fn(), isBlacklisted: jest.fn(), tryClaim: jest.fn() };
     cache = { blacklist: jest.fn(), isBlacklisted: jest.fn() };
   });
 
@@ -31,6 +31,39 @@ describe("TokenBlacklistService", () => {
 
       expect(store.blacklist).toHaveBeenCalledWith(entry);
       expect(cache.blacklist).toHaveBeenCalledWith(entry);
+    });
+  });
+
+  describe("tryClaim()", () => {
+    it("claims via the store and mirrors to the cache when the claim succeeds", async () => {
+      const service = new TokenBlacklistService(store, cache);
+      store.tryClaim.mockResolvedValue(true);
+      cache.blacklist.mockResolvedValue(undefined);
+
+      const result = await service.tryClaim(entry);
+
+      expect(store.tryClaim).toHaveBeenCalledWith(entry);
+      expect(cache.blacklist).toHaveBeenCalledWith(entry);
+      expect(result).toBe(true);
+    });
+
+    it("does not mirror to the cache when the claim loses the race (already claimed)", async () => {
+      const service = new TokenBlacklistService(store, cache);
+      store.tryClaim.mockResolvedValue(false);
+
+      const result = await service.tryClaim(entry);
+
+      expect(cache.blacklist).not.toHaveBeenCalled();
+      expect(result).toBe(false);
+    });
+
+    it("works with no cache present", async () => {
+      const service = new TokenBlacklistService(store, null);
+      store.tryClaim.mockResolvedValue(true);
+
+      const result = await service.tryClaim(entry);
+
+      expect(result).toBe(true);
     });
   });
 

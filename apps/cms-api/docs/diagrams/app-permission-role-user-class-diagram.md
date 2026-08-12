@@ -629,7 +629,7 @@ reads/writes `UserEntity` and, for `me`, resolves the caller's `RoleEntity`.
 | `hasUsers()` | `GET /auth/has-users` |
 | `login(dto)` | `POST /auth/login` |
 | `refresh(req, res)` | `POST /auth/refresh` |
-| `logout(res)` | `POST /auth/logout` |
+| `logout(req, res)` | `POST /auth/logout` |
 | `me(req)` | `GET /auth/me` |
 | `forgotPassword(dto)` | `POST /auth/forgot-password` |
 | `resetPassword(dto)` | `POST /auth/reset-password` |

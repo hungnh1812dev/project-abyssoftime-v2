@@ -164,7 +164,7 @@ prefix, `tasks/plan.md`) and only affects T9.
 
 ## Phase 5 — Docs, review, cleanup (`docs/rules/workflow.md` steps 4–8)
 
-- [ ] **T10 — New module docs.** `docs/documents/token-blacklist.md` (ports, the two stores, the
+- [x] **T10 — New module docs.** `docs/documents/token-blacklist.md` (ports, the two stores, the
   service's compose logic, env flags, the sticky-degraded rule and *why*, known gaps: no expired-row
   sweep, pre-migration tokens unrevokable, access tokens still valid to their 15-minute expiry) and
   `docs/documents/token-blacklist-techstack.md` (plan Correction 2's options table + an
@@ -174,7 +174,7 @@ prefix, `tasks/plan.md`) and only affects T9.
     `docs/ENTRYPOINT.md`
   - Deps: T9. Size: S
 
-- [ ] **T11 — Update existing docs + stale-wording sweep.** Rewrite `docs/documents/auth.md`'s
+- [x] **T11 — Update existing docs + stale-wording sweep.** Rewrite `docs/documents/auth.md`'s
   "No server-side token revocation" known gap, its logout/refresh endpoint rows, and the
   `JwtRefreshStrategy`/`RefreshTokenPayload` descriptions. Then **grep the whole repo** for
   `no server-side token revocation`, `stateless`, `remains valid until`, and `logout` and fix every
@@ -186,14 +186,22 @@ prefix, `tasks/plan.md`) and only affects T9.
     `docs/documents/swagger.md`, `src/modules/auth/presentation/auth.controller.ts` (Swagger text)
   - Deps: T10. Size: M
 
-- [ ] **T12 — Five-axis review** (correctness, readability, architecture, security, performance) via
+- [x] **T12 — Five-axis review** (correctness, readability, architecture, security, performance) via
   `agent-skills:code-reviewer`. Security axis must explicitly cover: the blacklist check cannot be
   bypassed by omitting `jti`; no raw token or JWT is ever logged; the degraded-cache path cannot
   accept a revoked token; error messages leak nothing about *why* a refresh failed.
   - Verify: findings triaged; anything Critical/Important fixed and re-verified.
   - Deps: T11. Size: S
+  - **Result:** no Critical findings; all four required security properties confirmed correct.
+    Two Important findings, both fixed and re-verified same day — see `tasks/plan.md`'s "Notes
+    found during implementation" for the full account: (1) `LogoutService`'s blacklist write now
+    swallows/logs a DB failure instead of 500ing an always-`200` route; (2)
+    `RefreshTokenService` now atomically claims the consumed jti (`tryClaim`, a unique-constraint
+    `INSERT`) *before* signing new tokens instead of writing the blacklist entry last, closing a
+    TOCTOU race empirically reproduced (~1-in-5 failure rate) via a `Promise.all`-driven e2e test.
+    `bun run build`/`lint`/`test` (1068)/`test:e2e` (79) all green after the fix.
 
-- [ ] **T13 — Cleanup.** Reduce `SPEC.md` back to a pointer at `docs/documents/token-blacklist.md`
+- [x] **T13 — Cleanup.** Reduce `SPEC.md` back to a pointer at `docs/documents/token-blacklist.md`
   and `auth.md`, per `docs/rules/workflow.md`'s root-docs rule.
   - Files: `SPEC.md`
   - Deps: T12. Size: XS

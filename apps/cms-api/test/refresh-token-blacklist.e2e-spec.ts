@@ -105,6 +105,24 @@ describe("Refresh token blacklist / logout (e2e)", () => {
     const rows = await prisma.refreshTokenBlacklist.findMany({ where: { userId, reason: "rotation" } });
     expect(rows.length).toBeGreaterThan(0);
   });
+
+  it("concurrent /auth/refresh calls replaying the same cookie: exactly one succeeds, proving rotation is atomically single-use (not just sequentially)", async () => {
+    const server = app.getHttpServer();
+    const loginRes = await request(server).post("/api/v1/auth/login").send({ email, password: PASSWORD }).expect(200);
+    const cookie = extractRefreshCookie(loginRes.headers["set-cookie"] as unknown as string[]);
+
+    // Fired concurrently (not awaited sequentially like the test above) — a check-then-write
+    // implementation would let both requests pass the "not blacklisted yet" check before either
+    // write lands, minting two valid sessions from one refresh token. The atomic-claim INSERT this
+    // feature uses closes that window.
+    const [first, second] = await Promise.all([
+      request(server).post("/api/v1/auth/refresh").set("Cookie", cookie),
+      request(server).post("/api/v1/auth/refresh").set("Cookie", cookie),
+    ]);
+
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 401]);
+  });
 });
 
 function extractRefreshCookie(setCookieHeader: string[]): string {

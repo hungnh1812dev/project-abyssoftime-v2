@@ -114,9 +114,9 @@ export class AuthController {
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtRefreshGuard)
-  @ApiOperation({ summary: "Rotate the access/refresh token pair using the refresh_token cookie" })
+  @ApiOperation({ summary: "Rotate the access/refresh token pair using the refresh_token cookie; the consumed refresh token is blacklisted and cannot be reused" })
   @ApiResponse({ status: 200, type: AuthResponseDto })
-  @ApiResponse({ status: 401, description: "Refresh cookie missing, invalid, or expired" })
+  @ApiResponse({ status: 401, description: "Refresh cookie missing, invalid, expired, or already used/revoked" })
   async refresh(@Req() req: AuthenticatedRefreshRequest, @Res({ passthrough: true }) res: Response): Promise<{ message: string; accessToken: string }> {
     const { sub, rememberMe, jti, exp } = req.user;
 
@@ -127,7 +127,7 @@ export class AuthController {
 
   @Post("logout")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Clear the refresh_token cookie" })
+  @ApiOperation({ summary: "Revoke the refresh token and clear the refresh_token cookie" })
   @ApiResponse({ status: 200, type: MessageResponseDto })
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<{ message: string }> {
     await this.logoutService.execute(jwtRefreshCookieExtractor(req) ?? undefined);

@@ -1,3 +1,4 @@
+import { Prisma } from "@/prisma/application/client";
 import { PrismaService } from "@/prisma/application/prisma.service";
 
 import { PrismaTokenBlacklistStore } from "./prisma-token-blacklist.store";
@@ -9,16 +10,20 @@ describe("PrismaTokenBlacklistStore", () => {
     refreshTokenBlacklist: {
       upsert: jest.Mock;
       findUnique: jest.Mock;
+      create: jest.Mock;
     };
   };
 
   const entry: BlacklistEntry = { jti: "jti-1", userId: "user-1", expiresAt: new Date("2026-01-08T00:00:00.000Z"), reason: "logout" };
+
+  const p2002Error = () => new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "test", meta: { target: ["jti"] } });
 
   beforeEach(() => {
     prisma = {
       refreshTokenBlacklist: {
         upsert: jest.fn(),
         findUnique: jest.fn(),
+        create: jest.fn(),
       },
     };
 
@@ -55,6 +60,33 @@ describe("PrismaTokenBlacklistStore", () => {
       await store.blacklist({ ...entry, reason: "rotation" });
 
       expect(prisma.refreshTokenBlacklist.upsert).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("tryClaim()", () => {
+    it("returns true after a successful INSERT (first claimer)", async () => {
+      prisma.refreshTokenBlacklist.create.mockResolvedValue({});
+
+      const result = await store.tryClaim(entry);
+
+      expect(prisma.refreshTokenBlacklist.create).toHaveBeenCalledWith({
+        data: { jti: "jti-1", userId: "user-1", expiresAt: entry.expiresAt, reason: "logout" },
+      });
+      expect(result).toBe(true);
+    });
+
+    it("returns false when the jti already exists (P2002 unique-constraint violation — concurrent claim or prior logout)", async () => {
+      prisma.refreshTokenBlacklist.create.mockRejectedValue(p2002Error());
+
+      const result = await store.tryClaim(entry);
+
+      expect(result).toBe(false);
+    });
+
+    it("rethrows any error other than P2002", async () => {
+      prisma.refreshTokenBlacklist.create.mockRejectedValue(new Error("connection lost"));
+
+      await expect(store.tryClaim(entry)).rejects.toThrow("connection lost");
     });
   });
 

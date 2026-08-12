@@ -211,6 +211,29 @@ then kill Redis mid-session and confirm checks degrade to Postgres instead of er
   produced; only the path there differed. Future migrations in this repo will hit the same drift
   warning against a populated dev DB — same workaround applies.
 
+- **T12's five-axis review (`agent-skills:code-reviewer`) found two Important issues in the shipped
+  T5–T7 code, not caught by any of the earlier per-task unit tests.** (1) `LogoutService`'s blacklist
+  write wasn't wrapped in try/catch — a transient DB error would propagate through the controller and
+  500 a route documented as always-`200`/idempotent. Fixed by swallowing and logging the failure,
+  matching the existing pattern for a verification failure. (2) `RefreshTokenService`'s
+  check-then-write (`isBlacklisted()` then `blacklist()`, written last) left a TOCTOU race: two
+  concurrent `/auth/refresh` calls replaying the same not-yet-consumed cookie could both pass the
+  check before either write landed, each minting a valid pair — defeating "rotation makes refresh
+  tokens single-use," this feature's Phase 3 guarantee. Confirmed real, not theoretical: reverting to
+  the check-then-write version and firing two concurrent requests at the same cookie via `Promise.all`
+  against real Postgres reproduced a double-`200` in roughly 1 of every 5 runs. Fixed by adding
+  `ITokenBlacklistStore.tryClaim()` (an `INSERT` against `jti`'s existing unique primary key, not a
+  plain `upsert`; a losing racer's `INSERT` hits the constraint, surfaced by Prisma as `P2002` and
+  translated to `false`) and calling it from `RefreshTokenService.execute()` **before** signing new
+  tokens rather than writing the blacklist entry last, after. No Critical findings; all four required
+  security properties (jti unforgeable, no raw-token logging, degraded-cache fails safe, generic error
+  messages) were confirmed correct as originally shipped. Both fixes covered by new/extended unit
+  tests plus a new e2e concurrency case (`test/refresh-token-blacklist.e2e-spec.ts`), and the fix was
+  itself verified by temporarily reverting it and confirming the new e2e test fails intermittently on
+  the old code, then passes 8/8 on the fix. Full design/decision record in
+  `docs/documents/token-blacklist.md`'s "Concurrency" section and
+  `docs/documents/token-blacklist-techstack.md`'s new decision table.
+
 ## Resolved during plan review (2026-08-12)
 
 1. **Correction 2 → option D confirmed.** Sticky-degraded cache: any Redis error, read or write,

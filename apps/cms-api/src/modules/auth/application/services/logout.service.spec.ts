@@ -55,4 +55,12 @@ describe("LogoutService", () => {
 
     expect(tokenBlacklistService.blacklist).not.toHaveBeenCalled();
   });
+
+  it("swallows a blacklist-write failure (transient DB error) without throwing — logout must stay always-200", async () => {
+    const payload: RefreshTokenPayload = { sub: "user-1", rememberMe: true, jti: "jti-1", exp: 1_700_000_000 };
+    jwtTokenService.verifyRefreshToken.mockReturnValue(payload);
+    tokenBlacklistService.blacklist.mockRejectedValue(new Error("connection lost"));
+
+    await expect(service.execute("valid-refresh-token")).resolves.toBeUndefined();
+  });
 });
