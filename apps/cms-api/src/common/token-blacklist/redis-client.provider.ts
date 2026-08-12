@@ -12,7 +12,12 @@ export function createRedisClient(configService: ConfigService): Redis | null {
     return null;
   }
 
-  return new Redis(configService.getOrThrow<string>("REDIS_URL"));
+  // maxRetriesPerRequest: 1 — ioredis's default (20, with growing backoff) can take tens of
+  // seconds to surface a failed command after an outage, which would leave /auth/refresh and
+  // /auth/logout hanging well past any reasonable request timeout before the sticky-degraded
+  // cache ever gets a chance to kick in. Failing fast is what makes "kill Redis mid-session"
+  // degrade to Postgres promptly instead of just eventually.
+  return new Redis(configService.getOrThrow<string>("REDIS_URL"), { maxRetriesPerRequest: 1 });
 }
 
 export const RedisClientProvider: Provider = {

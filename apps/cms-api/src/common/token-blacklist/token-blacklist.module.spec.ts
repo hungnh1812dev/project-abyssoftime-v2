@@ -3,6 +3,7 @@ import { type Redis } from "ioredis";
 import { GLOBAL_MODULE_METADATA, MODULE_METADATA } from "@nestjs/common/constants";
 
 import { PrismaTokenBlacklistStore } from "./prisma-token-blacklist.store";
+import { RedisClientLifecycle } from "./redis-client-lifecycle";
 import { REDIS_CLIENT, RedisClientProvider } from "./redis-client.provider";
 import { RedisTokenBlacklistCache } from "./redis-token-blacklist.cache";
 import { TokenBlacklistModule } from "./token-blacklist.module";
@@ -25,6 +26,7 @@ describe("TokenBlacklistModule", () => {
 
     expect(providers).toContainEqual({ provide: TOKEN_BLACKLIST_STORE, useClass: PrismaTokenBlacklistStore });
     expect(providers).toContainEqual(RedisClientProvider);
+    expect(providers).toContainEqual(RedisClientLifecycle);
     expect(providers).toContainEqual(TokenBlacklistService);
   });
 

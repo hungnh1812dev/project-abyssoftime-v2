@@ -156,7 +156,7 @@ prefix, `tasks/plan.md`) and only affects T9.
     `src/common/token-blacklist/token-blacklist.service.spec.ts`
   - Deps: T8. Size: M
 
-- [ ] **Checkpoint D** — Flag **off** (the default): `build`/`lint`/`test:cov`/`test:e2e` all green
+- [x] **Checkpoint D** — Flag **off** (the default): `build`/`lint`/`test:cov`/`test:e2e` all green
   and zero Redis connection attempts at boot. Flag **on** against a local Redis: Checkpoint B and C
   scenarios pass again by hand, and the blacklist key is visible in Redis with a sane TTL. Then kill
   Redis mid-session and confirm `/auth/refresh` and `/auth/logout` keep working against Postgres

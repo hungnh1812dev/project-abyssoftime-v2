@@ -31,7 +31,7 @@ describe("createRedisClient", () => {
 
     createRedisClient(configService);
 
-    expect(RedisConstructor).toHaveBeenCalledWith("redis://localhost:6379");
+    expect(RedisConstructor).toHaveBeenCalledWith("redis://localhost:6379", { maxRetriesPerRequest: 1 });
   });
 });
 
