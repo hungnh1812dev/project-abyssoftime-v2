@@ -5,6 +5,7 @@ import LoginButton from "@/components/auth/LoginButton";
 import UserMenu from "@/components/auth/UserMenu";
 import { HeaderMobileMenu } from "@/components/layouts/header/HeaderMobileMenu";
 import { HeaderNav } from "@/components/layouts/header/HeaderNav";
+import { filterNavTree } from "@/lib/nav/nav-filter";
 import { getHeader } from "@/views/header/header.service";
 
 interface HeaderBarProps {
@@ -13,7 +14,9 @@ interface HeaderBarProps {
 
 async function HeaderBar({ locale }: HeaderBarProps) {
   const [header, session] = await Promise.all([getHeader(), auth()]);
-  const nav = header?.nav ?? [];
+  // Filtered server-side before the first byte is sent — a disallowed link must never appear in
+  // the HTML at all (CSS-hiding it would still leak the link to view-source/devtools).
+  const nav = filterNavTree(header?.nav ?? [], session?.user?.roleSlug);
   const author = header?.author;
 
   return (

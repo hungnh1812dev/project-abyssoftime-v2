@@ -150,15 +150,19 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Deps: T8, T3. Size: M
 
 ### ✅ Checkpoint C
-- [ ] Full login → name in dropdown → logout cycle works against real cms-api
-- [ ] Access token absent from client JS, from `/api/auth/session`, and from all response bodies
-- [ ] Logout genuinely revokes at cms-api, not just locally
-- [ ] Nav still unfiltered — gating is Phase 4
-- [ ] Human review
+- [ ] Full login → name in dropdown → logout cycle works against real cms-api — **owed**, needs
+  `AUTH_SECRET`/`CMS_API_URL` set locally, cms-api running, and a real test account (plan Corrections
+  10–13); user opted to proceed to Phase 4 without blocking on this (2026-08-12)
+- [ ] Access token absent from client JS, from `/api/auth/session`, and from all response bodies —
+  type-level guarantee in place since T7 (kept off `User`/`Session`), not confirmed live
+- [ ] Logout genuinely revokes at cms-api, not just locally — same live-infra gap as above
+- [x] Nav still unfiltered — gating is Phase 4 (true by construction; T10 not yet started)
+- [x] Human review — user reviewed each task's diff as it landed (T6–T9) and explicitly chose to
+  treat that as this gate rather than block on the live cms-api check (2026-08-12)
 
 ## Phase 4 — Role gating
 
-- [ ] **T10 — Server-side nav filtering.** `HeaderBar` calls `filterNavTree(nav, roleSlug)` — role
+- [x] **T10 — Server-side nav filtering.** `HeaderBar` calls `filterNavTree(nav, roleSlug)` — role
   from `auth()` — before passing nav down.
   - Acceptance: disallowed items **absent from the server-rendered HTML**, not CSS-hidden; matches
     SPEC.md's visibility matrix for all five role states; no flicker, first paint already correct.
