@@ -8,6 +8,7 @@ import { ForgotPasswordService } from "../application/services/forgot-password.s
 import { GetMeService } from "../application/services/get-me.service";
 import { HasUsersService } from "../application/services/has-users.service";
 import { LoginService } from "../application/services/login.service";
+import { LogoutService } from "../application/services/logout.service";
 import { RefreshTokenService } from "../application/services/refresh-token.service";
 import { RegisterService } from "../application/services/register.service";
 import { ResendOtpService } from "../application/services/resend-otp.service";
@@ -23,6 +24,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagg
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { JwtRefreshGuard, REFRESH_TOKEN_COOKIE } from "@/common/guards/jwt-refresh.guard";
 import { RateLimitGuard } from "@/common/guards/rate-limit.guard";
+import { jwtRefreshCookieExtractor } from "@/common/strategies/jwt-refresh.strategy";
 import { type ValidatedLoginUser } from "@/common/strategies/local.strategy";
 import { type AuthenticatedRefreshRequest, type AuthenticatedRequest } from "@/common/types/authenticated-request";
 import { type EnvironmentVariables } from "@/config/env.validation";
@@ -43,6 +45,7 @@ export class AuthController {
     private readonly hasUsersService: HasUsersService,
     private readonly loginService: LoginService,
     private readonly refreshTokenService: RefreshTokenService,
+    private readonly logoutService: LogoutService,
     private readonly forgotPasswordService: ForgotPasswordService,
     private readonly resetPasswordService: ResetPasswordService,
     private readonly getMeService: GetMeService,
@@ -126,7 +129,8 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Clear the refresh_token cookie" })
   @ApiResponse({ status: 200, type: MessageResponseDto })
-  logout(@Res({ passthrough: true }) res: Response): { message: string } {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<{ message: string }> {
+    await this.logoutService.execute(jwtRefreshCookieExtractor(req) ?? undefined);
     res.clearCookie(REFRESH_TOKEN_COOKIE);
     return { message: "Logged out." };
   }

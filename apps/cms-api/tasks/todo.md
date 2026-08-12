@@ -65,7 +65,7 @@ prefix, `tasks/plan.md`) and only affects T9.
 
 ## Phase 2 — Logout actually revokes (first vertical slice)
 
-- [ ] **T5 — `JwtRefreshStrategy.validate()` rejects blacklisted jtis.** Inject
+- [x] **T5 — `JwtRefreshStrategy.validate()` rejects blacklisted jtis.** Inject
   `TokenBlacklistService`; `validate()` becomes async — when `payload.jti` is present and
   blacklisted, throw `UnauthorizedException`; when the jti is absent (pre-migration token), skip the
   check and pass through as today.
@@ -78,7 +78,7 @@ prefix, `tasks/plan.md`) and only affects T9.
     `src/common/strategies/jwt-refresh.strategy.spec.ts`
   - Deps: T4. Size: S
 
-- [ ] **T6 — `LogoutService` + controller/module wiring.** New
+- [x] **T6 — `LogoutService` + controller/module wiring.** New
   `application/services/logout.service.ts` (plan Correction 7): takes the raw cookie value, and when
   it verifies, blacklists `{ jti, userId: sub, expiresAt: new Date(exp * 1000), reason: "logout" }`;
   any verification failure is swallowed so logout stays a public, always-`200`, idempotent route
@@ -94,7 +94,7 @@ prefix, `tasks/plan.md`) and only affects T9.
     `src/modules/auth/auth.module.ts`
   - Deps: T5. Size: M
 
-- [ ] **Checkpoint B** — `bun run build && bun run lint && bun run test:cov` green. New
+- [x] **Checkpoint B** — `bun run build && bun run lint && bun run test:cov` green. New
   `test/refresh-token-blacklist.e2e-spec.ts`: login → logout → `/auth/refresh` with that cookie =
   `401`; login → `/auth/refresh` **without** logging out = `200` (regression guard). `bun run test:e2e`
   green; created rows cleaned up in `afterAll`. Manual: confirm one `refresh_token_blacklist` row
