@@ -139,7 +139,7 @@ prefix, `tasks/plan.md`) and only affects T9.
     `src/common/token-blacklist/redis-client.provider.ts`
   - Deps: T4 (independent of T5–T7). Size: S
 
-- [ ] **T9 — `RedisTokenBlacklistCache` + service composition.** Implements `ITokenBlacklistCache`
+- [x] **T9 — `RedisTokenBlacklistCache` + service composition.** Implements `ITokenBlacklistCache`
   with the sticky-degraded behavior from plan Correction 2: `blacklist()` does
   `SET refresh-blacklist:<jti> <reason> PX <ms-until-exp>`; `isBlacklisted()` returns `true`/`false`
   while healthy and `null` once degraded; **any** Redis error (read or write) logs and permanently
