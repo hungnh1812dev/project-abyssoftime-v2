@@ -125,7 +125,7 @@ prefix, `tasks/plan.md`) and only affects T9.
 
 ## Phase 4 — Optional Redis cache
 
-- [ ] **T8 — Env vars + `ioredis` + lazy client provider.** Add `REDIS_ENABLED`
+- [x] **T8 — Env vars + `ioredis` + lazy client provider.** Add `REDIS_ENABLED`
   (bool, default `false`) and `REDIS_URL` (string, default `""`) to `EnvironmentVariables` and
   `.env.example`; add `ioredis` to `dependencies` (SPEC.md assumption 6). `redis-client.provider.ts`
   is a `useFactory` that returns `null` when the flag is off — **the client is never constructed**,
