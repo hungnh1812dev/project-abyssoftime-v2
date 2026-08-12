@@ -59,13 +59,17 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Deps: T2. Size: M
 
 ### ✅ Checkpoint A
-- [ ] Nav fully CMS-driven; `bun run build` and `bun run lint` clean
-- [ ] Existing 7 Playwright tests still pass (passcode gate untouched)
-- [ ] Human review before touching auth
+- [x] Nav fully CMS-driven; `bun run build` and `bun run lint` clean
+- [x] Existing 7 Playwright tests still pass (passcode gate untouched) — 5 of 14 cases fail
+  (`cv-spacing`, `en-vocab-learned-badge`, `en-vocab-reset-progress`, `en-vocab-url-sync`), confirmed
+  pre-existing via `git log` (untouched since `ff55510`, the initial monorepo commit) and unrelated to
+  header/nav — the failing tests' own error context shows the CMS nav rendering correctly. User
+  reviewed and approved proceeding (2026-08-12).
+- [ ] Human review before touching auth (gates Phase 3, not yet reached)
 
 ## Phase 2 — Pure role logic
 
-- [ ] **T4 — `bun test` + role matching.** Establish the unit runner and implement `isRoleAllowed`.
+- [x] **T4 — `bun test` + role matching.** Establish the unit runner and implement `isRoleAllowed`.
   Pure, dependency-free, total function.
   - Acceptance: `bun test` runs with a `"test"` script in `package.json`; `isRoleAllowed(requiresRole, roleSlug)`
     treats `""`/`null`/`"all"` as public, trims whitespace, matches case-insensitively, and **fails
