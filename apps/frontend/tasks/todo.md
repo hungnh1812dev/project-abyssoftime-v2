@@ -45,7 +45,7 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
     `src/mocks/mock-all.ts`
   - Deps: T1. Size: M
 
-- [ ] **T3 — Header renders the CMS nav.** `HeaderBar` becomes a Server Component calling
+- [x] **T3 — Header renders the CMS nav.** `HeaderBar` becomes a Server Component calling
   `getHeader()`; `HeaderNav`/`HeaderMobileMenu` stay client components taking nav as props. Render
   `subNavigations` as a dropdown. Delete `header.data.ts`. **No role filtering yet** — every item
   renders, so the site is unchanged for a passcode-holder.

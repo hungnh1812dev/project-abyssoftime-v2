@@ -2,16 +2,16 @@
 
 import { Menu } from "lucide-react";
 import Link from "next/link";
+import { useParams, usePathname } from "next/navigation";
 import React, { useState } from "react";
 
-import { NAV_ITEMS } from "@/components/layouts/header/header.data";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import type { HeaderNavItem } from "@/views/header/header.types";
 
 interface HeaderMobileMenuProps {
-  locale: string;
-  currentPath: string;
+  nav: HeaderNavItem[];
 }
 
 const isActive = (currentPath: string, href: string): boolean => {
@@ -21,8 +21,14 @@ const isActive = (currentPath: string, href: string): boolean => {
   return currentPath === href;
 };
 
-const HeaderMobileMenu: React.FC<HeaderMobileMenuProps> = ({ locale, currentPath }) => {
+const HeaderMobileMenu: React.FC<HeaderMobileMenuProps> = ({ nav }) => {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const params = useParams();
+  const locale = (params?.locale as string) ?? "en";
+  const currentPath = pathname.startsWith(`/${locale}`) ? pathname.slice(`/${locale}`.length) : pathname;
+
+  const toHref = (link: string) => (link === "/" ? `/${locale}` : `/${locale}${link}`);
 
   return (
     <>
@@ -36,22 +42,31 @@ const HeaderMobileMenu: React.FC<HeaderMobileMenuProps> = ({ locale, currentPath
             <SheetTitle>Navigation</SheetTitle>
           </SheetHeader>
           <nav className="mt-6 flex flex-col gap-1">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
-              return (
+            {nav.map((item) => (
+              <React.Fragment key={item.link}>
                 <Link
-                  key={item.href}
-                  href={item.href === "/" ? `/${locale}` : `/${locale}${item.href}`}
+                  href={toHref(item.link)}
                   onClick={() => setOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors",
-                    isActive(currentPath, item.href) ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                    "flex items-center rounded-md px-3 py-2.5 text-sm transition-colors",
+                    isActive(currentPath, item.link) ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                   )}>
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+                  <span>{item.title}</span>
                 </Link>
-              );
-            })}
+                {item.subNavigations.map((sub) => (
+                  <Link
+                    key={sub.link}
+                    href={toHref(sub.link)}
+                    onClick={() => setOpen(false)}
+                    className={cn(
+                      "flex items-center rounded-md py-2 pl-6 pr-3 text-sm transition-colors",
+                      isActive(currentPath, sub.link) ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                    )}>
+                    <span>{sub.title}</span>
+                  </Link>
+                ))}
+              </React.Fragment>
+            ))}
           </nav>
         </SheetContent>
       </Sheet>

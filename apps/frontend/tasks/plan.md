@@ -88,8 +88,21 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
      Confirmed harmless for T2 (mock renders correctly when cms-api is unreachable, and the header
      schema field names are verified correct); flagged here since it will surface for real once a
      `GRAPHQL_TOKEN` is wired up without matching permissions, or once **any** authenticated
-     content-type ships. Not fixed as part of this task — out of T2's file scope and affects every
-     view, not just header.
+     content-type ships.
+
+9. **The gap above stopped being hypothetical at T3 (2026-08-12) and got fixed.** `GRAPHQL_URL` in
+   this dev environment already points at the live cms-api on `:8080`, and `header`'s real
+   `document:read` auth is already enforced — so `getHeader()` hit the 200-with-`errors[]` case on
+   every request, threw uncaught inside `graphqlFetch`, and the header silently rendered as nothing
+   (no error boundary catches an uncaught throw from a Server Component's async body). Confirmed via
+   the raw page HTML (`main` shell empty, RSC stream carrying the `GraphQL request failed` error for
+   the `HeaderBar` segment). Fixed in `graphqlApi.ts`: `graphqlFetch` now falls back to `MockView[mock]`
+   (dev-only, same gate as `restfulApi.ts`) when the response carries GraphQL-level errors, not just
+   on a thrown/non-2xx fetch. This is a shared-file change beyond T3's declared `Files:` list, but
+   necessary — T3 cannot pass its own "nav items ... from the CMS" acceptance criterion without it in
+   this environment. Verified after the fix: all 11 nav links (`/`, `/cv`, `/cv-2`, `/vaccine`,
+   `/learning/english`, `/learning/develop/{react,architecture,go}`, `/interview`,
+   `/interview/answers`, `/secret`, `/account`) present in the RSC payload, no thrown error.
 
 ## Resolved open questions
 
