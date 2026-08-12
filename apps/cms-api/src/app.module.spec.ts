@@ -3,6 +3,7 @@ import { MODULE_METADATA } from "@nestjs/common/constants";
 import { AppController } from "./app.controller";
 import { AppModule } from "./app.module";
 import { SeedModule } from "./bootstrap/seed.module";
+import { TokenBlacklistModule } from "./common/token-blacklist/token-blacklist.module";
 import { TokenModule } from "./common/token/token.module";
 import { ConfigModule } from "./config/config.module";
 import { AccessTokenModule } from "./modules/access-tokens/access-token.module";
@@ -25,6 +26,7 @@ describe("AppModule", () => {
       ConfigModule,
       PrismaModule,
       TokenModule,
+      TokenBlacklistModule,
       PermissionModule,
       RoleModule,
       UserModule,

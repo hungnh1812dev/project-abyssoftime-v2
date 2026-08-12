@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 
 import { AppController } from "./app.controller";
 import { SeedModule } from "./bootstrap/seed.module";
+import { TokenBlacklistModule } from "./common/token-blacklist/token-blacklist.module";
 import { TokenModule } from "./common/token/token.module";
 import { ConfigModule } from "./config/config.module";
 import { AccessTokenModule } from "./modules/access-tokens/access-token.module";
@@ -21,6 +22,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     ConfigModule,
     PrismaModule,
     TokenModule,
+    TokenBlacklistModule,
     PermissionModule,
     RoleModule,
     UserModule,

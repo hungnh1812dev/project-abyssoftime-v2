@@ -1,4 +1,5 @@
 import { type AccessTokenPayload, type RefreshTokenPayload } from "../types/jwt-payload";
+import { randomUUID } from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -25,7 +26,7 @@ export class JwtTokenService {
 
   signRefreshToken(payload: RefreshTokenPayload): string {
     const expiresIn = payload.rememberMe ? REFRESH_TOKEN_TTL_REMEMBERED : REFRESH_TOKEN_TTL;
-    return this.jwtService.sign(payload, { secret: this.configService.get("JWT_REFRESH_SECRET", { infer: true }), expiresIn });
+    return this.jwtService.sign({ ...payload, jti: randomUUID() }, { secret: this.configService.get("JWT_REFRESH_SECRET", { infer: true }), expiresIn });
   }
 
   getRefreshTokenMaxAgeMs(rememberMe: boolean): number {
