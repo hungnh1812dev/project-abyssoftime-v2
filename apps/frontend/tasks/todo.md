@@ -78,7 +78,7 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Files: `src/lib/nav/role-match.ts`, `src/lib/nav/role-match.test.ts`, `package.json`
   - Deps: none (parallel with Phase 1). Size: S
 
-- [ ] **T5 — Nav filtering and route rules.** `filterNavTree(nav, roleSlug)` drops disallowed items
+- [x] **T5 — Nav filtering and route rules.** `filterNavTree(nav, roleSlug)` drops disallowed items
   server-side; `buildRouteRules(nav)` flattens the tree to a path→requiresRole table; `resolveRule(path)`
   does longest-prefix matching. Include a shared `stripLocale(pathname)` — the current code repeats
   that `pathname.slice()` idiom in three files.
@@ -91,8 +91,8 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Deps: T4. Size: M
 
 ### ✅ Checkpoint B
-- [ ] `bun test` green, 100% branch coverage on `src/lib/nav/`
-- [ ] No production behaviour changed yet — pure modules aren't wired in
+- [x] `bun test` green, 100% branch coverage on `src/lib/nav/`
+- [x] No production behaviour changed yet — pure modules aren't wired in
 
 ## Phase 3 — Auth.js login
 
