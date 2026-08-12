@@ -215,6 +215,30 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     on every request in this dev environment before that point is ever reached), so it's exercised by
     unit tests, not by a live outage drill.
 
+15. **T12's redirect only shows up in the RSC flight payload, not as a raw HTTP status
+    (2026-08-12).** Verified per the task's own Verify step: temporarily excluded `/en/secret` from
+    `proxy.ts`'s matcher (`config.matcher`), confirmed `requireRole` still fires on its own, then
+    reverted. First attempt excluded the bare `/secret` and curl'd the unprefixed path — got a `200`
+    with real page content, which looked like a broken guard. It wasn't: excluding `/secret` from the
+    matcher also skips the i18n rewrite for that path, and a single-segment URL `/secret` (no proxy
+    rewrite to `/en/secret`) resolves through the `[locale]` dynamic segment as `locale="secret"`,
+    silently rendering the *home* page — a routing artifact of the test setup, not of `requireRole`.
+    Re-tested against the locale-prefixed `/en/secret` directly (bypassing the need for the i18n
+    rewrite entirely): still `200` over curl, but the raw response body's RSC flight payload contains
+    `NEXT_REDIRECT;replace;/en/auth?returnTo=%2Fen%2Fsecret;307` — `redirect()` fired correctly with
+    the right target, it just can't rewrite the outer HTTP status once this app's default streaming
+    SSR has already begun flushing the (always-empty, per Correction 12) synchronous shell. A real
+    browser executes this client-side; curl cannot. Same fundamental limitation as Correction 12, now
+    confirmed for a `redirect()` fired deep in a page component rather than only for prop values.
+    `requireRole(path, locale)` (not `requireRole(requiresRole)` as the todo's shorthand literally
+    reads) takes a path so it can resolve the required role from the exact same `nav-rules-cache`
+    singleton `proxy.ts` reads (via `getNavRouteRules`/`isAccessDenied`, both from T11) — a page
+    hardcoding its own resolved role string per-page was rejected during design specifically because
+    that duplication is the drift the acceptance criterion warns against. Background cache refresh
+    inside a Server Component uses `after()` from `next/server` (Next 15+'s stable successor to
+    `unstable_after`) in place of the `NextFetchEvent.waitUntil` the proxy passes — same
+    `(promise) => void` shape `getNavRouteRules` already expects, so no signature change was needed.
+
 ## Resolved open questions
 
 | Q | Resolution |

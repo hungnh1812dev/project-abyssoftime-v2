@@ -187,7 +187,7 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Files: `src/proxy.ts`, `src/lib/nav/nav-rules-cache.ts`
   - Deps: T5, T7. Size: M
 
-- [ ] **T12 — `requireRole()` in protected pages.** Defence in depth — an explicit server-side
+- [x] **T12 — `requireRole()` in protected pages.** Defence in depth — an explicit server-side
   assertion inside protected Server Components, so a page stays safe if it is ever dropped from the
   proxy matcher.
   - Acceptance: `requireRole(requiresRole)` reads `auth()` and `redirect()`s when denied; applied to
@@ -201,7 +201,7 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
 ### ✅ Checkpoint D
 - [ ] Full visibility matrix verified manually across all five role states
 - [ ] Direct-URL access blocked for every restricted path
-- [ ] `bun run build` + `bun run lint` clean
+- [x] `bun run build` + `bun run lint` clean
 - [ ] Human review — **last checkpoint before the passcode gate is deleted**
 
 ## Phase 5 — Refresh and teardown
