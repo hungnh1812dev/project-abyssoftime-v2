@@ -1,5 +1,8 @@
 import Link from "next/link";
 
+import { auth } from "@/auth";
+import LoginButton from "@/components/auth/LoginButton";
+import UserMenu from "@/components/auth/UserMenu";
 import { HeaderMobileMenu } from "@/components/layouts/header/HeaderMobileMenu";
 import { HeaderNav } from "@/components/layouts/header/HeaderNav";
 import { getHeader } from "@/views/header/header.service";
@@ -9,8 +12,9 @@ interface HeaderBarProps {
 }
 
 async function HeaderBar({ locale }: HeaderBarProps) {
-  const header = await getHeader();
+  const [header, session] = await Promise.all([getHeader(), auth()]);
   const nav = header?.nav ?? [];
+  const author = header?.author;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 print:hidden">
@@ -19,7 +23,12 @@ async function HeaderBar({ locale }: HeaderBarProps) {
           {header?.name ?? "Abyssoftime"}
         </Link>
         <HeaderNav nav={nav} />
-        <div className="flex flex-1 items-center justify-end md:flex-none">
+        <div className="flex flex-1 items-center justify-end gap-2 md:flex-none">
+          {session?.user ? (
+            <UserMenu name={session.user.name ?? session.user.email ?? "Account"} logoutLabel={author?.btnLogoutText ?? "Logout"} />
+          ) : (
+            <LoginButton label={author?.btnLoginText ?? "Login"} />
+          )}
           <HeaderMobileMenu nav={nav} />
         </div>
       </div>

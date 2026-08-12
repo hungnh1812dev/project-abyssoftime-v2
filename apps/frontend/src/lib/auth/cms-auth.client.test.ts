@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
-import { CmsAuthError, cmsGetMe, cmsLogin } from "./cms-auth.client";
+import { CmsAuthError, cmsGetMe, cmsLogin, cmsLogout } from "./cms-auth.client";
 
 const originalFetch = globalThis.fetch;
 
@@ -126,5 +126,25 @@ describe("cmsGetMe", () => {
     globalThis.fetch = mock(async () => jsonResponse(401, { message: "Unauthorized" })) as unknown as typeof fetch;
 
     await expect(cmsGetMe("expired")).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+describe("cmsLogout", () => {
+  test("forwards the refresh token as a Cookie header, since that's what cms-api's extractor reads", async () => {
+    const fetchMock = mock(async () => jsonResponse(200, { message: "Logged out." }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await cmsLogout("refresh-xyz");
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://localhost:5000/auth/logout");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>).Cookie).toBe("refresh_token=refresh-xyz");
+  });
+
+  test("throws CmsAuthError on a non-2xx response", async () => {
+    globalThis.fetch = mock(async () => jsonResponse(401, { message: "Invalid or expired refresh token" })) as unknown as typeof fetch;
+
+    await expect(cmsLogout("stale")).rejects.toMatchObject({ status: 401 });
   });
 });

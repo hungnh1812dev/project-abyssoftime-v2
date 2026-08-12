@@ -77,3 +77,15 @@ export async function cmsGetMe(accessToken: string): Promise<CmsMeResult> {
     roleName: body.role?.name ?? null,
   };
 }
+
+// cms-api's logout endpoint reads the refresh token off a `refresh_token` cookie, never a body or
+// Authorization header (see jwtRefreshCookieExtractor) — the same asymmetry as login's Set-Cookie,
+// mirrored in the opposite direction.
+export async function cmsLogout(refreshToken: string): Promise<void> {
+  const res = await fetch(`${CMS_API_URL}/auth/logout`, {
+    method: "POST",
+    headers: { Cookie: `${REFRESH_TOKEN_COOKIE}=${refreshToken}` },
+  });
+
+  if (!res.ok) throw new CmsAuthError(res.status, `cms-api logout failed with status ${res.status}`);
+}

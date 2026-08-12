@@ -161,6 +161,39 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     (checked; not configured) — an actual login-form + `returnTo` smoke test in a real browser is
     still owed, same as the curl-based one Corrections 10–11 already carry.
 
+13. **T9's server-side logout revocation reads the raw JWT via `getToken()`, not `auth()`
+    (2026-08-12).** `auth()` returns the *session* — the T7 `session` callback deliberately strips
+    `refreshToken` before it gets there, so the new `src/app/api/auth/logout-remote/route.ts` uses
+    `next-auth/jwt`'s `getToken({req, secret})` instead, which decodes the encrypted cookie directly
+    and still has it. `next-auth/jwt`'s module doc says "we recommend other authentication methods
+    server-side" for v5 — read that as steering routine auth checks toward `auth()`, not as
+    forbidding this narrow case (reading one field off the raw token for a one-off server-to-server
+    call); no alternative in the v5 API surface exposes `refreshToken` post-session-callback.
+    `cmsLogout(refreshToken)` added to `cms-auth.client.ts` (2 new tests) rather than inlining the
+    fetch in the route handler, matching T6/T8's precedent of keeping cms-api calls in one file.
+    Considered hooking `events.signOut` in `auth.config.ts` instead of a dedicated route (would fire
+    for *any* `signOut()` call site, not just this one) — went with the plan's explicit
+    `logout-remote/route.ts` since it's simpler to reason about and was already the declared file.
+    `<SessionProvider session={session}>` now wraps `LayoutMain`'s children (which became `async`,
+    calling `auth()` itself) — `SessionGuard` stays nested inside it unchanged, still enforcing the
+    passcode gate until T14 removes it.
+    **Fixed a stray artifact of this session, not of the code:** a `Bash` `mkdir`/`cd` combination
+    left cwd inside `apps/frontend` across tool calls within one turn, and a later relative-path
+    `mkdir -p "apps/frontend/src/app/api/auth/logout-remote"` run from *inside* that directory
+    created an empty `apps/frontend/apps/frontend/...` stray tree (no files in it — the actual
+    `route.ts` was written to the correct absolute path separately). Deleted; worth remembering that
+    this repo's Bash cwd resets to the repo root between conversation turns but persists *within* a
+    turn, so a `cd` early in a turn silently changes what every later relative path in that same
+    turn resolves against.
+    **Verification, same shape as Corrections 10–12:** `bun test src` (57 pass across 7 files),
+    `bun run lint`, `bunx tsc --noEmit` all clean. `bun run build` initially failed on an unrelated
+    stale-`.next`-cache Turbopack/PostCSS error (`__turbopack_context__.a is not a function` in
+    `postcss.config.js_.loader.mjs`) — `rm -rf .next` and rebuilding cleared it, confirming it wasn't
+    caused by this change; the build then failed only at the familiar `AUTH_SECRET must be set`
+    guard, now also surfacing for `/[locale]/account` (expected — every page under the main layout
+    transitively imports `auth()` via `LayoutMain` → `HeaderBar` as of this task). No browser tool
+    available to visually confirm the login/logout dropdown cycle — still owed.
+
 ## Resolved open questions
 
 | Q | Resolution |

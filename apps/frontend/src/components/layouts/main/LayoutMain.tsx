@@ -1,5 +1,7 @@
+import { SessionProvider } from "next-auth/react";
 import React from "react";
 
+import { auth } from "@/auth";
 import { SessionGuard } from "@/components/auth/SessionGuard";
 import { HeaderBar } from "@/components/layouts/header/HeaderBar";
 import { HealthGate } from "@/components/layouts/main/HealthGate";
@@ -11,15 +13,22 @@ interface LayoutMainProps {
   locale: string;
 }
 
-const LayoutMain: React.FC<LayoutMainProps> = ({ children, className, locale }) => {
+// Seeding SessionProvider from the server's own auth() result (not left to fetch client-side) is
+// what keeps the first paint correct — any client component under here can call useSession()
+// without an initial anonymous flash.
+async function LayoutMain({ children, className, locale }: LayoutMainProps) {
+  const session = await auth();
+
   return (
     <main className={cn("bg-background text-foreground", className)}>
-      <SessionGuard>
-        <HeaderBar locale={locale} />
-        <HealthGate>{children}</HealthGate>
-      </SessionGuard>
+      <SessionProvider session={session}>
+        <SessionGuard>
+          <HeaderBar locale={locale} />
+          <HealthGate>{children}</HealthGate>
+        </SessionGuard>
+      </SessionProvider>
     </main>
   );
-};
+}
 
 export default LayoutMain;

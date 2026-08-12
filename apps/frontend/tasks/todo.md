@@ -134,7 +134,7 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Files: `src/views/auth/AuthPage.tsx`, `src/app/[locale]/(main)/auth/page.tsx`
   - Deps: T7. Size: S
 
-- [ ] **T9 — Session context + header auth UI.** Wrap the app in `<SessionProvider>` seeded from the
+- [x] **T9 — Session context + header auth UI.** Wrap the app in `<SessionProvider>` seeded from the
   server's `auth()` result so the first paint is correct. `LoginButton` uses `author.btnLoginText`;
   `UserMenu` is a radix dropdown showing the name with a logout item using `author.btnLogoutText`.
   Logout must **also revoke server-side** — `signOut()` alone drops only the Auth.js cookie and would
