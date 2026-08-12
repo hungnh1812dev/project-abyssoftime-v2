@@ -116,6 +116,26 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     The live curl check is still owed once `AUTH_SECRET`/`CMS_API_URL` are set locally and T1
     produces a real account.
 
+11. **T7's callbacks live in `auth.config.ts`, not `auth.ts` (2026-08-12).** T6 already placed the
+    `jwt` callback in `auth.config.ts` (the Edge-safe provider file) rather than `auth.ts`, since
+    that's the natural home next to the provider it feeds; T7 extends it there and adds the
+    `session` callback alongside it, not in `auth.ts`, which is unchanged from T6. Both callbacks
+    are pure/fetch-free so Edge-safety isn't a concern either way. A related pitfall found and fixed
+    while writing `src/types/next-auth.d.ts`: a `.d.ts` file with no top-level `import`/`export` is
+    treated by TypeScript as a global script, so `declare module "next-auth" { interface User {...} }`
+    **replaced** the real module's types instead of merging with them (every named export —
+    `CredentialsSignin`, `NextAuthConfig`, the `NextAuth` default export's call signature —
+    disappeared, and callback parameters silently became `any`). Fixed by adding
+    `import type {} from "next-auth"` / `"next-auth/jwt"` at the top of the file, which is what
+    forces module-augmentation semantics instead of a fresh ambient declaration. Worth remembering
+    for any future `declare module` file in this repo.
+    Same live-verification gap as Correction 10 carries over — `bun test src` (48 pass across 6
+    files), `bun run lint`, `bunx tsc --noEmit` all clean; `bun run build` fails only at the same
+    intentional `AUTH_SECRET must be set` guard. A second dev-server smoke attempt (isolated port,
+    inline env vars) was blocked by Next's own single-instance-per-project-dir lock, not by this
+    change — the existing dev server (already running from an earlier session, without
+    `AUTH_SECRET`) is expected to 500 on `/api/auth/*` until that var is set in its environment.
+
 ## Resolved open questions
 
 | Q | Resolution |

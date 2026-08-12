@@ -2,6 +2,7 @@ import { CredentialsSignin, type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
 import { CmsAuthError, cmsGetMe, cmsLogin } from "@/lib/auth/cms-auth.client";
+import { decodeTokenExpiryMs } from "@/lib/auth/decode-token-expiry";
 
 // Auth.js's Credentials provider maps any thrown error to the same generic
 // `error=CredentialsSignin&code=credentials` unless the thrown error subclasses CredentialsSignin
@@ -54,18 +55,35 @@ export const authConfig = {
     }),
   ],
   callbacks: {
-    // T7 adds the Session/JWT module augmentation (src/types/next-auth.d.ts); until then these
-    // custom fields are carried through an explicit cast rather than typed as `any`.
+    // Defining our own `jwt` callback fully replaces Auth.js's default (they don't chain — see
+    // @auth/core/lib/init.js), so name/email must be persisted here too, not just the custom
+    // fields, or the session callback below has nothing to read them back from.
     async jwt({ token, user }) {
       if (user) {
-        const { accessToken, refreshToken, roleSlug } = user as unknown as {
-          accessToken: string;
-          refreshToken: string;
-          roleSlug: string | null;
-        };
-        Object.assign(token, { accessToken, refreshToken, roleSlug });
+        // accessToken/refreshToken are intentionally absent from the `User` type (see
+        // next-auth.d.ts) so they can never structurally reach `Session.user` — read via a local
+        // cast instead of widening that type.
+        const { accessToken, refreshToken } = user as unknown as { accessToken: string; refreshToken: string };
+        token.name = user.name;
+        token.email = user.email;
+        token.roleSlug = user.roleSlug;
+        token.accessToken = accessToken;
+        token.refreshToken = refreshToken;
+        token.accessTokenExpires = decodeTokenExpiryMs(accessToken) ?? undefined;
       }
       return token;
+    },
+    // Exhaustively reconstructed, not a mutation of the passed-in `session` — this is the only
+    // client-facing surface, and it must never carry accessToken/refreshToken/accessTokenExpires.
+    async session({ session, token }) {
+      return {
+        ...session,
+        user: {
+          name: token.name ?? null,
+          email: token.email ?? null,
+          roleSlug: token.roleSlug ?? null,
+        },
+      };
     },
   },
 } satisfies NextAuthConfig;

@@ -112,7 +112,7 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
     `src/lib/auth/cms-auth.client.ts`, `.env.example`
   - Deps: none (parallel with Phase 1/2). Size: M
 
-- [ ] **T7 — `jwt` / `session` callbacks.** `jwt` persists `accessToken`, `refreshToken`,
+- [x] **T7 — `jwt` / `session` callbacks.** `jwt` persists `accessToken`, `refreshToken`,
   `accessTokenExpires`, `roleSlug` into the JWE. `session` exposes **only** `{ user: { name, email, roleSlug } }`
   — its output is serialized to the client, so no token may appear there.
   - Acceptance: `roleSlug` readable from `auth()` in Server Components, route handlers and the proxy;
