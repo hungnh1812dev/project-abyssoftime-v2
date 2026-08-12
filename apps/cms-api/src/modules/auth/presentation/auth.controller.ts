@@ -118,9 +118,9 @@ export class AuthController {
   @ApiResponse({ status: 200, type: AuthResponseDto })
   @ApiResponse({ status: 401, description: "Refresh cookie missing, invalid, or expired" })
   async refresh(@Req() req: AuthenticatedRefreshRequest, @Res({ passthrough: true }) res: Response): Promise<{ message: string; accessToken: string }> {
-    const { sub, rememberMe } = req.user;
+    const { sub, rememberMe, jti, exp } = req.user;
 
-    const { accessToken, refreshToken, refreshTokenMaxAgeMs } = await this.refreshTokenService.execute(sub, rememberMe ?? false);
+    const { accessToken, refreshToken, refreshTokenMaxAgeMs } = await this.refreshTokenService.execute(sub, rememberMe ?? false, jti, exp);
     this.setRefreshCookie(res, refreshToken, refreshTokenMaxAgeMs);
     return { message: "Token refreshed.", accessToken };
   }

@@ -155,25 +155,25 @@ describe("AuthController", () => {
     expect(result).toEqual({ message: "Login successful.", accessToken: "access-token" });
   });
 
-  it("refresh() delegates to RefreshTokenService with the guard-verified sub/rememberMe, returns the rotated accessToken in the body, and rotates only the refresh cookie", async () => {
-    const req = { user: { sub: "user-1", rememberMe: true } } as unknown as AuthenticatedRefreshRequest;
+  it("refresh() delegates to RefreshTokenService with the guard-verified sub/rememberMe/jti/exp, returns the rotated accessToken in the body, and rotates only the refresh cookie", async () => {
+    const req = { user: { sub: "user-1", rememberMe: true, jti: "old-jti", exp: 1234567890 } } as unknown as AuthenticatedRefreshRequest;
     refreshTokenService.execute.mockResolvedValue({ accessToken: "new-access-token", refreshToken: "new-refresh-token", refreshTokenMaxAgeMs: 30 * 24 * 60 * 60 * 1000 });
 
     const result = await controller.refresh(req, res as unknown as Response);
 
-    expect(refreshTokenService.execute).toHaveBeenCalledWith("user-1", true);
+    expect(refreshTokenService.execute).toHaveBeenCalledWith("user-1", true, "old-jti", 1234567890);
     expect(res.cookie).toHaveBeenCalledTimes(1);
     expect(res.cookie).toHaveBeenCalledWith(REFRESH_TOKEN_COOKIE, "new-refresh-token", expect.objectContaining({ maxAge: 30 * 24 * 60 * 60 * 1000 }));
     expect(result).toEqual({ message: "Token refreshed.", accessToken: "new-access-token" });
   });
 
-  it("refresh() defaults rememberMe to false for a pre-change refresh token that carries no rememberMe field", async () => {
+  it("refresh() defaults rememberMe to false and passes undefined jti/exp for a pre-change refresh token that carries none of those fields", async () => {
     const req = { user: { sub: "user-1" } } as unknown as AuthenticatedRefreshRequest;
     refreshTokenService.execute.mockResolvedValue({ accessToken: "new-access-token", refreshToken: "new-refresh-token", refreshTokenMaxAgeMs: 7 * 24 * 60 * 60 * 1000 });
 
     await controller.refresh(req, res as unknown as Response);
 
-    expect(refreshTokenService.execute).toHaveBeenCalledWith("user-1", false);
+    expect(refreshTokenService.execute).toHaveBeenCalledWith("user-1", false, undefined, undefined);
   });
 
   it("logout() passes the refresh cookie to LogoutService and clears only the refresh cookie", async () => {

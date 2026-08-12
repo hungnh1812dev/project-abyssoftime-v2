@@ -102,7 +102,7 @@ prefix, `tasks/plan.md`) and only affects T9.
 
 ## Phase 3 — Rotation makes refresh tokens single-use
 
-- [ ] **T7 — `RefreshTokenService` blacklists the jti it just consumed.** `execute()` takes the
+- [x] **T7 — `RefreshTokenService` blacklists the jti it just consumed.** `execute()` takes the
   verified payload's `jti`/`exp` alongside `sub`/`rememberMe`; after the user/role lookups and token
   signing succeed, writes `{ jti, userId: sub, expiresAt, reason: "rotation" }` as the **last** step
   before returning (plan's fail-safe ordering). Skip the write when the old token carried no `jti`.
