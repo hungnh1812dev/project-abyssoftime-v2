@@ -10,6 +10,7 @@ import { CVMain_MockData } from "./cv-main";
 import { EnVocabWordGroups_MockData } from "./en-vocab-word-groups";
 import { EnVocabWordList_MockData } from "./en-vocab-word-list";
 import { GoKnowledgePageMeta_MockData, goKnowledgeSectionMocks } from "./go-knowledge";
+import { Header_MockData } from "./header";
 import { HomePage_MockData } from "./home";
 import { ReactKnowledgePage_MockData, ReactKnowledgePageMeta_MockData, reactKnowledgeSectionMocks } from "./react-knowledge";
 import { VaccinePage_MockData } from "./vaccine";
@@ -26,6 +27,8 @@ export const MockView: Record<string, unknown> = {
   "vaccine-page": VaccinePage_MockData,
   // Home
   "home-page": HomePage_MockData,
+  // Header
+  header: Header_MockData,
   // React Knowledge
   "react-knowledge-page": ReactKnowledgePage_MockData,
   "react-knowledge-page-meta": ReactKnowledgePageMeta_MockData,
