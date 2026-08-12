@@ -116,7 +116,7 @@ prefix, `tasks/plan.md`) and only affects T9.
     `src/modules/auth/presentation/auth.controller.spec.ts`
   - Deps: T6. Size: S
 
-- [ ] **Checkpoint C** — full suite + `bun run test:e2e` green, with a new e2e case: `/auth/refresh`
+- [x] **Checkpoint C** — full suite + `bun run test:e2e` green, with a new e2e case: `/auth/refresh`
   twice with the *same* cookie → second call `401`; the rotated-to token still works. **Manual
   `cms-admin` walkthrough** (the "admin" half of this feature — no code changes there, plan
   Correction 6): log in, click logout, confirm the old session cannot refresh; then log in again and
