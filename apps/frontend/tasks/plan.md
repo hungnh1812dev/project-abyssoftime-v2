@@ -104,6 +104,18 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
    `/learning/english`, `/learning/develop/{react,architecture,go}`, `/interview`,
    `/interview/answers`, `/secret`, `/account`) present in the RSC payload, no thrown error.
 
+10. **T6's live curl verify step is deferred, not skipped (2026-08-12).** T6's own Verify line
+    (`curl -i -X POST .../api/auth/callback/credentials`) needs a running cms-api plus a real test
+    account, and both are still blocked on T1 (deferred, Correction 8) — there is no verified test
+    user yet. Verified instead: `bun test src` (11 new cases covering `cmsLogin`/`cmsGetMe`,
+    including the 401-vs-403 distinction and Set-Cookie parsing), `bun run lint`, `bunx tsc --noEmit`
+    all clean, and `bun run build` — which fails *only* at `Failed to collect page data for
+    /api/auth/[...nextauth]` with the exact `AUTH_SECRET must be set` message, i.e. the fail-loud
+    behaviour the acceptance criterion asks for, triggered because no `AUTH_SECRET` exists in this
+    environment yet (not written to `.env.local` — outside this assistant's permitted file access).
+    The live curl check is still owed once `AUTH_SECRET`/`CMS_API_URL` are set locally and T1
+    produces a real account.
+
 ## Resolved open questions
 
 | Q | Resolution |

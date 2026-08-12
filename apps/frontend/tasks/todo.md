@@ -96,7 +96,7 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
 
 ## Phase 3 — Auth.js login
 
-- [ ] **T6 — Auth.js wiring + Credentials provider.** Install `next-auth@5.0.0-beta.32` (**exact
+- [x] **T6 — Auth.js wiring + Credentials provider.** Install `next-auth@5.0.0-beta.32` (**exact
   pin**, D11). Split config: `auth.config.ts` holds the Edge-safe provider list, `auth.ts` calls
   `NextAuth({...authConfig})` and exports `{ handlers, auth, signIn, signOut }`. `authorize()` calls
   cms-api `/auth/login` then `/auth/me` via `cms-auth.client.ts`. Keep the split even without a DB
