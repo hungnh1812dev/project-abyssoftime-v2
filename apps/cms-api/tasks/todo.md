@@ -206,6 +206,6 @@ prefix, `tasks/plan.md`) and only affects T9.
   - Files: `SPEC.md`
   - Deps: T12. Size: XS
 
-- [ ] **Checkpoint E (final)** — Re-verify every success criterion in `SPEC.md` against the shipped
+- [x] **Checkpoint E (final)** — Re-verify every success criterion in `SPEC.md` against the shipped
   code, not against this checklist. `bun run build && bun run lint && bun run test:cov && bun run test:e2e`
   green. Commit.
