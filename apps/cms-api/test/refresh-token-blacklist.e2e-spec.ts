@@ -85,4 +85,32 @@ describe("Refresh token blacklist / logout (e2e)", () => {
     expect(refreshRes.status).toBe(200);
     expect(typeof (refreshRes.body as { accessToken?: unknown }).accessToken).toBe("string");
   });
+
+  it("rotation makes refresh tokens single-use: the same cookie 401s on a second /auth/refresh, while the rotated-to token keeps working (T7)", async () => {
+    const server = app.getHttpServer();
+    const loginRes = await request(server).post("/api/v1/auth/login").send({ email, password: PASSWORD }).expect(200);
+    const originalCookie = extractRefreshCookie(loginRes.headers["set-cookie"] as unknown as string[]);
+
+    const firstRefresh = await request(server).post("/api/v1/auth/refresh").set("Cookie", originalCookie);
+    expect(firstRefresh.status).toBe(200);
+    const rotatedCookie = extractRefreshCookie(firstRefresh.headers["set-cookie"] as unknown as string[]);
+
+    const replayWithOriginal = await request(server).post("/api/v1/auth/refresh").set("Cookie", originalCookie);
+    expect(replayWithOriginal.status).toBe(401);
+
+    const refreshWithRotated = await request(server).post("/api/v1/auth/refresh").set("Cookie", rotatedCookie);
+    expect(refreshWithRotated.status).toBe(200);
+    expect(typeof (refreshWithRotated.body as { accessToken?: unknown }).accessToken).toBe("string");
+
+    const rows = await prisma.refreshTokenBlacklist.findMany({ where: { userId, reason: "rotation" } });
+    expect(rows.length).toBeGreaterThan(0);
+  });
 });
+
+function extractRefreshCookie(setCookieHeader: string[]): string {
+  const refreshCookie = setCookieHeader.find((c) => c.startsWith("refresh_token="));
+  if (!refreshCookie) {
+    throw new Error("response did not set a refresh_token cookie");
+  }
+  return refreshCookie.split(";")[0];
+}
