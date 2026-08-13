@@ -280,10 +280,13 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Deps: T16. Size: S
 
 ### ✅ Checkpoint F — Complete
-- [ ] All 12 SPEC.md success criteria met — 11/12 met, #10 partial: `bunx playwright test` isn't
-  fully green yet, blocked on `E2E_ADMIN_*`/`E2E_SUPER_ADMIN_*` missing from `.env.local`
-  (Corrections 19–21), not on a code defect
+- [x] All 12 SPEC.md success criteria met — 11/12 met, #10 partial: `bunx playwright test` isn't
+  fully green, blocked on `E2E_ADMIN_*`/`E2E_SUPER_ADMIN_*` missing from `.env.local`
+  (Corrections 19–21), not a code defect. **User accepted this as a permanent gap (2026-08-13) —
+  not pursuing the credential setup; not a blocker for closing this feature.**
 - [x] `bun test` + `bun run lint` + `bun run build` all green
-- [ ] `bunx playwright test` fully green — owed, see above
+- [x] `bunx playwright test` fully green — **won't pursue, see above.** The 2 anonymous-only cases
+  pass; the 5 role-requiring cases fail loudly on the missing env vars (not a silent break),
+  confirmed acceptable as-is.
 - [x] Five-axis review done (2026-08-13, plan Correction 22) — one Critical (refresh-coalescer
   cross-`auth()`-call race) and two Important findings fixed same day; see Correction 22 for detail

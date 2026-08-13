@@ -681,17 +681,18 @@ governs nav visibility and route access only; CV/learning content itself doesn't
 - **`/cv` and `/cv-2` 500 for every role** — unrelated pre-existing bug (`tasks/plan.md` Correction
   18): no CV content has ever been seeded in this cms-api instance, and
   `CvElegantPageContent.tsx:26` doesn't null-check `data.position`. Not part of this feature's scope.
-- **A fully green `bunx playwright test` run is owed** until `E2E_ADMIN_EMAIL`/`PASSWORD` and
-  `E2E_SUPER_ADMIN_EMAIL`/`PASSWORD` exist in `.env.local` for the accounts provisioned in
-  Correction 17.
+- **`bunx playwright test` isn't fully green** — the 5 role-requiring E2E cases fail loudly on
+  missing `E2E_ADMIN_EMAIL`/`PASSWORD` and `E2E_SUPER_ADMIN_EMAIL`/`PASSWORD` in `.env.local`
+  (accounts already provisioned, Correction 17). **User accepted this as a permanent gap
+  (2026-08-13, `tasks/plan.md` Correction 22) — not pursuing the credential setup.** The 2
+  anonymous-only cases pass; the failure mode for the other 5 is an explicit missing-env-var error,
+  not a silent break.
 
 ---
 
 ## Next Steps
 
-Implementation is complete (T1–T16). Remaining before Checkpoint F fully closes:
-
-1. Set `E2E_ADMIN_EMAIL`/`PASSWORD` and `E2E_SUPER_ADMIN_EMAIL`/`PASSWORD` in `.env.local`, then
-   confirm `bunx playwright test` is fully green.
-2. Bring `.env.example` up to date per "Known gaps" above.
-3. `/agent-skills:review` per `tasks/todo.md`'s Checkpoint F.
+Implementation and review are complete (T1–T17, Correction 22). Nothing outstanding — the
+`bunx playwright test` gap above is accepted, not pending. `.env.example` remains stale (Known
+gaps above) — out of this assistant's editing permissions, not a task for a future session either
+unless the user asks.
