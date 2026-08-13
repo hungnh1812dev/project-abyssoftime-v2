@@ -1,248 +1,150 @@
-# Plan: Refresh Token Blacklist & Logout
+# Plan: Additional Email Providers (Resend, Brevo, SendGrid)
 
 See `SPEC.md` for the full spec (objective, confirmed assumptions, boundaries, success criteria).
-This plan implements it, with corrections found during planning (below) that the spec did not
-anticipate.
+This plan implements it as three near-identical vertical slices (one per provider) plus a docs phase.
 
 ## Context
 
-Refresh tokens today are stateless JWTs carrying `{ sub, rememberMe }` — no unique identifier, no
-server-side record, no revocation. `POST /auth/logout` only calls `res.clearCookie()`; the token
-itself stays valid until natural expiry (7d, or 30d for `rememberMe`), and a rotated-out token from
-`/auth/refresh` stays valid too. `docs/documents/auth.md` records this as the accepted "No
-server-side token revocation" gap. This plan closes it: refresh tokens gain a `jti`, revocations are
-persisted in Postgres (optionally mirrored to Redis), `JwtRefreshStrategy` checks that blacklist, and
-both logout and rotation write to it.
+`cms-api` sends OTP/password-reset email via `IEmailSender`, currently backed by Gmail API, SMTP
+(`nodemailer`), or a Console dev fallback, selected by `EMAIL_PROVIDER` (`resolve-email-sender.ts`).
+This plan adds three more interchangeable senders — Resend, Brevo, SendGrid — using each vendor's
+official Node SDK, with zero change to `IEmailSender`, the Handlebars template renderer, or any
+`application/services/*` caller (SPEC.md Assumptions 2–3).
+
+Because all three providers are structurally identical (one SDK client, two send calls, same
+`IEmailSender` shape), the highest-risk unknown isn't architecture — it's whether the *exact* SDK
+call signature assumed for Brevo (`@getbrevo/brevo` v6.0.3) is correct. A pre-planning doc check
+confirmed SendGrid's `sgMail.setApiKey()` / `sgMail.send({to, from, subject, html})` pattern matches
+SPEC.md's assumption, but the Brevo v6 client shape returned by that check (`new BrevoClient({apiKey})`
++ `brevo.transactionalEmails.sendTransacEmail(...)`) came from an AI-summarized README, not a
+first-hand read of the SDK's type definitions — **not trusted as fact**. T4 (Brevo) must verify the
+real shape against `node_modules/@getbrevo/brevo`'s types or official docs before writing code
+(`source-driven-development`), not copy the summary verbatim.
 
 ## Corrections found during planning (supersede SPEC.md)
 
-1. **Only `prisma/postgresql/schema.prisma` has models — the mysql and sqlite schemas are empty
-   8-line stubs** (`generator` + `datasource` blocks only, zero `model` declarations). SPEC.md's
-   Project Structure says "add `RefreshTokenBlacklist` to all 3" and its Boundaries say "never add
-   the model to just one schema" — both are wrong given the actual repo state. Adding the model to
-   the stubs would leave them holding one model and none of the other six. **Decision: postgresql
-   only**, matching how `AccessToken`/`User`/`Role`/etc. already live. The `mysql`/`sqlite` stubs
-   stay untouched; `scripts/prisma.ts`'s driver switch keeps working exactly as before.
-
-2. **SPEC.md's "a Redis miss is authoritative" rule has a correctness hole.** The spec reasons that
-   because Redis mirrors every DB write, a miss means "not blacklisted". That holds only if the
-   mirror write never fails. If the DB write succeeds and the Redis write then throws (connection
-   drop mid-request), the entry exists only in Postgres — and every later check reads Redis, misses,
-   and **accepts a token that was logged out**. This is a silent auth bypass, not a cache-staleness
-   annoyance. Options considered:
-
-   | Option | Read on cache miss | On mirror-write failure | Correct? | Cost on the happy path |
-   | --- | --- | --- | --- | --- |
-   | **A** — spec as written | trust the miss | log + continue | ❌ revoked token accepted | 1 Redis read |
-   | **B** — miss → always check DB | fall through to DB | log + continue | ✅ | 1 Redis read **+ 1 DB read** (cache buys nothing) |
-   | **C** — fail the request | trust the miss | throw → 500 | ✅ | 1 Redis read, but Redis down ⇒ logout/refresh 500 |
-   | **D** — sticky-degraded cache ✅ **chosen** | trust the miss **while healthy**; fall through to DB once degraded | log + mark cache untrusted for the process lifetime | ✅ | 1 Redis read |
-
-   **Chosen: D.** Any Redis error (read *or* write) flips an in-process `trusted` flag to `false`
-   permanently; from then on the cache reports "unknown" and every check falls through to Postgres.
-   It stays false until the process restarts — re-arming it would wrongly trust a cache that missed
-   writes during the outage. This is the only option that is both correct and keeps the cache's
-   read benefit, and it satisfies SPEC.md's success criterion "killing Redis mid-session causes
-   checks to fall back to DB rather than hard-failing". The comparison table above goes into
-   `docs/documents/token-blacklist-techstack.md` per `docs/rules/workflow.md`'s decision-rationale
-   rule.
-
-3. **Two ports, not one.** Correction 2 means the authoritative store and the optional cache have
-   genuinely different contracts — the store always answers definitively, the cache may not know.
-   SPEC.md's single `ITokenBlacklistStore` becomes:
-
-   ```ts
-   export interface ITokenBlacklistStore {   // Postgres — authoritative, always present
-     blacklist(entry: BlacklistEntry): Promise<void>;
-     isBlacklisted(jti: string): Promise<boolean>;
-   }
-
-   export interface ITokenBlacklistCache {   // Redis — optional, may be unavailable/degraded
-     blacklist(entry: BlacklistEntry): Promise<void>;
-     isBlacklisted(jti: string): Promise<boolean | null>;   // null = "don't know, ask the store"
-   }
-   ```
-
-4. **`signRefreshToken` generates the `jti` internally and still returns just the token string.**
-   SPEC.md's Project Structure says it "generates + returns `jti`". No caller ever needs the *new*
-   token's jti — logout and rotation both blacklist the *old* jti, which arrives already decoded on
-   `req.user`. Returning it would widen `LoginResult` and every call site for nothing.
-
-5. **Expiry comes from the token's own `exp` claim, not from re-deriving the 7d/30d TTL.**
-   `passport-jwt` puts the standard `exp` (Unix seconds) on the decoded payload, so
-   `expiresAt = new Date(payload.exp * 1000)` is exact and needs no `rememberMe` branch. Both
-   `jti` and `exp` are declared **optional** on `RefreshTokenPayload`, matching the existing
-   precedent set by `rememberMe`: tokens minted before this ships carry neither, and readers must
-   treat their absence as "cannot be blacklisted" rather than crashing.
-
-6. **`cms-admin` needs zero code changes — confirmed, not assumed.** `src/context/AuthContext.tsx`
-   already calls `api.post("/auth/logout")`, and `src/lib/api.ts` creates the axios instance with
-   `withCredentials: true`, so the `refresh_token` cookie is already sent on that request. The
-   "admin" half of this feature is a manual browser walkthrough (Checkpoint C), not an
-   implementation task.
-
-7. **Logout gets its own `LogoutService`, not inline controller logic.** Today logout is the one
-   route with no service (`— (inline, no service)` in `docs/documents/auth.md`'s endpoint table).
-   Decoding a JWT and writing to a blacklist is business logic; every other route in this module
-   delegates to `application/services/*`. Keeping it inline would put a `try/catch` around
-   `verifyRefreshToken` inside a presentation-layer method.
+None. SPEC.md's assumptions all held up against the codebase read during spec-writing; no
+architectural surprises found while planning (unlike the token-blacklist feature's Prisma-schema
+correction — this feature touches no schema).
 
 ## Architecture Decisions
 
-- **New shared primitive at `src/common/token-blacklist/`**, registered as a `@Global()` module in
-  `AppModule` next to `TokenModule` — same category as `common/token/`'s `JwtTokenService`, not a
-  CRUD business module. `JwtRefreshStrategy` (in `common/strategies/`) can then inject it without
-  `AuthModule` importing anything new, and without a cycle: `TokenBlacklistModule` depends only on
-  the already-`@Global()` `PrismaModule` plus `ConfigService`.
-- **`jti` is a `randomUUID()`** from `node:crypto` — no `uuid` package, matching the existing
-  `randomInt`/`randomBytes` precedent in this module's OTP and reset-token code.
-- **`RefreshTokenBlacklist` uses `jti` as its primary key**, with no `documentId`/`updatedAt`/
-  `updatedBy` columns. It is not a client-facing CRUD resource, and `jti` is already a UUID. A
-  nullable `userId` column is included as groundwork for a future "log out everywhere" feature
-  (confirmed in SPEC.md assumption 7); nothing in this plan queries by it.
-- **The blacklist write is the last step of `RefreshTokenService.execute()`**, after the user/role
-  lookups and token signing. If it throws, `execute()` throws, the controller never reaches
-  `setRefreshCookie`, and the client keeps a still-valid old token — a consistent state. Writing it
-  first would risk revoking the old token and then failing to issue a new one, locking the user out.
-- **`ignoreExpiration: false` stays** on `JwtRefreshStrategy`, so expired tokens are rejected by
-  `passport-jwt` before `validate()` runs — the blacklist never sees them and never needs to store
-  them past their `exp`.
-- **Rejection reuses the existing generic `401 "Invalid or expired refresh token"`.** A blacklisted
-  token must be indistinguishable from an invalid one; `JwtRefreshGuard.handleRequest`'s existing
-  `if (err || !user)` branch already produces exactly that message when `validate()` throws.
+- **Each sender is constructed lazily inside `resolveEmailSender`'s branches**, exactly like
+  `GmailApiEmailSender`/`SmtpEmailSender`/`ConsoleEmailSender` today — never instantiated unless its
+  `EMAIL_PROVIDER` value (or "auto" match) actually selects it. This is what keeps an unset
+  `RESEND_API_KEY`/`BREVO_API_KEY`/`SENDGRID_API_KEY` inert when a different provider is active
+  (SPEC.md's "Never do" boundary) — no code needs to special-case "key missing," construction simply
+  never happens.
+- **Send failures propagate uncaught**, matching `SmtpEmailSender`/`GmailApiEmailSender` today (no
+  try/catch swallowing in either). A thrown SDK error bubbles up through `IEmailSender` to the
+  calling service (`register`/`resend-otp`/`forgot-password`), which already handles/logs errors the
+  same way regardless of which sender threw.
+- **`EMAIL_FROM` is read once in each sender's constructor**, same pattern `SmtpEmailSender` uses for
+  `FRONTEND_URL` — no new "from" env var (SPEC.md Assumption 5).
+- **`"auto"` fallthrough is built up incrementally, one provider at a time**, so the chain is always
+  in a shippable, correctly-ordered state at every checkpoint: Phase 1 adds `resend` between the
+  existing `smtp` check and the `console` fallback; Phase 2 inserts `brevo` between `resend` and
+  `console`; Phase 3 inserts `sendgrid` between `brevo` and `console`. Final order (confirmed):
+  `gmail → smtp → resend → brevo → sendgrid → console`.
+- **Official SDKs, not raw `fetch`** — decision table already in `SPEC.md`'s Tech Stack section; not
+  repeated here. The comparison gets persisted to `docs/documents/auth-email-providers-techstack.md`
+  in Phase 4 (T7) per `docs/rules/workflow.md`'s decision-rationale rule.
 
 ## Dependency Graph
 
 ```
-T1 jti + exp on the payload
- │
- ├─→ T2 Prisma model + migration
- │       │
- │       └─→ T3 ports + Prisma store
- │               │
- │               └─→ T4 TokenBlacklistService + @Global() module
- │                       │
- │                       ├─→ T5 JwtRefreshStrategy checks the blacklist ──┐
- │                       │                                                 ├─→ T7 rotation blacklists
- │                       └─→ T6 LogoutService + controller ────────────────┘        the consumed jti
- │                                    (logout works end-to-end)
- │
- └─→ T8 env + ioredis client ─→ T9 Redis cache + service composition
-                                     (optional fast path, no behavior change)
+T1 Resend env vars + dependency
+ └─→ T2 ResendEmailSender + resolve-email-sender wiring (auto: …→resend→console)
+        │
+T3 Brevo env vars + dependency (parallel with T1/T2)
+        │
+        └─→ T4 BrevoEmailSender + resolve-email-sender wiring (auto: …→resend→brevo→console)
+               — depends on T2 (same file, sequential edit) and T3
+               │
+T5 SendGrid env vars + dependency (parallel with T1–T4)
+        │
+        └─→ T6 SendGridEmailSender + resolve-email-sender wiring (auto: final order)
+               — depends on T4 (same file, sequential edit) and T5
+               │
+               └─→ T7 techstack docs → T8 auth.md + stale-wording sweep → T9 five-axis review → T10 cleanup
 ```
 
-Phases 1–3 deliver the whole feature on Postgres alone. Phase 4 (Redis) is a pure performance layer
-bolted on behind a default-off flag — deliberately last, so a Redis problem can never block the
-security fix.
+Env-var/dependency tasks (T1, T3, T5) are independent of each other and could run in parallel; the
+sender-implementation tasks (T2, T4, T6) are forced sequential because they all edit
+`resolve-email-sender.ts`. Each provider phase ships a fully working, independently-verifiable slice
+— Resend works end-to-end before Brevo is even started, matching the vertical-slicing goal and
+keeping the blast radius of any one provider's SDK surprises contained to its own phase.
 
 ## Task List
 
-### Phase 1 — Foundation (no behavior change yet)
+### Phase 1 — Resend (first vertical slice, establishes the pattern)
 
-- **T1** — `jti`/`exp` on the refresh payload. S
-- **T2** — `RefreshTokenBlacklist` Prisma model + migration. S
-- **T3** — Blacklist ports + Postgres-backed store. S
-- **T4** — `TokenBlacklistService` + `@Global()` `TokenBlacklistModule` + `AppModule` wiring. S
+- **T1** — Resend env vars + dependency. S
+- **T2** — `ResendEmailSender` + `resolve-email-sender.ts` wiring. M
 
-**Checkpoint A** — `bun run build && bun run lint && bun run test:cov` green. Nothing calls the
-blacklist yet, so every existing test must still pass unmodified. Commit.
+**Checkpoint A** — `bun run build && bun run lint && bun run test:cov` green. `EMAIL_PROVIDER=smtp`
+(or unset) still behaves identically to today. Manual: set a real `RESEND_API_KEY` +
+`EMAIL_PROVIDER=resend` locally, confirm one OTP email and one password-reset email actually arrive.
+Commit.
 
-### Phase 2 — Logout actually revokes (first vertical slice)
+### Phase 2 — Brevo
 
-- **T5** — `JwtRefreshStrategy.validate()` rejects blacklisted jtis. S
-- **T6** — `LogoutService` + controller/module wiring. M
+- **T3** — Brevo env vars + dependency. S
+- **T4** — `BrevoEmailSender` + `resolve-email-sender.ts` wiring. Verify the real `@getbrevo/brevo`
+  v6 client/method shape first (source-driven-development) — do not assume the shape from SPEC.md's
+  placeholder. M
 
-**Checkpoint B** — full suite green + new e2e: login → logout → `/auth/refresh` with that cookie =
-`401`; login → `/auth/refresh` without logging out still = `200`. Manual: confirm one row lands in
-`refresh_token_blacklist` with `reason = 'logout'`. Commit.
+**Checkpoint B** — same as Checkpoint A, for Brevo, plus regression: Resend path from Checkpoint A
+still passes unmodified. Commit.
 
-### Phase 3 — Rotation makes refresh tokens single-use
+### Phase 3 — SendGrid
 
-- **T7** — `RefreshTokenService` blacklists the jti it just consumed. S
+- **T5** — SendGrid env vars + dependency. S
+- **T6** — `SendGridEmailSender` + `resolve-email-sender.ts` wiring (final `"auto"` order). M
 
-**Checkpoint C** — full suite green + new e2e: `/auth/refresh` twice with the *same* cookie = `401`
-on the second call. **Manual `cms-admin` walkthrough** (the "admin" half of the feature): log in,
-click logout, confirm the session is dead server-side, and confirm normal navigation still refreshes
-cleanly across the 15-minute access-token boundary. Commit.
+**Checkpoint C** — same as B, for SendGrid, plus regression: Resend and Brevo paths still pass. All
+three provider-specific `SPEC.md` success criteria now met. Commit.
 
-### Phase 4 — Optional Redis cache
+### Phase 4 — Docs, review, cleanup (`docs/rules/workflow.md` steps 4–8)
 
-- **T8** — Env vars + `ioredis` dependency + lazy client provider. S
-- **T9** — `RedisTokenBlacklistCache` + service composition. M
+- **T7** — `docs/documents/auth-email-providers-techstack.md` (new — SDK-vs-raw-fetch decision
+  table) + `docs/documents/auth-email-techstack.md` (add Resend/Brevo/SendGrid rows). S
+- **T8** — Update `docs/documents/auth.md` (email-sending section lists all 6 providers) + grep the
+  repo for any other place enumerating `gmail`/`smtp`/`console` as "the" provider list (e.g.
+  `.env.example` comments, `docs/api-reference.md` if it mentions `EMAIL_PROVIDER`) and update those
+  too — a fixed file list is exactly what went wrong in the JWT Bearer migration closeout. S–M
+- **T9** — Five-axis review (correctness, readability, architecture, security, performance) via
+  `agent-skills:code-reviewer`. Security axis must explicitly cover: no API key ever logged; a sender
+  for an unselected provider is never constructed/called; send failures aren't silently swallowed. S
+- **T10** — Cleanup: reduce `SPEC.md` back to a pointer at the new docs, per
+  `docs/rules/workflow.md`'s root-docs rule. XS
 
-**Checkpoint D** — with the flag off (default): full suite + e2e green and **zero Redis connection
-attempts** at boot. With the flag on against a local Redis: Checkpoint B and C scenarios still pass;
-then kill Redis mid-session and confirm checks degrade to Postgres instead of erroring. Commit.
-
-### Phase 5 — Docs, review, cleanup (`docs/rules/workflow.md` steps 4–8)
-
-- **T10** — `docs/documents/token-blacklist.md` + `token-blacklist-techstack.md`. S
-- **T11** — Update `auth.md` + repo-wide stale-wording sweep + Swagger/reference docs. M
-- **T12** — Five-axis review. S
-- **T13** — Cleanup: `SPEC.md` back to a pointer. XS
-
-**Checkpoint E (final)** — every success criterion in `SPEC.md` re-verified against shipped code;
-`build`/`lint`/`test:cov`/`test:e2e` green; review findings resolved. Commit.
+**Checkpoint D (final)** — every success criterion in `SPEC.md` re-verified against shipped code
+(not against this checklist); `build`/`lint`/`test:cov` green; review findings resolved. Commit.
 
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Redis mirror write fails ⇒ later miss accepts a revoked token | **High** (silent auth bypass) | Correction 2's sticky-degraded cache; any Redis error permanently untrusts the cache for that process and reads fall through to Postgres |
-| `ioredis` connects (or throws) at boot even when the flag is off | Med (breaks default-off deployments) | The provider is a `useFactory` returning `null` when disabled — the client is never constructed. Checkpoint D asserts zero connection attempts explicitly |
-| Blacklist write fails mid-rotation ⇒ user locked out | Med | Write last in `execute()`; on throw the controller never sets a new cookie, so the old still-valid token survives |
-| Pre-existing refresh tokens carry no `jti` and cannot be revoked | Low | Accepted and documented; they age out within their existing 7d/30d TTL. `jti`/`exp` typed optional so they never crash a reader |
-| `refresh_token_blacklist` grows unbounded | Low→Med over time | Reads filter on `expiresAt`; a scheduled sweep is explicitly out of scope, recorded as a known gap in `token-blacklist.md` |
-| e2e tests leave blacklist rows in the shared dev DB | Low | Delete created rows in `afterAll`, as `auth-bearer-conflict.e2e-spec.ts` already does for its API tokens |
-| Every `/auth/refresh` gains a DB round trip | Low | Indexed primary-key lookup, once per session per 15 minutes; Phase 4's cache exists precisely to remove it |
-| Docs elsewhere still claim "no server-side token revocation" | Med (docs actively wrong) | T11 is an explicit repo-wide grep sweep, not a fixed file list — the lesson recorded from the JWT Bearer migration closeout |
+| Assumed Brevo SDK shape (from an AI-summarized README, not first-hand) is wrong | Med (wasted rewrite in T4) | T4 explicitly requires verifying the real `@getbrevo/brevo` v6 types/docs before writing code, not copying SPEC.md's placeholder |
+| A vendor SDK's client constructor eagerly validates/network-calls on an empty API key | Med (would break other providers when that key is unset) | Lazy construction inside `resolveEmailSender`'s branches (Architecture Decisions) — never constructed unless selected; Checkpoint A/B/C explicitly test the non-selected case |
+| Real vendor sends can't run in CI (need live API keys, cost money/quota) | Low | No e2e changes (SPEC.md); manual verification per provider at each checkpoint instead |
+| Trial/sandbox vendor accounts rate-limit or require sender-domain verification, making manual checks flaky | Low–Med | Use each vendor's test/sandbox mode where available; budget time for domain verification before Checkpoint A/B/C, not during |
+| `"auto"` order change is unreachable in practice (needs *no* `SMTP_HOST`/`GMAIL_CLIENT_ID` but a new key set) so gets under-tested | Low | Each checkpoint explicitly tests both the new-provider-selected path and the "nothing changed for existing deployments" regression |
+| Docs elsewhere still describe only 3 providers | Med (docs actively incomplete) | T8 is a repo-wide grep sweep, not a fixed file list — same lesson recorded from the token-blacklist closeout |
 
 ## Notes found during implementation
 
-- **T2 could not use `bun run prisma:migrate` (`prisma migrate dev`) as planned.** The local dev DB
-  has ~19 tables (`documents_*`, `components_*`) created at runtime by the content-engine's
-  schema-as-code sync (see `docs/documents/content-type.md`) — expected, but invisible to Prisma's
-  migration history. `migrate dev`'s drift check saw those as unexplained drift and demanded a full
-  `public` schema reset ("All data will be lost"), which was refused. Used the standard non-destructive
-  workaround instead: hand-wrote `migration.sql` matching Prisma's own generated format (cross-checked
-  against `20260724112511_add_access_tokens/migration.sql`'s naming conventions), applied it with
-  `prisma db execute --file`, then registered it with `prisma migrate resolve --applied` so
-  `prisma migrate status` reports clean. End state is identical to what `migrate dev` would have
-  produced; only the path there differed. Future migrations in this repo will hit the same drift
-  warning against a populated dev DB — same workaround applies.
-
-- **T12's five-axis review (`agent-skills:code-reviewer`) found two Important issues in the shipped
-  T5–T7 code, not caught by any of the earlier per-task unit tests.** (1) `LogoutService`'s blacklist
-  write wasn't wrapped in try/catch — a transient DB error would propagate through the controller and
-  500 a route documented as always-`200`/idempotent. Fixed by swallowing and logging the failure,
-  matching the existing pattern for a verification failure. (2) `RefreshTokenService`'s
-  check-then-write (`isBlacklisted()` then `blacklist()`, written last) left a TOCTOU race: two
-  concurrent `/auth/refresh` calls replaying the same not-yet-consumed cookie could both pass the
-  check before either write landed, each minting a valid pair — defeating "rotation makes refresh
-  tokens single-use," this feature's Phase 3 guarantee. Confirmed real, not theoretical: reverting to
-  the check-then-write version and firing two concurrent requests at the same cookie via `Promise.all`
-  against real Postgres reproduced a double-`200` in roughly 1 of every 5 runs. Fixed by adding
-  `ITokenBlacklistStore.tryClaim()` (an `INSERT` against `jti`'s existing unique primary key, not a
-  plain `upsert`; a losing racer's `INSERT` hits the constraint, surfaced by Prisma as `P2002` and
-  translated to `false`) and calling it from `RefreshTokenService.execute()` **before** signing new
-  tokens rather than writing the blacklist entry last, after. No Critical findings; all four required
-  security properties (jti unforgeable, no raw-token logging, degraded-cache fails safe, generic error
-  messages) were confirmed correct as originally shipped. Both fixes covered by new/extended unit
-  tests plus a new e2e concurrency case (`test/refresh-token-blacklist.e2e-spec.ts`), and the fix was
-  itself verified by temporarily reverting it and confirming the new e2e test fails intermittently on
-  the old code, then passes 8/8 on the fix. Full design/decision record in
-  `docs/documents/token-blacklist.md`'s "Concurrency" section and
-  `docs/documents/token-blacklist-techstack.md`'s new decision table.
-
-## Resolved during plan review (2026-08-12)
-
-1. **Correction 2 → option D confirmed.** Sticky-degraded cache: any Redis error, read or write,
-   permanently untrusts the cache for that process and reads fall through to Postgres.
-2. **Env vars confirmed as `REDIS_ENABLED` + `REDIS_URL`** — not `TOKEN_BLACKLIST_REDIS_ENABLED`.
-   Redis is treated as general infrastructure rather than a blacklist-specific toggle, so a later
-   feature can share the same connection. `SPEC.md`'s proposed-env-vars section is updated to match.
+- **T2:** `resend`'s SDK (`resend.emails.send()`) does not throw on API failure — it resolves
+  `{ data: null, error: {...} }` instead, unlike `MailerService`/`GmailApiEmailSender` which throw.
+  SPEC.md's Code Style example didn't check the `error` field. `ResendEmailSender` now checks
+  `error` and throws explicitly, to preserve the "send failures propagate uncaught" architecture
+  decision. Worth checking whether Brevo/SendGrid's SDKs have the same resolve-not-throw shape when
+  T4/T6 verify their real client types.
 
 ## Open Questions
 
-1. **Redis key prefix** — proposing `refresh-blacklist:<jti>` so one Redis instance can be shared
-   with future caches. Confirm if you have a house convention; otherwise T9 ships with that prefix.
+1. Whether any of the three providers needs more config than a single API key (SPEC.md's one
+   remaining open item) — resolved per-provider at T2/T4/T6 against each SDK's actual minimal send
+   call, not guessed here.
+2. Brevo's exact client/method shape (see Context) — resolved at T4, not before.

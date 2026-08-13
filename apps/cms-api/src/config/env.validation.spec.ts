@@ -41,6 +41,19 @@ describe("validate", () => {
     expect(result.FRONTEND_URL).toBe("http://localhost:3000");
     expect(result.REDIS_ENABLED).toBe(false);
     expect(result.REDIS_URL).toBe("");
+    expect(result.RESEND_API_KEY).toBe("");
+  });
+
+  it("accepts EMAIL_PROVIDER=resend", () => {
+    const result = validate({ ...requiredConfig, EMAIL_PROVIDER: "resend" });
+
+    expect(result.EMAIL_PROVIDER).toBe("resend");
+  });
+
+  it("overrides RESEND_API_KEY when explicitly provided", () => {
+    const result = validate({ ...requiredConfig, RESEND_API_KEY: "re_123" });
+
+    expect(result.RESEND_API_KEY).toBe("re_123");
   });
 
   it("transforms COOKIE_SECURE 'true' to boolean true", () => {
