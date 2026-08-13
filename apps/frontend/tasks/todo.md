@@ -249,12 +249,16 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Files: `e2e/test-helpers.ts` + the 7 existing specs
   - Deps: T14. Size: M
 
-- [ ] **T16 — New E2E coverage.** The six journeys from SPEC.md "Required E2E cases".
-  - Acceptance: anonymous sees the Login button with `/secret` absent from the DOM; `admin` sees the
-    name dropdown and `/cv-2/main` but still not `/secret`; `super_admin` sees `/secret` and
-    `/account`; anonymous hitting `/en/secret` is redirected and lands there after login; `admin`
-    hitting `/en/secret` is redirected; logout restores anonymous state without a hard reload.
-  - Verify: `bunx playwright test e2e/{auth-login,nav-role-visibility,route-guard}.test.ts`.
+- [x] **T16 — New E2E coverage.** ✅ **Done (2026-08-13, plan Correction 20)** — the six journeys
+  from SPEC.md "Required E2E cases", adapted to the real shipped nav (no `/cv-2` — Correction 17).
+  - Acceptance: anonymous sees the Login button with `/secret` absent from the DOM; `admin` sees
+    admin-gated links (`Vaccine` et al.) but still not `/secret`/`/account`; `super_admin` sees
+    `/secret` and `/account`; anonymous hitting `/en/secret` is redirected and lands there after
+    login; `admin` hitting `/en/secret` is redirected; logout restores anonymous state without a
+    hard reload.
+  - Verify: `bunx playwright test e2e/{auth-login,nav-role-visibility,route-guard}.test.ts`. **Owed**
+    — same `E2E_ADMIN_*`/`E2E_SUPER_ADMIN_*` credential gap as T15; the 2 anonymous-only cases pass,
+    the 5 role-requiring cases fail with the explicit missing-env-var error, not a generic timeout.
   - Files: `e2e/{auth-login,nav-role-visibility,route-guard}.test.ts`
   - Deps: T15. Size: M
 

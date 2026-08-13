@@ -377,6 +377,38 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     `bun run lint` (src only, e2e isn't in its scope — pre-existing, not changed here) and `bunx tsc
     --noEmit` both clean.
 
+20. **T16 needed the real live nav shape, not SPEC.md's illustrative `/cv-2/main` example
+    (2026-08-13).** Started the dev server against the real stack and diffed anonymous `view-source`
+    against direct-navigation status codes for every legacy path; found what first looked like a
+    real bug — the homepage body (`/en`) links to `/vaccine`, `/learning/*`, `/interview` etc. even
+    for anonymous visitors, while direct navigation to those same paths correctly 307-redirects.
+    Root cause, after scoping the check to the `<header>` element specifically: those links come
+    from `src/mocks/home.ts`'s hardcoded homepage "PAGES" card list — a totally separate, unrelated
+    piece of content that predates and sits outside this whole plan's scope. The actual `<header>`
+    nav, isolated with a temporary `console.log(JSON.stringify(data?.nav))` in
+    `header.service.ts` (added, verified, then reverted — not part of this task's shipped diff),
+    correctly omits every gated link for anonymous. That debug pass also confirmed the real content:
+    `Home`/`CV` are public; `Learning` (parent, no own link) and its five children
+    (`/learning/develop/{architecture,go,react}`, `/learning/english`, `/learning/english/game`),
+    `Vaccine`, and `Interview` (parent) with its two children (`/interview`, `/interview/answers`)
+    are all `"admin,super_admin"`; `Secret`/`Account` are `"super_admin"`. No `/cv-2` entry exists at
+    all — confirms Correction 17's finding rather than contradicting it.
+    Three specs written: `nav-role-visibility.test.ts` (the three role-visibility cases, scoped to
+    `page.locator("header")` — Radix portals dropdown/mobile-menu content outside the `<header>` DOM
+    node regardless of open state, so scoping to it is sufficient to avoid false matches without
+    needing to open any menu), `route-guard.test.ts` (the two direct-URL-redirect cases, independent
+    of what the header happens to render), `auth-login.test.ts` (the `returnTo` round-trip and the
+    logout journey). The logout test needed a selector for the account dropdown trigger without
+    knowing the logged-in display name in advance (`session.user.name ?? email`, and the real name
+    value isn't recorded anywhere) — used `header button:not([aria-label="Open menu"])` instead,
+    since the mobile hamburger button is the only other header `<button>` and it alone carries that
+    `aria-label`.
+    **Verification, and its limit — same credential gap as Correction 19:** `bunx playwright test`
+    against the live stack — the 2 anonymous-only cases (anonymous nav visibility, anonymous
+    `/secret` redirect) pass; the 5 role-requiring cases fail with the same explicit
+    `Missing E2E_<ROLE>_EMAIL/PASSWORD` error as T15's specs, not a generic timeout. `bunx tsc
+    --noEmit` clean.
+
 ## Resolved open questions
 
 | Q | Resolution |
