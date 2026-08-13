@@ -273,6 +273,54 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     before expiry and "extend" dismisses it, and that a blacklisted-refresh scenario actually lands
     the user back on `/auth` rather than just failing closed at the next server-rendered request.
 
+17. **T1 completed live against real infra (2026-08-13)** — deferred since Correction 8, finished
+    once cms-api/Postgres/cms-admin were running locally. Four test accounts created via
+    `/auth/register` + `/auth/verify-otp` (OTP relayed from the cms-api console, `EMAIL_PROVIDER=console`):
+    `test-guest@abyssoftime.dev` (stays `guest`, the default for any registration after the
+    first-ever-verifier), `test-editor@abyssoftime.dev` → `editor`, `test-admin-role@abyssoftime.dev`
+    → `admin`, `test-admin@abyssoftime.dev` → `super_admin` (promoted first, via cms-admin's Users
+    page — its credentials were then reusable to promote the rest via `PATCH /users/:id/role` with
+    `user:role_manager`, since a `documentId` + `roleId` from `GET /roles` is all that endpoint needs).
+    Three local-env misconfigurations surfaced and got fixed along the way, all in
+    `apps/frontend/.env.local` (not committed, so worth recording here since nothing else documents
+    the fix):
+    - `CMS_API_URL` was unset/wrong, defaulting to `http://localhost:5000` — not cms-api, but a
+      macOS ControlCenter/AirPlay service that happens to be listening there and returns plausible-looking
+      error statuses. Fixed to `http://localhost:8080/api/v1` — note the `/api/v1` global prefix
+      (`configure-app.ts`) is **not** part of `.env.example`'s documented default, which is a
+      pre-existing doc gap worth fixing separately.
+    - `GRAPHQL_URL` had the same `:5000` default gap, fixed to `http://localhost:8080/graphql`
+      (bare path, no `/api/v1` — GraphQL is mounted outside the REST prefix).
+    - `GRAPHQL_TOKEN` was set but didn't match any row in the `access_tokens` table (likely stale
+      from before a DB reset) — every request got Apollo's `UNAUTHENTICATED` (a 200 with
+      `errors[]`, not a 4xx), which is exactly the case `graphqlApi.ts`'s dev-only mock fallback
+      (Correction 9) swallows silently. The app spent this whole debugging session rendering
+      `src/mocks/header.ts`, not real content, with no visible error — worth remembering that this
+      failure mode is silent by design in dev and only shows up as "why doesn't my content change
+      show up." Fixed by minting a fresh token via `POST /access-tokens` (`document:read`,
+      `expiresIn: "never"`) using the new `super_admin` test account's `api_token:manager`
+      permission.
+    Two real behavioral findings surfaced only by running the full five-role matrix live (not
+    unit-testable, since they depend on actual authored content):
+    - **`requiresRole` needs every applicable role spelled out — it is not a level hierarchy.**
+      `role-match.ts`/D2 already document this, but the first content pass set `requiresRole: "admin"`
+      (single slug) on the admin-gated items, which locks out `super_admin` — the highest role —
+      since it isn't a hierarchy check. `SPEC.md`'s own example (`"admin,super_admin"`) already
+      shows the correct pattern; the fix was republishing with the full comma-separated list. Worth
+      flagging for whoever authors CMS content in the future, since "higher role should see at
+      least as much" is the intuitive-but-wrong assumption here.
+    - **`/cv-2` has no rule in the real content** — the author restructured the nav (a `Learning`
+      parent replaced the old flat `CV Elegant`/`cv-2` entry) and dropped that link entirely, so D5's
+      fail-open default makes `/cv-2` public for every role even though it was in the original
+      `PROTECTED_PATHS` list. User confirmed (2026-08-13) this is intentional — `/cv-2` is a "fake
+      page," not a real feature — so it's deliberately left out of `requiresRole` coverage rather
+      than fixed. Recorded here so a future audit doesn't mistake this for an oversight.
+    Also encountered mid-session: test sessions logged in early in the session hit
+    `session.error: "RefreshTokenError"` after ~20 minutes of repeated requests exhausted their
+    refresh tokens — confirms T13's fail-closed design working as intended (`roleSlug` nulled,
+    correctly denied on protected paths), not a bug. Fixed by re-logging in; worth remembering for
+    any future long manual-testing session against short-TTL refresh tokens.
+
 ## Resolved open questions
 
 | Q | Resolution |

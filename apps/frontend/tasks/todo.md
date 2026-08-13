@@ -10,20 +10,15 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
 
 ## Phase 0 — Prerequisites
 
-- [ ] **T1 — Author CMS header content + audit legacy protected paths.** ⚠️ **Deferred (plan
-  Correction 8, 2026-08-12)** — real published content and per-role test users are not yet created;
-  T2's `src/mocks/header.ts` is the interim source of truth in dev, matching every other view's
-  mock-fallback convention. Content task in cms-admin, no frontend code. Build the `header`
-  single-type: `name`, `author.btnLoginText`/`btnLogoutText`, and the full `nav` tree (actual schema
-  field names — see Correction 8, not `navigations`/`name`) with `requiresRole` on every item and
-  sub-item. **Every path in today's `SessionGuard.PROTECTED_PATHS`** (`/cv`, `/cv-2`, `/vaccine`,
-  `/learning/english`, `/learning/develop/{react,architecture,go}`, `/interview`,
-  `/interview/answers`) plus `/secret` and `/account` must get an explicit `requiresRole` — otherwise
-  the fail-open default (D5) silently exposes them at T14. Create one verified test user per role.
+- [x] **T1 — Author CMS header content + audit legacy protected paths.** ✅ **Done (plan Correction
+  17, 2026-08-13)** — real published content authored in cms-admin; four verified test accounts
+  created; full five-role visibility matrix confirmed live. `/cv-2` is intentionally left public
+  (user: "fake page", not a real protected feature) — see Correction 17.
   - Acceptance: `header` document exists and is **published** (plan Correction 7 — `draftToPublish`
     is true, so an unpublished doc returns `null`); covers every current `NAV_ITEMS` entry plus
-    `/secret` and `/account`; every `PROTECTED_PATHS` entry has a non-empty `requiresRole`; test
-    accounts verified for `guest`, `editor`, `admin`, `super_admin`.
+    `/secret` and `/account`; every `PROTECTED_PATHS` entry has a non-empty `requiresRole` (except
+    `/cv-2`, deliberately excluded — Correction 17); test accounts verified for `guest`, `editor`,
+    `admin`, `super_admin`.
   - Verify: `curl` GraphQL with a valid access token (`Authorization: Bearer <token>`, see
     `docs/documents/access-tokens.md`) —
     `query { header { name nav { title requiresRole link subNavigations { title requiresRole link } } author { btnLoginText btnLogoutText } } }`
@@ -199,8 +194,8 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Deps: T11. Size: S
 
 ### ✅ Checkpoint D
-- [ ] Full visibility matrix verified manually across all five role states
-- [ ] Direct-URL access blocked for every restricted path
+- [x] Full visibility matrix verified manually across all five role states (2026-08-13, Correction 17)
+- [x] Direct-URL access blocked for every restricted path (`/cv-2` excepted, deliberately — Correction 17)
 - [x] `bun run build` + `bun run lint` clean
 - [ ] Human review — **last checkpoint before the passcode gate is deleted**
 
