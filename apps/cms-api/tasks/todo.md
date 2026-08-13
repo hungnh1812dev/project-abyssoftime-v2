@@ -62,7 +62,7 @@ confirm it against real docs/types before writing code.
   - Files: `src/config/env.validation.ts`, `.env.example`, `package.json`, `bun.lock`
   - Deps: none (parallel with T1/T2). Size: S
 
-- [ ] **T4 — `BrevoEmailSender` + `resolve-email-sender.ts` wiring.** **Before writing code**, verify
+- [x] **T4 — `BrevoEmailSender` + `resolve-email-sender.ts` wiring.** **Before writing code**, verify
   the real `@getbrevo/brevo` v6.0.3 client/method shape against its shipped TypeScript types
   (`node_modules/@getbrevo/brevo`) or official docs — `tasks/plan.md`'s Context section flags the
   shape used in `SPEC.md` as an unverified AI summary, not a confirmed fact. Then implement

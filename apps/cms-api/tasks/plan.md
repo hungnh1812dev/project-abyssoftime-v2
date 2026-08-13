@@ -147,4 +147,12 @@ three provider-specific `SPEC.md` success criteria now met. Commit.
 1. Whether any of the three providers needs more config than a single API key (SPEC.md's one
    remaining open item) — resolved per-provider at T2/T4/T6 against each SDK's actual minimal send
    call, not guessed here.
-2. Brevo's exact client/method shape (see Context) — resolved at T4, not before.
+2. ~~Brevo's exact client/method shape (see Context) — resolved at T4, not before.~~ **Resolved at
+   T4**: `@getbrevo/brevo@6.0.3` ships a Fern-generated SDK. Verified against its shipped `.d.mts`
+   types (not the AI-summarized README): `new BrevoClient({ apiKey })` and
+   `client.transactionalEmails.sendTransacEmail({ sender: { email }, to: [{ email }], subject,
+   htmlContent })`, matching SPEC.md's original assumption. `sendTransacEmail` returns an
+   `HttpResponsePromise<T>` (a `Promise<T>` subclass — `await` resolves the parsed body directly, no
+   `.data` unwrap needed) and rejects with a `BrevoError`/`BrevoTimeoutError` on failure, so no
+   `{data, error}` conversion is needed — errors propagate uncaught exactly like
+   `SmtpEmailSender`/`GmailApiEmailSender`, unlike `ResendEmailSender`'s explicit throw.

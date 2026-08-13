@@ -5,6 +5,7 @@ import { ConfigService } from "@nestjs/config";
 
 import { type EnvironmentVariables } from "@/config/env.validation";
 
+import { BrevoEmailSender } from "./brevo-email.sender";
 import { ConsoleEmailSender } from "./console-email.sender";
 import { GmailApiEmailSender } from "./gmail-api-email.sender";
 import { IEmailTemplateRenderer } from "./renderers/email-template-renderer";
@@ -23,12 +24,15 @@ export function resolveEmailSender(configService: ConfigService<EnvironmentVaria
   if (provider === "resend") {
     return new ResendEmailSender(configService, templateRenderer);
   }
+  if (provider === "brevo") {
+    return new BrevoEmailSender(configService, templateRenderer);
+  }
   if (provider === "console") {
     return new ConsoleEmailSender();
   }
 
   // "auto": Gmail if GMAIL_CLIENT_ID is set, else SMTP if SMTP_HOST is set, else Resend if
-  // RESEND_API_KEY is set, else console logging.
+  // RESEND_API_KEY is set, else Brevo if BREVO_API_KEY is set, else console logging.
   const gmailClientId = configService.get("GMAIL_CLIENT_ID", { infer: true });
   if (gmailClientId) {
     return new GmailApiEmailSender(configService, templateRenderer);
@@ -42,6 +46,11 @@ export function resolveEmailSender(configService: ConfigService<EnvironmentVaria
   const resendApiKey = configService.get("RESEND_API_KEY", { infer: true });
   if (resendApiKey) {
     return new ResendEmailSender(configService, templateRenderer);
+  }
+
+  const brevoApiKey = configService.get("BREVO_API_KEY", { infer: true });
+  if (brevoApiKey) {
+    return new BrevoEmailSender(configService, templateRenderer);
   }
 
   return new ConsoleEmailSender();

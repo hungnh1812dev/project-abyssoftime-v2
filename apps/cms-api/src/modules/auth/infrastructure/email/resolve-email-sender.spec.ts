@@ -1,3 +1,4 @@
+import { BrevoClient } from "@getbrevo/brevo";
 import { MailerService } from "@nestjs-modules/mailer";
 import { Resend } from "resend";
 
@@ -5,6 +6,7 @@ import { ConfigService } from "@nestjs/config";
 
 import { type EnvironmentVariables } from "@/config/env.validation";
 
+import { BrevoEmailSender } from "./brevo-email.sender";
 import { ConsoleEmailSender } from "./console-email.sender";
 import { GmailApiEmailSender } from "./gmail-api-email.sender";
 import { IEmailTemplateRenderer } from "./renderers/email-template-renderer";
@@ -15,6 +17,12 @@ import { SmtpEmailSender } from "./smtp-email.sender";
 jest.mock("resend", () => ({
   Resend: jest.fn().mockImplementation(() => ({
     emails: { send: jest.fn() },
+  })),
+}));
+
+jest.mock("@getbrevo/brevo", () => ({
+  BrevoClient: jest.fn().mockImplementation(() => ({
+    transactionalEmails: { sendTransacEmail: jest.fn() },
   })),
 }));
 
@@ -40,6 +48,7 @@ describe("resolveEmailSender", () => {
           EMAIL_FROM: "no-reply@abyssoftime.com",
           FRONTEND_URL: "https://abyssoftime.com",
           RESEND_API_KEY: "",
+          BREVO_API_KEY: "",
           ...overrides,
         };
         return values[key];
@@ -72,7 +81,19 @@ describe("resolveEmailSender", () => {
       expect(sender).toBeInstanceOf(SmtpEmailSender);
     });
 
-    it("returns a ConsoleEmailSender when SMTP_HOST, GMAIL_CLIENT_ID, and RESEND_API_KEY are empty", () => {
+    it("returns a BrevoEmailSender when BREVO_API_KEY is set and GMAIL_CLIENT_ID/SMTP_HOST/RESEND_API_KEY are empty", () => {
+      const sender = resolveEmailSender(makeConfig({ BREVO_API_KEY: "xkeysib-123" }), mailerService, templateRenderer);
+
+      expect(sender).toBeInstanceOf(BrevoEmailSender);
+    });
+
+    it("returns a ResendEmailSender when RESEND_API_KEY is set, even with BREVO_API_KEY also set (resend precedes brevo)", () => {
+      const sender = resolveEmailSender(makeConfig({ RESEND_API_KEY: "re_123", BREVO_API_KEY: "xkeysib-123" }), mailerService, templateRenderer);
+
+      expect(sender).toBeInstanceOf(ResendEmailSender);
+    });
+
+    it("returns a ConsoleEmailSender when SMTP_HOST, GMAIL_CLIENT_ID, RESEND_API_KEY, and BREVO_API_KEY are empty", () => {
       const sender = resolveEmailSender(makeConfig(), mailerService, templateRenderer);
 
       expect(sender).toBeInstanceOf(ConsoleEmailSender);
@@ -103,6 +124,16 @@ describe("resolveEmailSender", () => {
 
       expect(sender).toBeInstanceOf(ResendEmailSender);
     });
+
+    it("returns a BrevoEmailSender when EMAIL_PROVIDER=brevo, even with GMAIL_CLIENT_ID/SMTP_HOST/RESEND_API_KEY also set", () => {
+      const sender = resolveEmailSender(
+        makeConfig({ EMAIL_PROVIDER: "brevo", GMAIL_CLIENT_ID: "client-id", SMTP_HOST: "smtp.example.com", RESEND_API_KEY: "re_123" }),
+        mailerService,
+        templateRenderer,
+      );
+
+      expect(sender).toBeInstanceOf(BrevoEmailSender);
+    });
   });
 
   describe("non-resend providers never construct a Resend client", () => {
@@ -120,6 +151,24 @@ describe("resolveEmailSender", () => {
       resolveEmailSender(makeConfig(), mailerService, templateRenderer);
 
       expect(Resend).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("non-brevo providers never construct a Brevo client", () => {
+    it.each(["gmail", "smtp", "resend", "console"] as const)("does not construct BrevoClient when EMAIL_PROVIDER=%s, even with BREVO_API_KEY set", (provider) => {
+      resolveEmailSender(
+        makeConfig({ EMAIL_PROVIDER: provider, GMAIL_CLIENT_ID: "client-id", SMTP_HOST: "smtp.example.com", RESEND_API_KEY: "re_123", BREVO_API_KEY: "xkeysib-123" }),
+        mailerService,
+        templateRenderer,
+      );
+
+      expect(BrevoClient).not.toHaveBeenCalled();
+    });
+
+    it("does not construct BrevoClient for the auto fallthrough when BREVO_API_KEY is empty", () => {
+      resolveEmailSender(makeConfig(), mailerService, templateRenderer);
+
+      expect(BrevoClient).not.toHaveBeenCalled();
     });
   });
 });
