@@ -321,6 +321,33 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     correctly denied on protected paths), not a bug. Fixed by re-logging in; worth remembering for
     any future long manual-testing session against short-TTL refresh tokens.
 
+18. **T14 shipped clean; found one unrelated pre-existing bug along the way (2026-08-13).**
+    `SessionGuard.tsx`, `libs/session.ts` (and the now-empty `src/libs/`), and
+    `app/actions/app-auth.ts` deleted; `LayoutMain.tsx` no longer wraps children in `SessionGuard`;
+    `.env.example`'s passcode section removed. The acceptance grep
+    (`APP_PASSCODE|SESSION_SECRET|SESSION_STORAGE_KEY|PROTECTED_PATHS`) still matches
+    `KNOWN_PROTECTED_PATHS` in `nav-rules-cache.{ts,test.ts}` (T11's real production code, a
+    substring coincidence with the grep pattern — not leftover passcode-gate code, left as-is) and
+    one line in `src/views/interview/data/sections/arch-tooling.ts` (interview-practice content
+    describing the *old* architecture; now factually stale but it's content data, not in T14's
+    `Files:` list, and not touched). Reworded two comments (`auth.ts`, `nav-rules-cache.ts`) that
+    referenced the old env var names / "still live until T14" so they don't read as stale.
+    Full five-role matrix re-verified live post-deletion — `vaccine`/`learning/*`/`interview*`/
+    `secret`/`account` all still gate exactly as Correction 17 established; the auth/gating system
+    itself has zero regressions from removing `SessionGuard`.
+    **Found, not fixed (out of scope):** `/cv` and `/cv-2` started 500ing for every role during this
+    task's manual pass. Root cause has nothing to do with T14 — `cvPages(where: {isMain: {eq:
+    true}})` returns `items: []` in this cms-api instance (no CV content has ever been seeded here),
+    and `CvElegantPageContent.tsx:26` reads `data.position` without a null check. This was masked
+    until Correction 17's `GRAPHQL_TOKEN` fix, which made every GraphQL call in the app succeed at
+    the HTTP layer instead of silently falling back to mocks on every request (Correction 9's
+    dev-only fallback only triggers on an *error*, and an empty-but-valid `items: []` response isn't
+    one) — so this was always a latent bug, just never reachable with a working token. Same
+    end-to-end principle as `KNOWN_PROTECTED_PATHS`'s safety net: components that fetch CMS content
+    need to handle "real request succeeded, but there's genuinely nothing published yet," not just
+    "the request failed." Not fixed here — unrelated feature, not in T14's `Files:` list, and no
+    task in this plan owns it. Worth a follow-up task if `/cv`/`/cv-2` need to work again.
+
 ## Resolved open questions
 
 | Q | Resolution |

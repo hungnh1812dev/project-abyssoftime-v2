@@ -5,9 +5,9 @@ import { getHeader } from "@/views/header/header.service";
 const TTL_MS = 300_000; // mirrors header's own next.revalidate window
 
 // Safety net for a header fetch that has never once succeeded (no stale cache to fall back on) —
-// mirrors SessionGuard's PROTECTED_PATHS (still live until T14) so a cold-start outage can't
-// silently expose everything gated today. T1's real CMS audit (deferred, plan Correction 8) is
-// the long-term source of truth; this list only matters in this one failure mode.
+// mirrors the legacy SessionGuard's protected-path list (removed at T14) so a cold-start outage can't
+// silently expose everything that was gated before the CMS-driven system replaced it. T1's real
+// CMS audit is the long-term source of truth; this list only matters in this one failure mode.
 export const KNOWN_PROTECTED_PATHS: readonly string[] = [
   "/cv",
   "/cv-2",

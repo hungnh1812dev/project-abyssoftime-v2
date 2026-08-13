@@ -219,20 +219,21 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Files: `auth.ts`, `src/lib/auth/refresh-coalescer.ts` + `.test.ts`, `src/hooks/useSessionTimeout.ts`
   - Deps: T12. Size: M
 
-- [ ] **T14 — Delete the passcode gate.** ⚠️ **Confirm before deleting** (project boundary — always
-  ask before deleting files). Remove `SessionGuard`, `libs/session.ts`, `app/actions/app-auth.ts`,
-  and the `APP_PASSCODE`/`SESSION_SECRET` env vars. `src/libs/` disappears entirely (D9).
+- [x] **T14 — Delete the passcode gate.** ✅ **Done (2026-08-13, plan Correction 18)** — removed
+  `SessionGuard`, `libs/session.ts`, `app/actions/app-auth.ts`, and the `APP_PASSCODE`/`SESSION_SECRET`
+  env vars. `src/libs/` disappears entirely (D9).
   - Acceptance: `LayoutMain` no longer wraps children in `SessionGuard`;
-    `grep -rn "APP_PASSCODE\|SESSION_SECRET\|SESSION_STORAGE_KEY\|PROTECTED_PATHS" src/` → no hits;
-    `src/libs/` no longer exists.
+    `grep -rn "APP_PASSCODE\|SESSION_SECRET\|SESSION_STORAGE_KEY\|PROTECTED_PATHS" src/` → no hits
+    beyond `KNOWN_PROTECTED_PATHS` (unrelated new code, Correction 18) and one interview-content
+    string (out of scope, Correction 18); `src/libs/` no longer exists.
   - Verify: `bun run build` + `bun run lint` clean; full manual pass over each role.
   - Files: `src/components/layouts/main/LayoutMain.tsx`, `src/components/auth/SessionGuard.tsx` (del),
     `src/libs/session.ts` (del), `src/app/actions/app-auth.ts` (del), `.env.example`
   - Deps: T1 (audit complete), T13. Size: M
 
 ### ✅ Checkpoint E
-- [ ] Passcode gone; no secrets or dead auth code remain
-- [ ] Every previously-protected path still requires the right role
+- [x] Passcode gone; no secrets or dead auth code remain (2026-08-13)
+- [x] Every previously-protected path still requires the right role (`/cv-2` deliberately excepted — Correction 17)
 
 ## Phase 6 — Tests and documentation
 

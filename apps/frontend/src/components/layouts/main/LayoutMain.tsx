@@ -2,7 +2,6 @@ import { SessionProvider } from "next-auth/react";
 import React from "react";
 
 import { auth } from "@/auth";
-import { SessionGuard } from "@/components/auth/SessionGuard";
 import { HeaderBar } from "@/components/layouts/header/HeaderBar";
 import { HealthGate } from "@/components/layouts/main/HealthGate";
 import { cn } from "@/lib/utils";
@@ -22,10 +21,8 @@ async function LayoutMain({ children, className, locale }: LayoutMainProps) {
   return (
     <main className={cn("bg-background text-foreground", className)}>
       <SessionProvider session={session}>
-        <SessionGuard>
-          <HeaderBar locale={locale} />
-          <HealthGate>{children}</HealthGate>
-        </SessionGuard>
+        <HeaderBar locale={locale} />
+        <HealthGate>{children}</HealthGate>
       </SessionProvider>
     </main>
   );
