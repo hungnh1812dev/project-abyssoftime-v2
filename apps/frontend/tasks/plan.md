@@ -348,6 +348,35 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     "the request failed." Not fixed here — unrelated feature, not in T14's `Files:` list, and no
     task in this plan owns it. Worth a follow-up task if `/cv`/`/cv-2` need to work again.
 
+19. **T15's per-role credentials come from new `E2E_<ROLE>_EMAIL`/`E2E_<ROLE>_PASSWORD` env vars,
+    not yet set locally (2026-08-13).** `loginAs(page, role, targetPath)` in `e2e/test-helpers.ts`
+    replaces `unlockAndGoto()`, filling the real Credentials form (`input[name="email"]`,
+    `input[name="password"]`, `button[type="submit"]`) instead of the deleted passcode input, then
+    waiting on the same `returnTo`-based URL match. Throws a clear, named error
+    (`Missing E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD in .env.local — required to log in as "admin"`)
+    rather than a silent Playwright timeout when a var is unset — this assistant cannot write to
+    `.env.local` (blocked by this session's own file-access rules), so wiring the real
+    `test-admin-role@abyssoftime.dev`/`test-admin@abyssoftime.dev` (Correction 17) passwords into
+    those four vars is left for the user.
+    Per-test role assignment, derived from `src/mocks/header.ts`'s `requiresRole` (which now
+    matches the real published content post-Correction-17 fix): the four `en-vocab-*` specs and
+    `go-knowledge.test.ts` need `admin` (`/learning/english`, `/learning/develop/go` are
+    `"admin,super_admin"`); `secret-file-loader.test.ts` needs `super_admin` (`/secret` — a T1
+    addition, Correction 17; this test never authenticated before since `/secret` wasn't in the
+    old `PROTECTED_PATHS`, confirmed via `git show` of the deleted `SessionGuard.tsx`);
+    `cv-spacing.test.ts` needs **no login at all** — `/cv` carries `requiresRole: "all"` (public),
+    so the passcode-fill it used to do is deleted outright rather than swapped for `loginAs`.
+    **Verification, and its limit:** `bunx playwright test` run against the live stack (cms-api on
+    `:8080`, frontend dev server auto-started by Playwright's `webServer`) — `cv-spacing` passes
+    (the only spec that needed no credentials); the other 6 fail with the explicit missing-env-var
+    error described above, not a generic timeout, confirming the auth wiring itself is correct and
+    fails the right way rather than masking a real bug. The task's own Verify line (`bunx
+    playwright test` fully green) needs the four env vars in `.env.local`, which the user opted to
+    defer rather than supply now (2026-08-13) — same shape as the live-infra gaps in Corrections
+    10–16, now blocked on credentials specifically rather than on `AUTH_SECRET`/a running server.
+    `bun run lint` (src only, e2e isn't in its scope — pre-existing, not changed here) and `bunx tsc
+    --noEmit` both clean.
+
 ## Resolved open questions
 
 | Q | Resolution |

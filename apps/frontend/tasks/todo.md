@@ -237,12 +237,15 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
 
 ## Phase 6 — Tests and documentation
 
-- [ ] **T15 — Migrate existing E2E.** All 7 current E2E tests authenticate via `unlockAndGoto()` and
-  the passcode form — every one breaks at T14. Replace with `loginAs(page, role)`.
+- [x] **T15 — Migrate existing E2E.** ✅ **Done (2026-08-13, plan Correction 19)** — all 7 current
+  E2E tests migrated off `unlockAndGoto()`/the passcode form to `loginAs(page, role, targetPath)`.
   - Acceptance: `loginAs(page, role)` logs in via the real form using per-role test credentials from
     env; all 7 existing tests pass, none skipped or deleted; the stale `rules/auth.md` passcode
     comment in `test-helpers.ts` corrected.
-  - Verify: `bunx playwright test` fully green.
+  - Verify: `bunx playwright test` fully green. **Owed** — `E2E_ADMIN_EMAIL/PASSWORD` and
+    `E2E_SUPER_ADMIN_EMAIL/PASSWORD` aren't in `.env.local` yet (Correction 19); confirmed instead
+    that the suite fails loudly and correctly (explicit "missing env var" error, not a silent break)
+    and that `cv-spacing` — the one migrated test needing no login, since `/cv` is public — passes.
   - Files: `e2e/test-helpers.ts` + the 7 existing specs
   - Deps: T14. Size: M
 
