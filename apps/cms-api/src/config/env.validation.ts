@@ -88,9 +88,9 @@ export class EnvironmentVariables {
   // Which email sender to use when multiple providers' credentials are configured.
   // "auto" keeps the old implicit behavior: Gmail if GMAIL_CLIENT_ID is set, else SMTP if
   // SMTP_HOST is set, else Resend if RESEND_API_KEY is set, else Brevo if BREVO_API_KEY is set,
-  // else console logging. See resolve-email-sender.ts.
-  @IsIn(["auto", "gmail", "smtp", "resend", "brevo", "console"])
-  EMAIL_PROVIDER: "auto" | "gmail" | "smtp" | "resend" | "brevo" | "console" = "auto";
+  // else SendGrid if SENDGRID_API_KEY is set, else console logging. See resolve-email-sender.ts.
+  @IsIn(["auto", "gmail", "smtp", "resend", "brevo", "sendgrid", "console"])
+  EMAIL_PROVIDER: "auto" | "gmail" | "smtp" | "resend" | "brevo" | "sendgrid" | "console" = "auto";
 
   // SMTP — SMTP_HOST unset means "use ConsoleEmailSender" (dev/test fallback), see resolve-email-sender.ts
   @IsString()
@@ -157,6 +157,10 @@ export class EnvironmentVariables {
   // Brevo (https://brevo.com) — see EMAIL_PROVIDER above and resolve-email-sender.ts.
   @IsString()
   BREVO_API_KEY: string = "";
+
+  // SendGrid (https://sendgrid.com) — see EMAIL_PROVIDER above and resolve-email-sender.ts.
+  @IsString()
+  SENDGRID_API_KEY: string = "";
 
   // Redis — optional cache for the refresh-token blacklist (see
   // docs/documents/token-blacklist-techstack.md). Off by default; the client is never constructed

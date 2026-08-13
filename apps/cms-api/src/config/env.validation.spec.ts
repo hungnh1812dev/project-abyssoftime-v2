@@ -43,6 +43,7 @@ describe("validate", () => {
     expect(result.REDIS_URL).toBe("");
     expect(result.RESEND_API_KEY).toBe("");
     expect(result.BREVO_API_KEY).toBe("");
+    expect(result.SENDGRID_API_KEY).toBe("");
   });
 
   it("accepts EMAIL_PROVIDER=resend", () => {
@@ -67,6 +68,18 @@ describe("validate", () => {
     const result = validate({ ...requiredConfig, BREVO_API_KEY: "xkeysib-123" });
 
     expect(result.BREVO_API_KEY).toBe("xkeysib-123");
+  });
+
+  it("accepts EMAIL_PROVIDER=sendgrid", () => {
+    const result = validate({ ...requiredConfig, EMAIL_PROVIDER: "sendgrid" });
+
+    expect(result.EMAIL_PROVIDER).toBe("sendgrid");
+  });
+
+  it("overrides SENDGRID_API_KEY when explicitly provided", () => {
+    const result = validate({ ...requiredConfig, SENDGRID_API_KEY: "SG.123" });
+
+    expect(result.SENDGRID_API_KEY).toBe("SG.123");
   });
 
   it("transforms COOKIE_SECURE 'true' to boolean true", () => {

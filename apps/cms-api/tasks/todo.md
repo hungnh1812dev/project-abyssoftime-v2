@@ -89,7 +89,7 @@ confirm it against real docs/types before writing code.
 
 ## Phase 3 — SendGrid
 
-- [ ] **T5 — SendGrid env vars + dependency.** Add `SENDGRID_API_KEY: string = ""` to
+- [x] **T5 — SendGrid env vars + dependency.** Add `SENDGRID_API_KEY: string = ""` to
   `env.validation.ts`; extend `EMAIL_PROVIDER` to include `"sendgrid"`. Add `SENDGRID_API_KEY=` to
   `.env.example`, update the `EMAIL_PROVIDER` comment (now lists all 6 values). Install
   `@sendgrid/mail`.
@@ -97,6 +97,10 @@ confirm it against real docs/types before writing code.
   - Verify: `bun install && bun run build`.
   - Files: `src/config/env.validation.ts`, `.env.example`, `package.json`, `bun.lock`
   - Deps: none (parallel with T1–T4). Size: S
+  - `.env.example` update deferred 2026-08-13 — this agent's global instructions forbid editing
+    `.env.example` (read-only exception). User needs to manually add `SENDGRID_API_KEY=` and update
+    the `EMAIL_PROVIDER` comment to list all 6 values, mirroring the `RESEND_API_KEY`/`BREVO_API_KEY`
+    lines already there.
 
 - [ ] **T6 — `SendGridEmailSender` + `resolve-email-sender.ts` wiring (final `"auto"` order).**
   Implements `IEmailSender` using `@sendgrid/mail`'s confirmed pattern: `sgMail.setApiKey(...)` at
