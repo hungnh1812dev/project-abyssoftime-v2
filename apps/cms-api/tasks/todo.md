@@ -157,13 +157,23 @@ confirm it against real docs/types before writing code.
     missing `SENDGRID_API_KEY=` line remain deferred from T5 — this agent's global instructions
     forbid editing `.env.example`; still a manual action item for the user.
 
-- [ ] **T9 — Five-axis review** (correctness, readability, architecture, security, performance) via
+- [x] **T9 — Five-axis review** (correctness, readability, architecture, security, performance) via
   `agent-skills:code-reviewer`. Security axis must explicitly cover: no API key ever logged (request
   bodies, error messages); a sender for a non-selected provider is never constructed or called;
   send failures propagate rather than being silently swallowed; the three new SDKs are inert with no
   network activity when their provider isn't selected.
   - Verify: findings triaged; anything Critical/Important fixed and re-verified.
   - Deps: T8. Size: S
+  - Done 2026-08-13: **APPROVE**. Reviewer traced the installed `resend`/`@getbrevo/brevo`/
+    `@sendgrid/mail` SDK source directly (not just docs) confirming: Resend's `{data,error}` union
+    can't false-positive, Brevo/SendGrid genuinely reject/throw on failure, all three client
+    constructors do zero network I/O and never throw on a non-empty key, and
+    `resolve-email-sender.spec.ts` has dedicated `not.toHaveBeenCalled()` assertions per SDK for every
+    non-selecting provider (a real guarantee, not prose). No logging of API keys/email bodies found.
+    Zero Critical/Important code findings. One Important **doc-accuracy** finding — `.env.example`
+    still missing `sendgrid` in the `EMAIL_PROVIDER` comment and lacking `SENDGRID_API_KEY=` — is the
+    already-tracked T5 deferral (this agent cannot edit `.env.example`); no new action, still a manual
+    item for the user.
 
 - [ ] **T10 — Cleanup.** Reduce `SPEC.md` back to a pointer at `docs/documents/auth-email.md` (or
   wherever the final content lands), per `docs/rules/workflow.md`'s root-docs rule.
