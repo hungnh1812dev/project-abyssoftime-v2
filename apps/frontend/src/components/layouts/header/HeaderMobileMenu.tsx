@@ -7,6 +7,7 @@ import React, { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { stripLocale } from "@/lib/nav/strip-locale";
 import { cn } from "@/lib/utils";
 import type { HeaderNavItem } from "@/views/header/header.types";
 
@@ -26,7 +27,7 @@ const HeaderMobileMenu: React.FC<HeaderMobileMenuProps> = ({ nav }) => {
   const pathname = usePathname();
   const params = useParams();
   const locale = (params?.locale as string) ?? "en";
-  const currentPath = pathname.startsWith(`/${locale}`) ? pathname.slice(`/${locale}`.length) : pathname;
+  const currentPath = stripLocale(pathname, locale);
 
   const toHref = (link: string) => (link === "/" ? `/${locale}` : `/${locale}${link}`);
 

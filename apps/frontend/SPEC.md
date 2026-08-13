@@ -670,9 +670,14 @@ governs nav visibility and route access only; CV/learning content itself doesn't
 ## Known gaps and follow-ups (not covered by this feature)
 
 - **`.env.example` is stale** — still labels `GRAPHQL_URL`/`STRAPI_API_TOKEN` as "Strapi CMS" and
-  doesn't document `CMS_API_URL`'s required `/api/v1` suffix or the new `E2E_<ROLE>_EMAIL`/
-  `E2E_<ROLE>_PASSWORD` test-credential vars. Flagged in `tasks/plan.md` Correction 21; not fixed as
-  part of this rewrite (outside what this assistant's environment permits editing).
+  doesn't document `CMS_API_URL`'s required `/api/v1` suffix, the new `E2E_<ROLE>_EMAIL`/
+  `E2E_<ROLE>_PASSWORD` test-credential vars, or `NEXT_ENV` (a pre-existing, live-deployment-only
+  flag in `src/api/{graphqlApi,restfulApi}.ts` that gates the mock-data fallback — deliberately
+  distinct from `NODE_ENV`, which is always `"production"` for any production build including a
+  local one, so it can't tell "built locally for testing" apart from "the actual live deployment";
+  `NEXT_ENV` must be set to `"production"` by the live deployment's own environment config, outside
+  this repo). Flagged in `tasks/plan.md` Corrections 21–22; not fixed as part of this rewrite
+  (outside what this assistant's environment permits editing).
 - **`/cv` and `/cv-2` 500 for every role** — unrelated pre-existing bug (`tasks/plan.md` Correction
   18): no CV content has ever been seeded in this cms-api instance, and
   `CvElegantPageContent.tsx:26` doesn't null-check `data.position`. Not part of this feature's scope.

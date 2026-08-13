@@ -1,7 +1,7 @@
 import type { NextFetchEvent } from "next/server";
 import { NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { auth } from "@/auth.proxy";
 import i18n from "@/i18n";
 import { getApiHealth } from "@/lib/health/healthCache";
 import { getNavRouteRules, isAccessDenied } from "@/lib/nav/nav-rules-cache";

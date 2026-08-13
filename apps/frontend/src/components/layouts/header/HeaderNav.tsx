@@ -6,6 +6,7 @@ import { useParams, usePathname } from "next/navigation";
 import React from "react";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { stripLocale } from "@/lib/nav/strip-locale";
 import { cn } from "@/lib/utils";
 import type { HeaderNavItem } from "@/views/header/header.types";
 
@@ -22,7 +23,7 @@ const HeaderNav: React.FC<HeaderNavProps> = ({ nav }) => {
   const pathname = usePathname();
   const params = useParams();
   const locale = (params?.locale as string) ?? "en";
-  const currentPath = pathname.startsWith(`/${locale}`) ? pathname.slice(`/${locale}`.length) : pathname;
+  const currentPath = stripLocale(pathname, locale);
 
   const toHref = (link: string) => (link === "/" ? `/${locale}` : `/${locale}${link}`);
 

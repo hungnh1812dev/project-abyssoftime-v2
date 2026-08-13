@@ -285,5 +285,5 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   (Corrections 19–21), not on a code defect
 - [x] `bun test` + `bun run lint` + `bun run build` all green
 - [ ] `bunx playwright test` fully green — owed, see above
-- [ ] Ready for `/agent-skills:review` — code-complete, but recommend closing the E2E-credential gap
-  first so review isn't done against a suite that can't fully run
+- [x] Five-axis review done (2026-08-13, plan Correction 22) — one Critical (refresh-coalescer
+  cross-`auth()`-call race) and two Important findings fixed same day; see Correction 22 for detail

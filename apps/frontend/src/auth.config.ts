@@ -1,9 +1,28 @@
-import { CredentialsSignin, type NextAuthConfig } from "next-auth";
+import type { JWT } from "next-auth/jwt";
+
+import { CredentialsSignin, type NextAuthConfig, type User } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
 import { CmsAuthError, cmsGetMe, cmsLogin } from "@/lib/auth/cms-auth.client";
 import { decodeTokenExpiryMs } from "@/lib/auth/decode-token-expiry";
 import { refreshAccessToken } from "@/lib/auth/refresh-coalescer";
+
+// Shared by both the full (`authConfig`) and proxy-only (`proxyAuthConfig`) jwt callbacks — a
+// fresh sign-in always persists the same fields onto the token regardless of which config runs it.
+function persistUserToToken(token: JWT, user: User): JWT {
+  // accessToken/refreshToken are intentionally absent from the `User` type (see next-auth.d.ts)
+  // so they can never structurally reach `Session.user` — read via a local cast instead of
+  // widening that type.
+  const { accessToken, refreshToken } = user as unknown as { accessToken: string; refreshToken: string };
+  token.name = user.name;
+  token.email = user.email;
+  token.roleSlug = user.roleSlug;
+  token.accessToken = accessToken;
+  token.refreshToken = refreshToken;
+  token.accessTokenExpires = decodeTokenExpiryMs(accessToken) ?? undefined;
+  delete token.error;
+  return token;
+}
 
 // Refresh on an early skew window, not at expiry (Correction 5/D10) — a request that lands with
 // the token already technically valid but seconds from expiring should still get a fresh one
@@ -18,9 +37,13 @@ class UnverifiedAccountError extends CredentialsSignin {
   code = "unverified";
 }
 
-// Split from auth.ts (which calls NextAuth(authConfig)) so this provider list stays Edge-safe —
-// the proxy guard (T11) imports it indirectly via `auth()` without pulling in Node-only code, and
-// future OAuth providers drop in here without restructuring.
+// Split from auth.ts (which calls NextAuth(authConfig)) so future OAuth providers drop in here
+// without restructuring. The proxy guard (T11) does NOT use this config directly — see
+// `proxyAuthConfig` below — because its `jwt` callback attempts a refresh, and the proxy and a
+// same-request Server Component render are separate `auth()` calls that don't share the
+// refresh-coalescer's in-memory `inFlight` map (each independently decodes the request cookie and
+// re-runs `callbacks.jwt`). Two callers racing the same refresh token trips cms-api's single-use
+// blacklist (`tryClaim()`) for whichever one loses.
 export const authConfig = {
   pages: { signIn: "/auth" },
   session: { strategy: "jwt" },
@@ -65,20 +88,7 @@ export const authConfig = {
     // @auth/core/lib/init.js), so name/email must be persisted here too, not just the custom
     // fields, or the session callback below has nothing to read them back from.
     async jwt({ token, user, trigger }) {
-      if (user) {
-        // accessToken/refreshToken are intentionally absent from the `User` type (see
-        // next-auth.d.ts) so they can never structurally reach `Session.user` — read via a local
-        // cast instead of widening that type.
-        const { accessToken, refreshToken } = user as unknown as { accessToken: string; refreshToken: string };
-        token.name = user.name;
-        token.email = user.email;
-        token.roleSlug = user.roleSlug;
-        token.accessToken = accessToken;
-        token.refreshToken = refreshToken;
-        token.accessTokenExpires = decodeTokenExpiryMs(accessToken) ?? undefined;
-        delete token.error;
-        return token;
-      }
+      if (user) return persistUserToToken(token, user);
 
       if (!token.accessToken || !token.refreshToken) return token;
 
@@ -120,5 +130,22 @@ export const authConfig = {
         error: token.error,
       };
     },
+  },
+} satisfies NextAuthConfig;
+
+// Proxy-only variant: identical providers/pages/session shape, but its `jwt` callback never
+// attempts a refresh — it only decodes whatever the last real (Node) render or login already
+// persisted into the JWE, purely for the route-gating decision (which needs `roleSlug`/`error`,
+// not a live access token). This is what makes it safe to run alongside the Node-side `authConfig`
+// without the two racing cms-api's single-use refresh token — only one config (`authConfig`, via
+// `HeaderBar`/`requireRole`/the session route) is ever allowed to call `refreshAccessToken()`.
+export const proxyAuthConfig = {
+  ...authConfig,
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) return persistUserToToken(token, user);
+      return token;
+    },
+    session: authConfig.callbacks.session,
   },
 } satisfies NextAuthConfig;

@@ -443,6 +443,40 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     verified clean this session, but `bunx playwright test` is not fully green pending the
     `E2E_ADMIN_*`/`E2E_SUPER_ADMIN_*` credentials (same gap as Corrections 19–20, still open).
 
+22. **Five-axis review (2026-08-13) found a real gap in D10's refresh coalescing — fixed same
+    day.** `proxy.ts` (T11) called `auth()` from `@/auth`, i.e. the full `authConfig` whose `jwt`
+    callback attempts a refresh. `HeaderBar`/`requireRole` (T10/T12) call `auth()` from the same
+    module. Each of those is an independent `auth()` invocation — Auth.js re-runs `callbacks.jwt`
+    from scratch every time, decoding the request's cookie fresh — so a request landing inside the
+    60s early-refresh skew window could trigger the proxy's `jwt` callback *and* the page's `jwt`
+    callback to each independently call `refreshAccessToken()`. `refresh-coalescer.ts`'s in-memory
+    `inFlight` map only coalesces calls that land in the same `auth()` invocation's callback
+    execution, not across separate ones — so this wasn't guaranteed to be deduped, and cms-api's
+    `tryClaim()` blacklists a refresh token the instant one caller consumes it. The loser would get
+    `token.error = "RefreshTokenError"`, nulling `roleSlug`/`name`/`email` for that render —
+    meaning the proxy's gating decision and the page's rendered session could disagree.
+    **Fix:** split `auth.config.ts` into `authConfig` (unchanged, refresh-capable — the only config
+    ever allowed to call `refreshAccessToken()`) and a new `proxyAuthConfig`, whose `jwt` callback
+    never attempts a refresh — it only decodes whatever the last real render/login already
+    persisted into the JWE, which is all route-gating needs (`roleSlug`, `error`). New
+    `src/auth.proxy.ts` builds a second `NextAuth()` instance off `proxyAuthConfig`; `proxy.ts` now
+    imports `auth` from there instead of `@/auth`. This makes deduping structural (only one code
+    path can ever call refresh) rather than dependent on whether two `auth()` calls happen to share
+    module state. Also fixed in the same pass: `stripLocale` was still hand-rolled in
+    `HeaderNav.tsx`/`HeaderMobileMenu.tsx` instead of importing the shared helper (the "repeated
+    three times" duplication D9 claimed was consolidated — it wasn't, for these two files); and
+    `logout-remote/route.ts` got a comment documenting that its lack of an explicit CSRF check
+    relies on the session cookie's `SameSite=Lax` default. **Not a bug, despite looking like one:**
+    the review also flagged `graphqlApi.ts`/`restfulApi.ts`'s
+    `isDev = process.env.NEXT_ENV !== "production"` as using an env var set nowhere in the repo,
+    suggesting `NODE_ENV` instead — user corrected this: `NODE_ENV` is always `"production"` for
+    any production build, including one built and run locally for testing, so switching to it would
+    silently disable the mock fallback during local prod-build testing too. `NEXT_ENV` is
+    deliberately a separate, live-deployment-only flag (set outside this repo). Left unchanged;
+    its missing documentation is a `.env.example` gap, not a code bug — added to SPEC.md's "Known
+    gaps" instead, same precedent as Correction 21. Verified: `bun run lint`, `bun test src`
+    (78 pass), `bun run build` all clean after every change in this correction.
+
 ## Resolved open questions
 
 | Q | Resolution |
