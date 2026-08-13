@@ -139,7 +139,7 @@ confirm it against real docs/types before writing code.
     `docs/documents/auth-email-techstack.md`, `docs/ENTRYPOINT.md`
   - Deps: T6. Size: S
 
-- [ ] **T8 — Update `auth.md` + repo-wide stale-provider-list sweep.** Rewrite `auth.md`'s
+- [x] **T8 — Update `auth.md` + repo-wide stale-provider-list sweep.** Rewrite `auth.md`'s
   email-sending section to list all 6 providers and the final `"auto"` order. Then **grep the whole
   repo** for `"gmail" | "smtp" | "console"` and similar enumerations (`.env.example` comments already
   done in T1/T3/T5 — verify here; `docs/api-reference.md`/`docs/cms-admin-integration.md` only if
@@ -149,6 +149,13 @@ confirm it against real docs/types before writing code.
   - Files: `docs/documents/auth.md`, `docs/api-reference.md` (if applicable),
     `docs/cms-admin-integration.md` (if applicable)
   - Deps: T7. Size: S–M
+  - Done 2026-08-13: `auth.md`'s Domain port/Module wiring/Known gaps/Tests sections rewritten for all
+    6 providers. Repo grep found no stale enumeration in `api-reference.md`/`cms-admin-integration.md`
+    (neither mentions `EMAIL_PROVIDER`), but did find one outside the plan's file list — the class
+    diagram `docs/diagrams/app-permission-role-user-class-diagram.md`'s `AuthInfrastructure` still
+    listed only 3 senders; fixed. `.env.example`'s `EMAIL_PROVIDER` comment (missing `sendgrid`) and
+    missing `SENDGRID_API_KEY=` line remain deferred from T5 — this agent's global instructions
+    forbid editing `.env.example`; still a manual action item for the user.
 
 - [ ] **T9 — Five-axis review** (correctness, readability, architecture, security, performance) via
   `agent-skills:code-reviewer`. Security axis must explicitly cover: no API key ever logged (request
