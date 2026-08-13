@@ -47,6 +47,9 @@ confirm it against real docs/types before writing code.
   regression). **Manual:** set a real `RESEND_API_KEY` + `EMAIL_PROVIDER=resend` locally, trigger
   register/resend-OTP and forgot-password, confirm both emails actually arrive with correct content.
   Commit.
+  - Automated portion done 2026-08-13 (build/lint/test:cov green, 149 suites / 1081 tests, no
+    regressions in the pre-existing provider paths). **Manual send test deferred** — not yet run
+    against a real `RESEND_API_KEY`. Revisit before considering Resend production-ready.
 
 ## Phase 2 — Brevo
 
