@@ -22,6 +22,44 @@ Deliberately kept outside `auth/` so `users`/`roles`/`permissions` don't have to
 
 `infrastructure/email/renderers/email-template-renderer.ts` — `IEmailTemplateRenderer { renderOtpEmail({ otp }); renderPasswordResetEmail({ resetUrl }) }`, DI token `EMAIL_TEMPLATE_RENDERER`, consumed by every sender except `ConsoleEmailSender` (`Smtp`/`Gmail`/`Resend`/`Brevo`/`SendGrid` all render HTML through it). One implementation, bound directly via `{ provide: EMAIL_TEMPLATE_RENDERER, useClass: HandlebarsEmailTemplateRenderer }`: `handlebars-email-template.renderer.ts` (`HandlebarsEmailTemplateRenderer`) compiles the `.hbs` files in `infrastructure/email/templates/handlebars/` (read via `fs.readFileSync` at construction, cached as compiled `Handlebars.compile` functions on the instance, which HTML-escape interpolated values by default) — `nest-cli.json` copies that `.hbs` directory into `dist/src` as a build asset since it isn't a `.ts` file the compiler would otherwise emit.
 
+## Email provider setup guide
+
+Practical steps for configuring a real email provider in `.env` (all vars declared in
+`src/config/env.validation.ts`; defaults shown below are what an unset var falls back to). Every
+provider except Console needs `EMAIL_FROM` (default `no-reply@example.com`) and `FRONTEND_URL`
+(default `http://localhost:3000`, used to build the password-reset link) set to real values — both
+are read once per sender at construction, same var regardless of which provider you pick.
+
+1. **Set `EMAIL_PROVIDER`** to one of `auto | gmail | smtp | resend | brevo | sendgrid | console`.
+   Leaving it unset (or `auto`) tries each provider's required var(s) in order —
+   `gmail → smtp → resend → brevo → sendgrid → console` — and uses the first one that's configured,
+   falling back to `console` if none are. Setting it explicitly skips that search and forces one
+   sender, erroring out is never possible here: an unselected provider's sender is never
+   constructed, so its API key can stay unset with zero effect.
+2. **Fill in only that provider's section below**, leave the rest blank — `resolveEmailSender` never
+   touches an unselected provider's env vars.
+
+| `EMAIL_PROVIDER` | Required vars | Where to get them |
+| --- | --- | --- |
+| `console` (default) | none | Nothing to set up — OTP/reset codes are logged via Nest's `Logger` instead of emailed. Use this for local dev/tests. |
+| `smtp` | `SMTP_HOST`, `SMTP_PORT` (default `587`), `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE` (default `false`) | Any SMTP-capable provider — e.g. your own mail server, or the SMTP endpoint most of the vendors below also expose. `SMTP_FORCE_IPV4_DNS` (default `true`) patches DNS resolution to skip `AAAA` records so this always connects over IPv4 — needed on hosts (like Render's free tier) that don't route outbound IPv6. |
+| `gmail` | `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_SENDER_EMAIL` | [Google Cloud Console](https://console.cloud.google.com/) → create an OAuth 2.0 Client ID (Desktop app type) for `CLIENT_ID`/`CLIENT_SECRET`, enable the Gmail API, then run an OAuth consent flow once to mint a refresh token (any "Google OAuth playground"-style walkthrough for the Gmail API `send` scope works — the refresh token doesn't expire under normal use). `GMAIL_SENDER_EMAIL` is the Gmail address that consented. Bypasses SMTP entirely over HTTPS — useful specifically when outbound SMTP ports are blocked. |
+| `resend` | `RESEND_API_KEY` | [resend.com](https://resend.com) → sign up → **API Keys** → create a key. Free tier is enough for OTP/reset-email volume in most setups. |
+| `brevo` | `BREVO_API_KEY` | [brevo.com](https://brevo.com) → sign up → **SMTP & API** → **API Keys** → generate a new key (the v3 API key, not an SMTP key). |
+| `sendgrid` | `SENDGRID_API_KEY` | [sendgrid.com](https://sendgrid.com) → sign up → **Settings → API Keys** → create a key with at least "Mail Send" permission. |
+
+3. **Sender-domain verification**: Resend/Brevo/SendGrid all require verifying the domain behind
+   `EMAIL_FROM` (SPF/DKIM DNS records) in their dashboard before they'll deliver to arbitrary
+   recipients — an unverified sender domain is the most common reason a real send silently fails or
+   lands in spam, not a bug in this codebase.
+4. **Verify it worked**: register a new account through `POST /auth/register` and confirm the OTP
+   email actually arrives (or, on `console`, appears in the server log instead); repeat via
+   `/auth/forgot-password` for the reset-link email. See [Known gaps](#known-gaps--deliberate-scope-decisions)
+   — this manual check is still outstanding for all five real senders as of this writing.
+5. **`.env.example`** mirrors every var above except it is currently missing the `sendgrid` value in
+   its `EMAIL_PROVIDER` comment and a `SENDGRID_API_KEY=` line (tracked in `tasks/todo.md`) — add both
+   by hand until that's fixed upstream.
+
 ## DTOs
 
 All in `application/dto/`, all `class-validator`-decorated (the global `ValidationPipe` registered in `src/bootstrap/configure-app.ts` — `{ whitelist: true, transform: true }`, wired up from `src/main.ts` — is what makes these decorators actually enforce anything):
