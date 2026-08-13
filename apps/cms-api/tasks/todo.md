@@ -81,6 +81,11 @@ confirm it against real docs/types before writing code.
 
 - [ ] **Checkpoint B** — same as Checkpoint A, for Brevo, plus explicit regression: Resend path
   (Checkpoint A's manual send) still works unmodified. Commit.
+  - Automated portion done 2026-08-13 (build/lint/test:cov green, 150 suites / 1095 tests, no
+    regressions — `resend-email.sender.ts`/`resolve-email-sender.ts` untouched by Phase 2's code).
+    **Manual send tests deferred** — neither the Resend regression send nor a real Brevo send
+    (`BREVO_API_KEY` + `EMAIL_PROVIDER=brevo`) has been run yet. Revisit before Brevo is considered
+    production-ready.
 
 ## Phase 3 — SendGrid
 
