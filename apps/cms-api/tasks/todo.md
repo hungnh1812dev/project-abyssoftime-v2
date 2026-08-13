@@ -129,7 +129,7 @@ confirm it against real docs/types before writing code.
 
 ## Phase 4 — Docs, review, cleanup (`docs/rules/workflow.md` steps 4–8)
 
-- [ ] **T7 — New/updated techstack docs.** `docs/documents/auth-email-providers-techstack.md` (new)
+- [x] **T7 — New/updated techstack docs.** `docs/documents/auth-email-providers-techstack.md` (new)
   — the official-SDK-vs-raw-fetch comparison table from `SPEC.md`'s Tech Stack section, plus any
   provider-specific integration notes discovered during T2/T4/T6 (e.g. the real Brevo shape).
   `docs/documents/auth-email-techstack.md` — add Resend/Brevo/SendGrid rows to the existing provider
