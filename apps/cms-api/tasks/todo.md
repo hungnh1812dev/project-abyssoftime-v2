@@ -175,10 +175,14 @@ confirm it against real docs/types before writing code.
     already-tracked T5 deferral (this agent cannot edit `.env.example`); no new action, still a manual
     item for the user.
 
-- [ ] **T10 — Cleanup.** Reduce `SPEC.md` back to a pointer at `docs/documents/auth-email.md` (or
+- [x] **T10 — Cleanup.** Reduce `SPEC.md` back to a pointer at `docs/documents/auth-email.md` (or
   wherever the final content lands), per `docs/rules/workflow.md`'s root-docs rule.
   - Files: `SPEC.md`
   - Deps: T9. Size: XS
+  - Done 2026-08-13: `SPEC.md` reduced to a short pointer (same shape as the refresh-token-blacklist
+    feature's closeout, commit `ad0dfc7`) at `docs/documents/auth.md`, `auth-email-techstack.md`, and
+    `auth-email-providers-techstack.md` — the feature's full details, no longer duplicated in
+    `SPEC.md` itself.
 
 - [ ] **Checkpoint D (final)** — Re-verify every success criterion in `SPEC.md` against the shipped
   code, not against this checklist. `bun run build && bun run lint && bun run test:cov` green. Commit.
