@@ -1,3 +1,8 @@
 # Spec
 
-No active backend spec. See `docs/documents/access-tokens.md` ("Content-type-scoped document permissions"), `docs/documents/content-type.md` ("Document permission catalog sync"), `docs/documents/document.md` (`DocumentPermissionsGuard`), `docs/documents/graphql.md` (`assertApiTokenPermission`'s `contentTypeSlug` param), and `docs/documents/permissions.md` ("System-managed scoped permission rows") for the completed backend cycle — API access tokens can now scope a `document:*` permission to one content type (e.g. `document:read:cv-page`) instead of only "all content types", enforced identically on REST and GraphQL. The matching `cms-admin` token-creation UI (Phase 5) is still pending — see `tasks/todo.md`.
+No active spec. See `docs/documents/auth.md` (Domain port section), `docs/documents/auth-email-techstack.md`,
+and `docs/documents/auth-email-providers-techstack.md` for the completed Additional Email Providers
+feature — `cms-api` now selects one of six `IEmailSender` implementations via `EMAIL_PROVIDER`
+(`gmail`/`smtp`/`resend`/`brevo`/`sendgrid`/`console`, `"auto"` resolving in that order), with the
+three new senders (Resend, Brevo, SendGrid) each wrapping their vendor's official Node SDK behind the
+existing port, zero change to any `application/services/*` caller.

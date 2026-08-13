@@ -109,6 +109,11 @@ jobs:
     defaults:
       run:
         working-directory: apps/frontend
+    env:
+      # `next build` evaluates src/auth.ts's module-level fail-loud check while collecting page
+      # data for every route that imports it (even dynamic, non-prerendered ones) — this job never
+      # deploys the build, so the value just needs to be set, not match the real Vercel secret.
+      AUTH_SECRET: ${{ secrets.AUTH_SECRET || 'ci-build-only-placeholder-not-used-at-runtime' }}
     needs: [change-detecter]
     if: needs.change-detecter.outputs.frontend == 'true'
 

@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import AuthPage from "@/views/auth/AuthPage";
 
 export const metadata: Metadata = {
-  title: "Xác thực",
+  title: "Đăng nhập",
 };
 
 export default async function AuthIndexPage({ searchParams }: { searchParams: Promise<{ returnTo?: string }> }) {

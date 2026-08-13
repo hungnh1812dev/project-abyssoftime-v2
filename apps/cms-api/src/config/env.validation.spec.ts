@@ -39,6 +39,47 @@ describe("validate", () => {
     expect(result.SMTP_FORCE_IPV4_DNS).toBe(true);
     expect(result.EMAIL_FROM).toBe("no-reply@example.com");
     expect(result.FRONTEND_URL).toBe("http://localhost:3000");
+    expect(result.REDIS_ENABLED).toBe(false);
+    expect(result.REDIS_URL).toBe("");
+    expect(result.RESEND_API_KEY).toBe("");
+    expect(result.BREVO_API_KEY).toBe("");
+    expect(result.SENDGRID_API_KEY).toBe("");
+  });
+
+  it("accepts EMAIL_PROVIDER=resend", () => {
+    const result = validate({ ...requiredConfig, EMAIL_PROVIDER: "resend" });
+
+    expect(result.EMAIL_PROVIDER).toBe("resend");
+  });
+
+  it("overrides RESEND_API_KEY when explicitly provided", () => {
+    const result = validate({ ...requiredConfig, RESEND_API_KEY: "re_123" });
+
+    expect(result.RESEND_API_KEY).toBe("re_123");
+  });
+
+  it("accepts EMAIL_PROVIDER=brevo", () => {
+    const result = validate({ ...requiredConfig, EMAIL_PROVIDER: "brevo" });
+
+    expect(result.EMAIL_PROVIDER).toBe("brevo");
+  });
+
+  it("overrides BREVO_API_KEY when explicitly provided", () => {
+    const result = validate({ ...requiredConfig, BREVO_API_KEY: "xkeysib-123" });
+
+    expect(result.BREVO_API_KEY).toBe("xkeysib-123");
+  });
+
+  it("accepts EMAIL_PROVIDER=sendgrid", () => {
+    const result = validate({ ...requiredConfig, EMAIL_PROVIDER: "sendgrid" });
+
+    expect(result.EMAIL_PROVIDER).toBe("sendgrid");
+  });
+
+  it("overrides SENDGRID_API_KEY when explicitly provided", () => {
+    const result = validate({ ...requiredConfig, SENDGRID_API_KEY: "SG.123" });
+
+    expect(result.SENDGRID_API_KEY).toBe("SG.123");
   });
 
   it("transforms COOKIE_SECURE 'true' to boolean true", () => {
@@ -110,6 +151,28 @@ describe("validate", () => {
 
   it("rejects a SMTP_FORCE_IPV4_DNS value that isn't 'true'/'false'/a boolean", () => {
     expect(() => validate({ ...requiredConfig, SMTP_FORCE_IPV4_DNS: "yes" })).toThrow();
+  });
+
+  it("defaults REDIS_ENABLED to false and REDIS_URL to empty", () => {
+    const result = validate(requiredConfig);
+
+    expect(result.REDIS_ENABLED).toBe(false);
+    expect(result.REDIS_URL).toBe("");
+  });
+
+  it("accepts REDIS_ENABLED true when REDIS_URL is set", () => {
+    const result = validate({ ...requiredConfig, REDIS_ENABLED: "true", REDIS_URL: "redis://localhost:6379" });
+
+    expect(result.REDIS_ENABLED).toBe(true);
+    expect(result.REDIS_URL).toBe("redis://localhost:6379");
+  });
+
+  it("rejects REDIS_ENABLED true with an empty REDIS_URL", () => {
+    expect(() => validate({ ...requiredConfig, REDIS_ENABLED: "true" })).toThrow(/Environment variable validation failed/);
+  });
+
+  it("rejects a REDIS_ENABLED value that isn't 'true'/'false'/a boolean", () => {
+    expect(() => validate({ ...requiredConfig, REDIS_ENABLED: "yes" })).toThrow();
   });
 
   it("falls back to defaults when the numeric fields are present but explicitly undefined", () => {

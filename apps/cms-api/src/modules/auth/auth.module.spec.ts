@@ -16,6 +16,7 @@ import { ForgotPasswordService } from "./application/services/forgot-password.se
 import { GetMeService } from "./application/services/get-me.service";
 import { HasUsersService } from "./application/services/has-users.service";
 import { LoginService } from "./application/services/login.service";
+import { LogoutService } from "./application/services/logout.service";
 import { RefreshTokenService } from "./application/services/refresh-token.service";
 import { RegisterService } from "./application/services/register.service";
 import { ResendOtpService } from "./application/services/resend-otp.service";
@@ -58,6 +59,7 @@ describe("AuthModule", () => {
       HasUsersService,
       LoginService,
       RefreshTokenService,
+      LogoutService,
       ForgotPasswordService,
       ResetPasswordService,
       GetMeService,

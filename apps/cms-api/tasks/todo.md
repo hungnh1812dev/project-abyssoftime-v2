@@ -1,27 +1,197 @@
-# Todo — Content-Type-Scoped Document Permissions for API Tokens
+# Todo — Additional Email Providers (Resend, Brevo, SendGrid)
 
-See `tasks/plan.md` for full context, design, and rationale. See
-`docs/specs/api-token-content-type-scoped-permissions.md` for the full spec.
+See `tasks/plan.md` for full context, architecture decisions, and risks. See `SPEC.md` for the spec
+(objective, confirmed assumptions, boundaries, success criteria).
 
-## Phase 1 — Backend foundation (additive, no enforcement change yet)
-- [x] Task 1 — Shared grant-check util: `src/common/authorization/document-permission.util.ts` exporting `isDocumentActionGranted(granted: string[], requiredSlug: string, contentTypeSlug: string): boolean` (`granted.includes(requiredSlug) || granted.includes(`${requiredSlug}:${contentTypeSlug}`)`). Tests: global-slug match, scoped-slug match, no-match, both-present.
-- [x] Task 2 — `DocumentPermissionSyncService` (`src/modules/content-type/application/services/document-permission-sync.service.ts`), `syncForContentTypes(definitions)`: idempotently `create()`s a `Permission` row per definition × 6 document actions (slug `document:<action>:<content-type-slug>`), bypassing `CreatePermissionDto`'s regex (direct repository call — system-managed rows). `ContentTypeSyncService.sync()` calls it as the last step; `ContentTypeModule` imports `PermissionModule` + registers the new provider. Tests: new content type → 6 creates; existing → 0 creates; removed content type → no delete call; `content-type-sync.service.spec.ts` updated.
-- [x] **Checkpoint A:** `bun run build && bun run lint && bun run test:cov` green. Manual: boot locally, `GET /api/v1/permissions` shows the new scoped rows; re-boot → no duplicates. Commit.
+**Plan awaiting review.** One open item carries into implementation: whether any provider needs more
+than a single API key (`tasks/plan.md` Open Questions #1), resolved per-provider as each sender is
+built, not guessed up front. Brevo's exact SDK shape (Open Questions #2) is unverified — T4 must
+confirm it against real docs/types before writing code.
 
-## Phase 2 — GraphQL enforcement
-- [x] Task 3 — `assertApiTokenPermission(context, requiredSlug, contentTypeSlug)` (new 3rd param) in `src/modules/graphql/application/authorize.util.ts`, delegating to `isDocumentActionGranted`. Update all 11 call sites in `resolver-factory.service.ts` (lines 194, 206, 213, 220, 228, 235, 242, 253, 265, 272, 278) to pass `definition.slug`. Tests: `authorize.util.spec.ts` (global grant, scoped grant, scoped-for-wrong-content-type denied). Correction (found during Task 6 review): `resolver-factory.service.spec.ts` was not touched — it only registers one content type and asserts on global 2-segment slugs, so it can't exercise the `definition.slug` wiring; that regression protection lives entirely in `test/graphql.e2e-spec.ts`'s cv-page/cv-contact case instead.
-- [x] **Checkpoint B:** `bun run build && bun run lint && bun run test:cov` green. New `test/graphql.e2e-spec.ts` case: token scoped to `document:read:cv-page` succeeds on `cvPage`, 403s on another content type; global-slug token still works everywhere (regression). `bun run test:e2e` green. Commit.
+## Phase 1 — Resend (first vertical slice, establishes the pattern)
 
-## Phase 3 — REST enforcement
-- [x] Task 4 — New `src/common/guards/document-permissions.guard.ts` (`DocumentPermissionsGuard`, sibling to `PermissionsGuard`, no `managerEquivalentOf` fallback): reads `PERMISSIONS_KEY` metadata + `request.params.slug`, requires every declared permission via `isDocumentActionGranted(request.user?.permissions ?? [], permission, request.params.slug)`. Swap `PermissionsGuard` → `DocumentPermissionsGuard` in `@UseGuards(...)` on every route of `CollectionTypeDocumentController` and `SingleTypeDocumentController` (`JwtAuthGuard` unchanged, stays first). Tests: `document-permissions.guard.spec.ts` (global match, scoped match, scoped-wrong-type denied, no-permissions denied); re-run existing controller specs unmodified in assertions.
-- [x] **Checkpoint C:** `bun run build && bun run lint && bun run test:cov` green. New REST e2e case: Bearer token scoped to `document:read:cv-page` succeeds on `GET /api/v1/documents/collection-type/cv-page`, 403s on another content type; global-slug token/role still works everywhere (regression). `bun run test:e2e` green. Commit.
+- [x] **T1 — Resend env vars + dependency.** Add `RESEND_API_KEY: string = ""` to
+  `env.validation.ts`; extend the `EMAIL_PROVIDER` type/comment to include `"resend"`. Add
+  `RESEND_API_KEY=` under the existing Email Sender section of `.env.example`, and update its
+  `EMAIL_PROVIDER` comment to list `resend`. Install the `resend` package.
+  - Acceptance: app boots with `RESEND_API_KEY` unset (defaults to `""`, no validation error);
+    `EMAIL_PROVIDER=resend` passes env validation; `resend` appears in `package.json` `dependencies`.
+  - Verify: `bun install && bun run build`.
+  - Files: `src/config/env.validation.ts`, `.env.example`, `package.json`, `bun.lock`
+  - Deps: none. Size: S
 
-## Phase 4 — Backend docs + review + cleanup
-- [x] Task 5 — Update docs: `docs/documents/access-tokens.md` (slug convention, catalog sync), `docs/documents/content-type.md` (`DocumentPermissionSyncService` in boot sync), `docs/documents/document.md` (`DocumentPermissionsGuard` replacing `PermissionsGuard`), `docs/documents/graphql.md` (`assertApiTokenPermission` new signature), `docs/documents/permissions.md` (system-managed scoped rows, regex bypass). Update `SPEC.md` pointer.
-- [x] Task 6 — Five-axis review (correctness/readability/architecture/security/performance) via `agent-skills:code-reviewer`: **APPROVE**, no critical/important issues. Spec file deleted as cleanup (matches this project's established convention — see `93257f0`, `e7368fa` — of deleting `docs/specs/*` once `docs/documents/*.md` captures the final state, rather than editing the spec first); its content is fully superseded by Task 5's doc updates and `tasks/plan.md`'s "Corrections found during planning" section (which already documents the `DocumentAuthGuard` drop and source-agnostic enforcement).
-- [x] **Checkpoint D (backend final):** `bun run build && bun run lint && bun run test:cov && bun run test:e2e` all green; docs updated; spec cleaned up. Commit.
+- [x] **T2 — `ResendEmailSender` + `resolve-email-sender.ts` wiring.** New class implementing
+  `IEmailSender` (`sendOtpEmail`, `sendPasswordResetEmail`) per `SPEC.md`'s Code Style example:
+  constructs a `Resend` client from `RESEND_API_KEY`, reads `EMAIL_FROM`/`FRONTEND_URL` from
+  `ConfigService` in the constructor, calls `templateRenderer.renderOtpEmail`/
+  `renderPasswordResetEmail` for HTML, sends via the SDK's `emails.send()`. Wire it into
+  `resolveEmailSender`: explicit `EMAIL_PROVIDER === "resend"` branch, and insert into `"auto"`
+  between the existing `SMTP_HOST` check and the console fallback (checks `RESEND_API_KEY`).
+  - Acceptance: `EMAIL_PROVIDER=resend` resolves to `ResendEmailSender`; `sendOtpEmail`/
+    `sendPasswordResetEmail` call the SDK with the renderer's HTML output verbatim as `html`, correct
+    `to`/`from`/`subject`; constructing `ConsoleEmailSender`/`SmtpEmailSender`/`GmailApiEmailSender`
+    (i.e. any other provider selected) never constructs a `Resend` client, even with
+    `RESEND_API_KEY` unset; `"auto"` with no provider env vars set still falls through to
+    `ConsoleEmailSender` exactly as today.
+  - Verify: `bun run test` — new `resend-email.sender.spec.ts` (mocked `Resend` client, same pattern
+    as `smtp-email.sender.spec.ts`'s mocked `MailerService`); extend `resolve-email-sender.spec.ts`
+    with the new branch + auto-order cases. `bun run lint`.
+  - Files: `src/modules/auth/infrastructure/email/resend-email.sender.ts`,
+    `src/modules/auth/infrastructure/email/resend-email.sender.spec.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.spec.ts`
+  - Deps: T1. Size: M
 
-## Phase 5 — Frontend (`apps/cms-admin`)
-- [x] Task 7 — `src/components/permissions/permissionGrouping.ts`: add `parseDocumentPermissionSlug(slug): { action, contentTypeSlug? } | null` (non-null only for 3-segment `document:*` slugs) and `buildDocumentPermissionSlug(action, contentTypeSlug?)`. Tests: round-trip for global/scoped slugs, ignores non-document slugs.
-- [x] Task 8 — `PermissionTree.tsx`: new rendering branch for the `"document"` group only — per action, toggle between "All content types" (global slug) and "Specific content types" (checkboxes from `useContentTypes()`, building scoped slugs); switching the toggle clears the other slug set for that action. All other groups unchanged. Applies to both `RolesPage.tsx` and `AccessTokensPage.tsx` (shared component, no new prop). Tests: toggle behavior, correct slug array produced, mocked `useContentTypes`.
-- [x] **Checkpoint E (final):** `apps/cms-admin`: build/lint/`vitest run` green (confirm actual script names first). Manual browser walkthrough: create a token scoped to `document:read:cv-page` only, verify via curl/GraphQL playground it reads `cv-page` and is rejected elsewhere; confirm the same picker renders correctly on `RolesPage`. Commit.
+- [ ] **Checkpoint A** — `bun run build && bun run lint && bun run test:cov` all green.
+  `EMAIL_PROVIDER` unset/`smtp`/`gmail`/`console` behave identically to before this phase (no
+  regression). **Manual:** set a real `RESEND_API_KEY` + `EMAIL_PROVIDER=resend` locally, trigger
+  register/resend-OTP and forgot-password, confirm both emails actually arrive with correct content.
+  Commit.
+  - Automated portion done 2026-08-13 (build/lint/test:cov green, 149 suites / 1081 tests, no
+    regressions in the pre-existing provider paths). **Manual send test deferred** — not yet run
+    against a real `RESEND_API_KEY`. Revisit before considering Resend production-ready.
+
+## Phase 2 — Brevo
+
+- [x] **T3 — Brevo env vars + dependency.** Add `BREVO_API_KEY: string = ""` to `env.validation.ts`;
+  extend `EMAIL_PROVIDER` to include `"brevo"`. Add `BREVO_API_KEY=` to `.env.example`, update the
+  `EMAIL_PROVIDER` comment. Install `@getbrevo/brevo`.
+  - Acceptance: same shape as T1 — boots with the key unset, `EMAIL_PROVIDER=brevo` validates,
+    dependency installed.
+  - Verify: `bun install && bun run build`.
+  - Files: `src/config/env.validation.ts`, `.env.example`, `package.json`, `bun.lock`
+  - Deps: none (parallel with T1/T2). Size: S
+
+- [x] **T4 — `BrevoEmailSender` + `resolve-email-sender.ts` wiring.** **Before writing code**, verify
+  the real `@getbrevo/brevo` v6.0.3 client/method shape against its shipped TypeScript types
+  (`node_modules/@getbrevo/brevo`) or official docs — `tasks/plan.md`'s Context section flags the
+  shape used in `SPEC.md` as an unverified AI summary, not a confirmed fact. Then implement
+  `BrevoEmailSender` implementing `IEmailSender`, same constructor/render/send shape as
+  `ResendEmailSender`. Wire into `resolveEmailSender`: explicit `"brevo"` branch, and insert into
+  `"auto"` between the `resend` check and the console fallback (checks `BREVO_API_KEY`).
+  - Acceptance: same acceptance shape as T2, substituting Brevo; explicit regression check that the
+    Resend branch/tests from T2 are unmodified and still pass.
+  - Verify: `bun run test` — new `brevo-email.sender.spec.ts` (mocked Brevo client); extend
+    `resolve-email-sender.spec.ts`. `bun run lint`.
+  - Files: `src/modules/auth/infrastructure/email/brevo-email.sender.ts`,
+    `src/modules/auth/infrastructure/email/brevo-email.sender.spec.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.spec.ts`
+  - Deps: T2 (same file), T3. Size: M
+
+- [ ] **Checkpoint B** — same as Checkpoint A, for Brevo, plus explicit regression: Resend path
+  (Checkpoint A's manual send) still works unmodified. Commit.
+  - Automated portion done 2026-08-13 (build/lint/test:cov green, 150 suites / 1095 tests, no
+    regressions — `resend-email.sender.ts`/`resolve-email-sender.ts` untouched by Phase 2's code).
+    **Manual send tests deferred** — neither the Resend regression send nor a real Brevo send
+    (`BREVO_API_KEY` + `EMAIL_PROVIDER=brevo`) has been run yet. Revisit before Brevo is considered
+    production-ready.
+
+## Phase 3 — SendGrid
+
+- [x] **T5 — SendGrid env vars + dependency.** Add `SENDGRID_API_KEY: string = ""` to
+  `env.validation.ts`; extend `EMAIL_PROVIDER` to include `"sendgrid"`. Add `SENDGRID_API_KEY=` to
+  `.env.example`, update the `EMAIL_PROVIDER` comment (now lists all 6 values). Install
+  `@sendgrid/mail`.
+  - Acceptance: same shape as T1/T3.
+  - Verify: `bun install && bun run build`.
+  - Files: `src/config/env.validation.ts`, `.env.example`, `package.json`, `bun.lock`
+  - Deps: none (parallel with T1–T4). Size: S
+  - `.env.example` update deferred 2026-08-13 — this agent's global instructions forbid editing
+    `.env.example` (read-only exception). User needs to manually add `SENDGRID_API_KEY=` and update
+    the `EMAIL_PROVIDER` comment to list all 6 values, mirroring the `RESEND_API_KEY`/`BREVO_API_KEY`
+    lines already there.
+
+- [x] **T6 — `SendGridEmailSender` + `resolve-email-sender.ts` wiring (final `"auto"` order).**
+  Implements `IEmailSender` using `@sendgrid/mail`'s confirmed pattern: `sgMail.setApiKey(...)` at
+  construction, `sgMail.send({ to, from, subject, html })` per send call. Wire into
+  `resolveEmailSender`: explicit `"sendgrid"` branch, and insert into `"auto"` between the `brevo`
+  check and the console fallback (checks `SENDGRID_API_KEY`) — this completes the final order
+  `gmail → smtp → resend → brevo → sendgrid → console`.
+  - Acceptance: same acceptance shape as T2/T4, substituting SendGrid; explicit regression check that
+    Resend and Brevo branches/tests are unmodified; full `"auto"` chain tested end-to-end (each of
+    the 6 env-var combinations resolves to the expected sender class).
+  - Verify: `bun run test` — new `sendgrid-email.sender.spec.ts` (mocked `sgMail`); extend
+    `resolve-email-sender.spec.ts` with the full 6-branch auto-order matrix. `bun run lint`.
+  - Files: `src/modules/auth/infrastructure/email/sendgrid-email.sender.ts`,
+    `src/modules/auth/infrastructure/email/sendgrid-email.sender.spec.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.spec.ts`
+  - Deps: T4 (same file), T5. Size: M
+
+- [ ] **Checkpoint C** — same as B, for SendGrid, plus regression: Resend and Brevo paths both still
+  work unmodified. All three provider-specific `SPEC.md` success criteria now met. Commit.
+  - Automated portion done 2026-08-13 (build/lint/test:cov green, 151 suites / 1117 tests, no
+    regressions — `resend-email.sender.ts`/`brevo-email.sender.ts` untouched by Phase 3's code).
+    **Manual send tests deferred** — neither the Resend/Brevo regression sends nor a real SendGrid
+    send (`SENDGRID_API_KEY` + `EMAIL_PROVIDER=sendgrid`) has been run yet. Revisit before any of
+    the three providers is considered production-ready.
+
+## Phase 4 — Docs, review, cleanup (`docs/rules/workflow.md` steps 4–8)
+
+- [x] **T7 — New/updated techstack docs.** `docs/documents/auth-email-providers-techstack.md` (new)
+  — the official-SDK-vs-raw-fetch comparison table from `SPEC.md`'s Tech Stack section, plus any
+  provider-specific integration notes discovered during T2/T4/T6 (e.g. the real Brevo shape).
+  `docs/documents/auth-email-techstack.md` — add Resend/Brevo/SendGrid rows to the existing provider
+  comparison.
+  - Verify: both files exist and are linked from `docs/ENTRYPOINT.md`.
+  - Files: `docs/documents/auth-email-providers-techstack.md`,
+    `docs/documents/auth-email-techstack.md`, `docs/ENTRYPOINT.md`
+  - Deps: T6. Size: S
+
+- [x] **T8 — Update `auth.md` + repo-wide stale-provider-list sweep.** Rewrite `auth.md`'s
+  email-sending section to list all 6 providers and the final `"auto"` order. Then **grep the whole
+  repo** for `"gmail" | "smtp" | "console"` and similar enumerations (`.env.example` comments already
+  done in T1/T3/T5 — verify here; `docs/api-reference.md`/`docs/cms-admin-integration.md` only if
+  either mentions `EMAIL_PROVIDER`) and fix every stale list — a fixed file list is exactly what went
+  wrong in the JWT Bearer migration closeout.
+  - Verify: `grep -rn 'EMAIL_PROVIDER' docs/ .env.example` — every hit lists all 6 values.
+  - Files: `docs/documents/auth.md`, `docs/api-reference.md` (if applicable),
+    `docs/cms-admin-integration.md` (if applicable)
+  - Deps: T7. Size: S–M
+  - Done 2026-08-13: `auth.md`'s Domain port/Module wiring/Known gaps/Tests sections rewritten for all
+    6 providers. Repo grep found no stale enumeration in `api-reference.md`/`cms-admin-integration.md`
+    (neither mentions `EMAIL_PROVIDER`), but did find one outside the plan's file list — the class
+    diagram `docs/diagrams/app-permission-role-user-class-diagram.md`'s `AuthInfrastructure` still
+    listed only 3 senders; fixed. `.env.example`'s `EMAIL_PROVIDER` comment (missing `sendgrid`) and
+    missing `SENDGRID_API_KEY=` line remain deferred from T5 — this agent's global instructions
+    forbid editing `.env.example`; still a manual action item for the user.
+
+- [x] **T9 — Five-axis review** (correctness, readability, architecture, security, performance) via
+  `agent-skills:code-reviewer`. Security axis must explicitly cover: no API key ever logged (request
+  bodies, error messages); a sender for a non-selected provider is never constructed or called;
+  send failures propagate rather than being silently swallowed; the three new SDKs are inert with no
+  network activity when their provider isn't selected.
+  - Verify: findings triaged; anything Critical/Important fixed and re-verified.
+  - Deps: T8. Size: S
+  - Done 2026-08-13: **APPROVE**. Reviewer traced the installed `resend`/`@getbrevo/brevo`/
+    `@sendgrid/mail` SDK source directly (not just docs) confirming: Resend's `{data,error}` union
+    can't false-positive, Brevo/SendGrid genuinely reject/throw on failure, all three client
+    constructors do zero network I/O and never throw on a non-empty key, and
+    `resolve-email-sender.spec.ts` has dedicated `not.toHaveBeenCalled()` assertions per SDK for every
+    non-selecting provider (a real guarantee, not prose). No logging of API keys/email bodies found.
+    Zero Critical/Important code findings. One Important **doc-accuracy** finding — `.env.example`
+    still missing `sendgrid` in the `EMAIL_PROVIDER` comment and lacking `SENDGRID_API_KEY=` — is the
+    already-tracked T5 deferral (this agent cannot edit `.env.example`); no new action, still a manual
+    item for the user.
+
+- [x] **T10 — Cleanup.** Reduce `SPEC.md` back to a pointer at `docs/documents/auth-email.md` (or
+  wherever the final content lands), per `docs/rules/workflow.md`'s root-docs rule.
+  - Files: `SPEC.md`
+  - Deps: T9. Size: XS
+  - Done 2026-08-13: `SPEC.md` reduced to a short pointer (same shape as the refresh-token-blacklist
+    feature's closeout, commit `ad0dfc7`) at `docs/documents/auth.md`, `auth-email-techstack.md`, and
+    `auth-email-providers-techstack.md` — the feature's full details, no longer duplicated in
+    `SPEC.md` itself.
+
+- [ ] **Checkpoint D (final)** — Re-verify every success criterion in `SPEC.md` against the shipped
+  code, not against this checklist. `bun run build && bun run lint && bun run test:cov` green. Commit.
+  - Automated portion done 2026-08-13 (build clean, lint 0 errors/1 pre-existing unrelated
+    `main.ts` warning, test:cov 151 suites / 1117 tests all green; confirmed zero diff in
+    `register.service.ts`/`resend-otp.service.ts`/`forgot-password.service.ts` since before Phase 1).
+    Two of SPEC.md's original 8 success criteria remain open, both requiring the user (not this
+    agent): (1) `.env.example` still lacks `sendgrid` in the `EMAIL_PROVIDER` comment and a
+    `SENDGRID_API_KEY=` line — blocked by this agent's global instructions, which forbid editing
+    `.env.example`; (2) no real send has yet been verified through Resend/Brevo/SendGrid (needs live
+    API keys) — same deferral already recorded at Checkpoints A/B/C. User confirmed 2026-08-13:
+    commit now, track both as open follow-ups rather than blocking the checkpoint.

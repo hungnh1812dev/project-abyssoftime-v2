@@ -43,7 +43,11 @@ describe("JwtTokenService", () => {
 
     const result = service.signRefreshToken(refreshPayload);
 
-    expect(jwtService.sign).toHaveBeenCalledWith(refreshPayload, { secret: "refresh-secret", expiresIn: "7d" });
+    const [signedPayload, options] = jwtService.sign.mock.calls[0] as [RefreshTokenPayload, unknown];
+    expect(signedPayload.sub).toBe(refreshPayload.sub);
+    expect(signedPayload.rememberMe).toBe(refreshPayload.rememberMe);
+    expect(signedPayload.jti).toEqual(expect.any(String));
+    expect(options).toEqual({ secret: "refresh-secret", expiresIn: "7d" });
     expect(result).toBe("refresh-token");
   });
 
@@ -52,8 +56,25 @@ describe("JwtTokenService", () => {
 
     const result = service.signRefreshToken(rememberedRefreshPayload);
 
-    expect(jwtService.sign).toHaveBeenCalledWith(rememberedRefreshPayload, { secret: "refresh-secret", expiresIn: "30d" });
+    const [signedPayload, options] = jwtService.sign.mock.calls[0] as [RefreshTokenPayload, unknown];
+    expect(signedPayload.sub).toBe(rememberedRefreshPayload.sub);
+    expect(signedPayload.rememberMe).toBe(rememberedRefreshPayload.rememberMe);
+    expect(signedPayload.jti).toEqual(expect.any(String));
+    expect(options).toEqual({ secret: "refresh-secret", expiresIn: "30d" });
     expect(result).toBe("remembered-refresh-token");
+  });
+
+  it("signRefreshToken() generates a unique jti on every call", () => {
+    jwtService.sign.mockReturnValue("refresh-token");
+
+    service.signRefreshToken(refreshPayload);
+    service.signRefreshToken(refreshPayload);
+
+    const [firstCallPayload] = jwtService.sign.mock.calls[0] as [RefreshTokenPayload, unknown];
+    const [secondCallPayload] = jwtService.sign.mock.calls[1] as [RefreshTokenPayload, unknown];
+
+    expect(firstCallPayload.jti).toEqual(expect.any(String));
+    expect(firstCallPayload.jti).not.toBe(secondCallPayload.jti);
   });
 
   it("getRefreshTokenMaxAgeMs(false) returns the 7-day cookie maxAge", () => {

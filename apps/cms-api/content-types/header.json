@@ -6,12 +6,12 @@
   "fields": [
     { "name": "name", "type": "text", "width": "50%" },
     {
-      "name": "navigations",
+      "name": "nav",
       "type": "component",
       "component": "navigation",
       "repeatable": true,
       "fields": [
-        { "name": "name", "type": "text", "width": "50%" },
+        { "name": "title", "type": "text", "width": "50%" },
         { "name": "requiresRole", "type": "text", "width": "50%" },
         { "name": "link", "type": "text" },
         {
@@ -20,7 +20,7 @@
           "component": "subNavigation",
           "repeatable": true,
           "fields": [
-            { "name": "name", "type": "text", "width": "50%" },
+            { "name": "title", "type": "text", "width": "50%" },
             { "name": "requiresRole", "type": "text", "width": "50%" },
             { "name": "link", "type": "text" }
           ]

@@ -74,8 +74,8 @@ flowchart LR
     Reg["POST /auth/register<br/>creates unverified user, emails OTP"] --> Verify["POST /auth/verify-otp<br/>verifies email, first-user role assignment"]
     Verify --> Login["POST /auth/login<br/>this diagram"]
     Login --> Me["GET /auth/me<br/>JwtAuthGuard"]
-    Login --> Refresh["POST /auth/refresh<br/>JwtRefreshGuard, reads refresh_token cookie,<br/>returns rotated accessToken in body,<br/>rotates refresh_token cookie"]
-    Login --> Logout["POST /auth/logout<br/>clears refresh_token cookie"]
+    Login --> Refresh["POST /auth/refresh<br/>JwtRefreshGuard, reads refresh_token cookie,<br/>returns rotated accessToken in body,<br/>rotates refresh_token cookie,<br/>blacklists the consumed jti"]
+    Login --> Logout["POST /auth/logout<br/>clears refresh_token cookie,<br/>blacklists its jti"]
     Reg --> Forgot["POST /auth/forgot-password"]
     Forgot --> Reset["POST /auth/reset-password"]
 ```

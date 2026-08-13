@@ -1,75 +1,177 @@
-# Plan: Content-Type-Scoped Document Permissions for API Tokens
+# Plan: Additional Email Providers (Resend, Brevo, SendGrid)
 
-See `docs/specs/api-token-content-type-scoped-permissions.md` for the full spec (objective,
-decisions, boundaries). This plan implements it, with two corrections found during planning
-(below) that the spec did not anticipate.
+See `SPEC.md` for the full spec (objective, confirmed assumptions, boundaries, success criteria).
+This plan implements it as three near-identical vertical slices (one per provider) plus a docs phase.
 
 ## Context
 
-Today an API token's `permissions: string[]` grants a document action (`document:read`/`create`/
-`update`/`delete`/`publish`/`unpublish`) across every content type. The goal is to let a token be
-scoped to specific content types per action (e.g. only `read` on `cv-page`), while keeping "all
-content types" as the default/global option — and to give `cms-admin`'s token (and role) creation
-UI a matching picker.
+`cms-api` sends OTP/password-reset email via `IEmailSender`, currently backed by Gmail API, SMTP
+(`nodemailer`), or a Console dev fallback, selected by `EMAIL_PROVIDER` (`resolve-email-sender.ts`).
+This plan adds three more interchangeable senders — Resend, Brevo, SendGrid — using each vendor's
+official Node SDK, with zero change to `IEmailSender`, the Handlebars template renderer, or any
+`application/services/*` caller (SPEC.md Assumptions 2–3).
 
-## Corrections found during planning (supersede the spec's design)
+Because all three providers are structurally identical (one SDK client, two send calls, same
+`IEmailSender` shape), the highest-risk unknown isn't architecture — it's whether the *exact* SDK
+call signature assumed for Brevo (`@getbrevo/brevo` v6.0.3) is correct. A pre-planning doc check
+confirmed SendGrid's `sgMail.setApiKey()` / `sgMail.send({to, from, subject, html})` pattern matches
+SPEC.md's assumption, but the Brevo v6 client shape returned by that check (`new BrevoClient({apiKey})`
++ `brevo.transactionalEmails.sendTransacEmail(...)`) came from an AI-summarized README, not a
+first-hand read of the SDK's type definitions — **not trusted as fact**. T4 (Brevo) must verify the
+real shape against `node_modules/@getbrevo/brevo`'s types or official docs before writing code
+(`source-driven-development`), not copy the summary verbatim.
 
-1. **REST already accepts API tokens.** `JwtAuthGuard` (`src/common/guards/jwt-auth.guard.ts:9`)
-   is `extends AuthGuard(["jwt", "api-token"])` — it composes the cookie-based `JwtStrategy` and a
-   Bearer-header `ApiTokenStrategy` (`src/common/strategies/api-token.strategy.ts`), which already
-   sets `request.user = { sub, permissions }` from the token record. `PermissionsGuard`
-   (`src/common/guards/permissions.guard.ts`) already reads `request.user.permissions` uniformly
-   for both auth sources. **No new auth guard is needed** — the spec's planned `DocumentAuthGuard`
-   is dropped. Only one new guard (`DocumentPermissionsGuard`) is needed, to add the content-type-
-   scoped slug check on top of the existing check.
-2. **Scoping enforcement is source-agnostic, not API-token-only**, because `request.user.permissions`
-   is identical in shape whether it came from a role (JWT cookie) or a token (Bearer). Confirmed
-   with the user: the new per-content-type picker will appear on **both** `RolesPage.tsx` and
-   `AccessTokensPage.tsx` in `cms-admin` (they already share the exact same `PermissionTree`
-   component), and the backend check needs no role-vs-token discriminator.
-3. Content-type slugs are validated by `SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/`
-   (`src/modules/content-type/application/schema/sql-identifier.ts:4`) — safe to embed directly as
-   a permission slug's 3rd segment, no encoding needed (resolves spec open question #2).
+## Corrections found during planning (supersede SPEC.md)
+
+None. SPEC.md's assumptions all held up against the codebase read during spec-writing; no
+architectural surprises found while planning (unlike the token-blacklist feature's Prisma-schema
+correction — this feature touches no schema).
 
 ## Architecture Decisions
 
-- **Slug convention** (unchanged from spec): `document:<action>` (global, existing) sits alongside
-  a new `document:<action>:<content-type-slug>` (scoped). `AccessToken.permissions`/
-  `Role.permissions` stay `string[]` — no schema change.
-- **Shared "is granted" logic**: one new pure function
-  `isDocumentActionGranted(granted: string[], requiredSlug: string, contentTypeSlug: string): boolean`
-  in `src/common/authorization/document-permission.util.ts`, used by both the GraphQL
-  `assertApiTokenPermission` and the new REST `DocumentPermissionsGuard` — no duplicated
-  string-building.
-- **Catalog sync**: new `DocumentPermissionSyncService` in the `content-type` module, called as the
-  last step of `ContentTypeSyncService.sync()` (same `onApplicationBootstrap` hook — avoids the
-  cross-module bootstrap ordering race that exists between two independent `OnApplicationBootstrap`
-  providers). Idempotent create-if-missing, same pattern as `seed-default-data.service.ts`. Never
-  deletes rows for removed content types (matches `ContentTypeSyncService`'s existing
-  non-destructive philosophy).
-- **REST enforcement**: new `DocumentPermissionsGuard` (sibling to, not a subclass of,
-  `PermissionsGuard`) replaces `PermissionsGuard` only on
-  `CollectionTypeDocumentController`/`SingleTypeDocumentController` routes. `JwtAuthGuard` stays
-  as-is (already handles both auth sources). No other module's guard is touched.
-- **GraphQL enforcement**: `assertApiTokenPermission(context, slug)` becomes
-  `assertApiTokenPermission(context, slug, contentTypeSlug)`; every call site in
-  `resolver-factory.service.ts` already has `definition.slug` in closure scope.
-- **Frontend**: `PermissionTree.tsx`'s `"document"` resource group gets a new rendering branch (all
-  other groups unchanged); `useContentTypes()` (already exists) supplies the content-type checkbox
-  options. Applies to both `RolesPage` and `AccessTokensPage` automatically since they share the
-  component — no new prop.
-- **Commit sequencing**: backend (Phases 1-4) lands and is committed before frontend (Phase 5) —
-  the picker is inert without the new catalog rows/enforcement.
+- **Each sender is constructed lazily inside `resolveEmailSender`'s branches**, exactly like
+  `GmailApiEmailSender`/`SmtpEmailSender`/`ConsoleEmailSender` today — never instantiated unless its
+  `EMAIL_PROVIDER` value (or "auto" match) actually selects it. This is what keeps an unset
+  `RESEND_API_KEY`/`BREVO_API_KEY`/`SENDGRID_API_KEY` inert when a different provider is active
+  (SPEC.md's "Never do" boundary) — no code needs to special-case "key missing," construction simply
+  never happens.
+- **Send failures propagate uncaught**, matching `SmtpEmailSender`/`GmailApiEmailSender` today (no
+  try/catch swallowing in either). A thrown SDK error bubbles up through `IEmailSender` to the
+  calling service (`register`/`resend-otp`/`forgot-password`), which already handles/logs errors the
+  same way regardless of which sender threw.
+- **`EMAIL_FROM` is read once in each sender's constructor**, same pattern `SmtpEmailSender` uses for
+  `FRONTEND_URL` — no new "from" env var (SPEC.md Assumption 5).
+- **`"auto"` fallthrough is built up incrementally, one provider at a time**, so the chain is always
+  in a shippable, correctly-ordered state at every checkpoint: Phase 1 adds `resend` between the
+  existing `smtp` check and the `console` fallback; Phase 2 inserts `brevo` between `resend` and
+  `console`; Phase 3 inserts `sendgrid` between `brevo` and `console`. Final order (confirmed):
+  `gmail → smtp → resend → brevo → sendgrid → console`.
+- **Official SDKs, not raw `fetch`** — decision table already in `SPEC.md`'s Tech Stack section; not
+  repeated here. The comparison gets persisted to `docs/documents/auth-email-providers-techstack.md`
+  in Phase 4 (T7) per `docs/rules/workflow.md`'s decision-rationale rule.
+
+## Dependency Graph
+
+```
+T1 Resend env vars + dependency
+ └─→ T2 ResendEmailSender + resolve-email-sender wiring (auto: …→resend→console)
+        │
+T3 Brevo env vars + dependency (parallel with T1/T2)
+        │
+        └─→ T4 BrevoEmailSender + resolve-email-sender wiring (auto: …→resend→brevo→console)
+               — depends on T2 (same file, sequential edit) and T3
+               │
+T5 SendGrid env vars + dependency (parallel with T1–T4)
+        │
+        └─→ T6 SendGridEmailSender + resolve-email-sender wiring (auto: final order)
+               — depends on T4 (same file, sequential edit) and T5
+               │
+               └─→ T7 techstack docs → T8 auth.md + stale-wording sweep → T9 five-axis review → T10 cleanup
+```
+
+Env-var/dependency tasks (T1, T3, T5) are independent of each other and could run in parallel; the
+sender-implementation tasks (T2, T4, T6) are forced sequential because they all edit
+`resolve-email-sender.ts`. Each provider phase ships a fully working, independently-verifiable slice
+— Resend works end-to-end before Brevo is even started, matching the vertical-slicing goal and
+keeping the blast radius of any one provider's SDK surprises contained to its own phase.
+
+## Task List
+
+### Phase 1 — Resend (first vertical slice, establishes the pattern)
+
+- **T1** — Resend env vars + dependency. S
+- **T2** — `ResendEmailSender` + `resolve-email-sender.ts` wiring. M
+
+**Checkpoint A** — `bun run build && bun run lint && bun run test:cov` green. `EMAIL_PROVIDER=smtp`
+(or unset) still behaves identically to today. Manual: set a real `RESEND_API_KEY` +
+`EMAIL_PROVIDER=resend` locally, confirm one OTP email and one password-reset email actually arrive.
+Commit.
+
+### Phase 2 — Brevo
+
+- **T3** — Brevo env vars + dependency. S
+- **T4** — `BrevoEmailSender` + `resolve-email-sender.ts` wiring. Verify the real `@getbrevo/brevo`
+  v6 client/method shape first (source-driven-development) — do not assume the shape from SPEC.md's
+  placeholder. M
+
+**Checkpoint B** — same as Checkpoint A, for Brevo, plus regression: Resend path from Checkpoint A
+still passes unmodified. Commit.
+
+### Phase 3 — SendGrid
+
+- **T5** — SendGrid env vars + dependency. S
+- **T6** — `SendGridEmailSender` + `resolve-email-sender.ts` wiring (final `"auto"` order). M
+
+**Checkpoint C** — same as B, for SendGrid, plus regression: Resend and Brevo paths still pass. All
+three provider-specific `SPEC.md` success criteria now met. Commit.
+
+### Phase 4 — Docs, review, cleanup (`docs/rules/workflow.md` steps 4–8)
+
+- **T7** — `docs/documents/auth-email-providers-techstack.md` (new — SDK-vs-raw-fetch decision
+  table) + `docs/documents/auth-email-techstack.md` (add Resend/Brevo/SendGrid rows). S
+- **T8** — Update `docs/documents/auth.md` (email-sending section lists all 6 providers) + grep the
+  repo for any other place enumerating `gmail`/`smtp`/`console` as "the" provider list (e.g.
+  `.env.example` comments, `docs/api-reference.md` if it mentions `EMAIL_PROVIDER`) and update those
+  too — a fixed file list is exactly what went wrong in the JWT Bearer migration closeout. S–M
+- **T9** — Five-axis review (correctness, readability, architecture, security, performance) via
+  `agent-skills:code-reviewer`. Security axis must explicitly cover: no API key ever logged; a sender
+  for an unselected provider is never constructed/called; send failures aren't silently swallowed. S
+- **T10** — Cleanup: reduce `SPEC.md` back to a pointer at the new docs, per
+  `docs/rules/workflow.md`'s root-docs rule. XS
+
+**Checkpoint D (final)** — every success criterion in `SPEC.md` re-verified against shipped code
+(not against this checklist); `build`/`lint`/`test:cov` green; review findings resolved. Commit.
 
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
-|---|---|---|
-| `DocumentPermissionSyncService` runs on every boot and does a `findBySlug` per action×content-type (6×N sequential lookups) | Low — small N (5 content types today), admin-only path, same acceptable-at-this-scale tradeoff already documented for `countReferences`'s unindexed JSONB queries | Accept for now; note as a future batch-lookup optimization if content-type count grows significantly |
-| Extending `PermissionTree` to both Roles and Access Tokens means a role can now be granted scoped document permissions too, which wasn't explicitly asked for | Low — purely additive capability, no existing behavior changes, confirmed with user | Already confirmed during planning |
-| REST `DocumentPermissionsGuard` swap could regress existing document-route tests if any test asserts on `PermissionsGuard` specifically rather than behavior | Medium if present | Re-run the existing controller spec files, not just new ones |
+| --- | --- | --- |
+| Assumed Brevo SDK shape (from an AI-summarized README, not first-hand) is wrong | Med (wasted rewrite in T4) | T4 explicitly requires verifying the real `@getbrevo/brevo` v6 types/docs before writing code, not copying SPEC.md's placeholder |
+| A vendor SDK's client constructor eagerly validates/network-calls on an empty API key | Med (would break other providers when that key is unset) | Lazy construction inside `resolveEmailSender`'s branches (Architecture Decisions) — never constructed unless selected; Checkpoint A/B/C explicitly test the non-selected case |
+| Real vendor sends can't run in CI (need live API keys, cost money/quota) | Low | No e2e changes (SPEC.md); manual verification per provider at each checkpoint instead |
+| Trial/sandbox vendor accounts rate-limit or require sender-domain verification, making manual checks flaky | Low–Med | Use each vendor's test/sandbox mode where available; budget time for domain verification before Checkpoint A/B/C, not during |
+| `"auto"` order change is unreachable in practice (needs *no* `SMTP_HOST`/`GMAIL_CLIENT_ID` but a new key set) so gets under-tested | Low | Each checkpoint explicitly tests both the new-provider-selected path and the "nothing changed for existing deployments" regression |
+| Docs elsewhere still describe only 3 providers | Med (docs actively incomplete) | T8 is a repo-wide grep sweep, not a fixed file list — same lesson recorded from the token-blacklist closeout |
+
+## Notes found during implementation
+
+- **T2:** `resend`'s SDK (`resend.emails.send()`) does not throw on API failure — it resolves
+  `{ data: null, error: {...} }` instead, unlike `MailerService`/`GmailApiEmailSender` which throw.
+  SPEC.md's Code Style example didn't check the `error` field. `ResendEmailSender` now checks
+  `error` and throws explicitly, to preserve the "send failures propagate uncaught" architecture
+  decision. Worth checking whether Brevo/SendGrid's SDKs have the same resolve-not-throw shape when
+  T4/T6 verify their real client types.
+- **T6:** `@sendgrid/mail@8.1.6`'s `index.d.ts` confirms `export = mail` — the package exports a
+  module-level singleton `MailService` instance, not a constructor (unlike `Resend`/`BrevoClient`).
+  `SendGridEmailSender` calls `sgMail.setApiKey(...)` in its constructor instead of `new`-ing a
+  client. Verified `MailDataRequired`'s shape (`to`/`from`/`subject`/`html`) matches SPEC.md's
+  assumption. Traced `sgMail.send()` → `@sendgrid/client`'s `axios(...).catch(error => reject(...))`
+  — it rejects the returned promise on API failure, matching Brevo/SMTP/Gmail's
+  "propagate uncaught" contract, unlike Resend's `{data, error}` resolve-not-throw shape. No
+  explicit error-checking needed, same as `BrevoEmailSender`.
+- **T6 (test gotcha):** Because `@sendgrid/mail` exports a singleton object rather than a class,
+  mocking it by referencing an outer `const mockFn = jest.fn()` directly inside the `jest.mock(...)`
+  factory's returned object hits Jest's mock-hoisting TDZ (`jest.mock` calls are hoisted above
+  `const` declarations, so the factory runs before the outer `const` initializes) — this only
+  surfaces under real Jest (`bun run test`/`test:cov`), not Bun's own test runner (`bun test`), so
+  always verify with `bun run test`/`test:cov` per `tasks/todo.md`, not the faster `bun test`.
+  `Resend`/`BrevoClient`'s mocks dodge this by referencing the outer mock fn from inside a nested
+  `mockImplementation(() => (...))` closure (deferred until the constructor actually runs, well
+  after the outer `const` is initialized) — not available here since there's no constructor to mock.
+  Fixed by declaring the mocks inline inside the factory (no outer reference) and obtaining typed
+  handles afterward via `jest.mocked(sgMail.setApiKey)` / `jest.mocked(sgMail.send)`.
 
 ## Open Questions
 
-None remaining — spec's open questions were resolved during planning (charset confirmed safe;
-`DEFAULT_ROLES` intentionally left untouched, consistent with "additive only, no forced grants").
+1. Whether any of the three providers needs more config than a single API key (SPEC.md's one
+   remaining open item) — resolved per-provider at T2/T4/T6 against each SDK's actual minimal send
+   call, not guessed here.
+2. ~~Brevo's exact client/method shape (see Context) — resolved at T4, not before.~~ **Resolved at
+   T4**: `@getbrevo/brevo@6.0.3` ships a Fern-generated SDK. Verified against its shipped `.d.mts`
+   types (not the AI-summarized README): `new BrevoClient({ apiKey })` and
+   `client.transactionalEmails.sendTransacEmail({ sender: { email }, to: [{ email }], subject,
+   htmlContent })`, matching SPEC.md's original assumption. `sendTransacEmail` returns an
+   `HttpResponsePromise<T>` (a `Promise<T>` subclass — `await` resolves the parsed body directly, no
+   `.data` unwrap needed) and rejects with a `BrevoError`/`BrevoTimeoutError` on failure, so no
+   `{data, error}` conversion is needed — errors propagate uncaught exactly like
+   `SmtpEmailSender`/`GmailApiEmailSender`, unlike `ResendEmailSender`'s explicit throw.

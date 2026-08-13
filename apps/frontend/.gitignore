@@ -26,6 +26,10 @@ lerna-debug.log*
 /coverage
 /.nyc_output
 
+# Playwright
+/test-results
+/e2e/screenshots
+
 # IDE - VSCode
 .vscode/*
 !.vscode/settings.json

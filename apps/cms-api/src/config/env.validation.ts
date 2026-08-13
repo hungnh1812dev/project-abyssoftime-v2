@@ -1,5 +1,5 @@
 import { plainToInstance, Transform } from "class-transformer";
-import { IsIn, IsInt, IsString, Min, MinLength, validateSync } from "class-validator";
+import { IsIn, IsInt, IsString, Min, MinLength, ValidateIf, validateSync } from "class-validator";
 
 export const SUPPORTED_DB_DRIVERS = ["postgresql", "mysql", "sqlite"] as const;
 export type DbDriver = (typeof SUPPORTED_DB_DRIVERS)[number];
@@ -85,11 +85,12 @@ export class EnvironmentVariables {
   @MinLength(1)
   TRUST_PROXY: string = "1";
 
-  // Which email sender to use when both SMTP and Gmail API credentials are configured.
+  // Which email sender to use when multiple providers' credentials are configured.
   // "auto" keeps the old implicit behavior: Gmail if GMAIL_CLIENT_ID is set, else SMTP if
-  // SMTP_HOST is set, else console logging. See resolve-email-sender.ts.
-  @IsIn(["auto", "gmail", "smtp", "console"])
-  EMAIL_PROVIDER: "auto" | "gmail" | "smtp" | "console" = "auto";
+  // SMTP_HOST is set, else Resend if RESEND_API_KEY is set, else Brevo if BREVO_API_KEY is set,
+  // else SendGrid if SENDGRID_API_KEY is set, else console logging. See resolve-email-sender.ts.
+  @IsIn(["auto", "gmail", "smtp", "resend", "brevo", "sendgrid", "console"])
+  EMAIL_PROVIDER: "auto" | "gmail" | "smtp" | "resend" | "brevo" | "sendgrid" | "console" = "auto";
 
   // SMTP — SMTP_HOST unset means "use ConsoleEmailSender" (dev/test fallback), see resolve-email-sender.ts
   @IsString()
@@ -148,6 +149,35 @@ export class EnvironmentVariables {
   @IsString()
   @MinLength(1)
   FRONTEND_URL: string = "http://localhost:3000";
+
+  // Resend (https://resend.com) — see EMAIL_PROVIDER above and resolve-email-sender.ts.
+  @IsString()
+  RESEND_API_KEY: string = "";
+
+  // Brevo (https://brevo.com) — see EMAIL_PROVIDER above and resolve-email-sender.ts.
+  @IsString()
+  BREVO_API_KEY: string = "";
+
+  // SendGrid (https://sendgrid.com) — see EMAIL_PROVIDER above and resolve-email-sender.ts.
+  @IsString()
+  SENDGRID_API_KEY: string = "";
+
+  // Redis — optional cache for the refresh-token blacklist (see
+  // docs/documents/token-blacklist-techstack.md). Off by default; the client is never constructed
+  // when disabled. REDIS_URL is only required when the flag is on.
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === undefined) return false;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return value;
+  })
+  @IsIn([true, false])
+  REDIS_ENABLED: boolean = false;
+
+  @ValidateIf((env: EnvironmentVariables) => env.REDIS_ENABLED === true)
+  @IsString()
+  @MinLength(1)
+  REDIS_URL: string = "";
 }
 
 export function validate(config: Record<string, unknown>): EnvironmentVariables {
