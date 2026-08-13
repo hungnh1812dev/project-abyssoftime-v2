@@ -8,6 +8,7 @@
         "@apollo/server": "^5.5.1",
         "@as-integrations/express5": "^1.1.2",
         "@aws-sdk/client-s3": "^3.1095.0",
+        "@getbrevo/brevo": "^6.0.3",
         "@nestjs-modules/mailer": "^2.3.7",
         "@nestjs/apollo": "^13.4.2",
         "@nestjs/common": "^11.1.28",
@@ -295,6 +296,8 @@
     "@eslint/object-schema": ["@eslint/object-schema@2.1.7", "", {}, "sha512-VtAOaymWVfZcmZbp6E2mympDIHvyjXs/12LqWYjVw6qjrfF+VK+fyG33kChz3nnK+SU5/NeHOqrTEHS8sXO3OA=="],
 
     "@eslint/plugin-kit": ["@eslint/plugin-kit@0.4.1", "", { "dependencies": { "@eslint/core": "^0.17.0", "levn": "^0.4.1" } }, "sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA=="],
+
+    "@getbrevo/brevo": ["@getbrevo/brevo@6.0.3", "", {}, "sha512-yWBLKoHC8P5HLZ8z6iRuqDYLpCRKPTUETnZOLZzNDWGFYL78y4SHOTxQVrKH5ROX7f4q+SQ19LD3GWtJlIuNXA=="],
 
     "@graphql-tools/merge": ["@graphql-tools/merge@9.1.9", "", { "dependencies": { "@graphql-tools/utils": "^11.1.0", "tslib": "^2.4.0" }, "peerDependencies": { "graphql": "^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0" } }, "sha512-iHUWNjRHeQRYdgIMIuChThOwoKzA9vrzYeslgfBo5eUYEyHGZCoDPjAavssoYXLwstYt1dZj2J22jSzc2DrN0Q=="],
 

@@ -53,7 +53,7 @@ confirm it against real docs/types before writing code.
 
 ## Phase 2 — Brevo
 
-- [ ] **T3 — Brevo env vars + dependency.** Add `BREVO_API_KEY: string = ""` to `env.validation.ts`;
+- [x] **T3 — Brevo env vars + dependency.** Add `BREVO_API_KEY: string = ""` to `env.validation.ts`;
   extend `EMAIL_PROVIDER` to include `"brevo"`. Add `BREVO_API_KEY=` to `.env.example`, update the
   `EMAIL_PROVIDER` comment. Install `@getbrevo/brevo`.
   - Acceptance: same shape as T1 — boots with the key unset, `EMAIL_PROVIDER=brevo` validates,
