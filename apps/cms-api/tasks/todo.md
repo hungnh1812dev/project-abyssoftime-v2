@@ -186,3 +186,12 @@ confirm it against real docs/types before writing code.
 
 - [ ] **Checkpoint D (final)** — Re-verify every success criterion in `SPEC.md` against the shipped
   code, not against this checklist. `bun run build && bun run lint && bun run test:cov` green. Commit.
+  - Automated portion done 2026-08-13 (build clean, lint 0 errors/1 pre-existing unrelated
+    `main.ts` warning, test:cov 151 suites / 1117 tests all green; confirmed zero diff in
+    `register.service.ts`/`resend-otp.service.ts`/`forgot-password.service.ts` since before Phase 1).
+    Two of SPEC.md's original 8 success criteria remain open, both requiring the user (not this
+    agent): (1) `.env.example` still lacks `sendgrid` in the `EMAIL_PROVIDER` comment and a
+    `SENDGRID_API_KEY=` line — blocked by this agent's global instructions, which forbid editing
+    `.env.example`; (2) no real send has yet been verified through Resend/Brevo/SendGrid (needs live
+    API keys) — same deferral already recorded at Checkpoints A/B/C. User confirmed 2026-08-13:
+    commit now, track both as open follow-ups rather than blocking the checkpoint.
