@@ -121,6 +121,11 @@ confirm it against real docs/types before writing code.
 
 - [ ] **Checkpoint C** — same as B, for SendGrid, plus regression: Resend and Brevo paths both still
   work unmodified. All three provider-specific `SPEC.md` success criteria now met. Commit.
+  - Automated portion done 2026-08-13 (build/lint/test:cov green, 151 suites / 1117 tests, no
+    regressions — `resend-email.sender.ts`/`brevo-email.sender.ts` untouched by Phase 3's code).
+    **Manual send tests deferred** — neither the Resend/Brevo regression sends nor a real SendGrid
+    send (`SENDGRID_API_KEY` + `EMAIL_PROVIDER=sendgrid`) has been run yet. Revisit before any of
+    the three providers is considered production-ready.
 
 ## Phase 4 — Docs, review, cleanup (`docs/rules/workflow.md` steps 4–8)
 
