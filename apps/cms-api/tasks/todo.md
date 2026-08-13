@@ -102,7 +102,7 @@ confirm it against real docs/types before writing code.
     the `EMAIL_PROVIDER` comment to list all 6 values, mirroring the `RESEND_API_KEY`/`BREVO_API_KEY`
     lines already there.
 
-- [ ] **T6 — `SendGridEmailSender` + `resolve-email-sender.ts` wiring (final `"auto"` order).**
+- [x] **T6 — `SendGridEmailSender` + `resolve-email-sender.ts` wiring (final `"auto"` order).**
   Implements `IEmailSender` using `@sendgrid/mail`'s confirmed pattern: `sgMail.setApiKey(...)` at
   construction, `sgMail.send({ to, from, subject, html })` per send call. Wire into
   `resolveEmailSender`: explicit `"sendgrid"` branch, and insert into `"auto"` between the `brevo`

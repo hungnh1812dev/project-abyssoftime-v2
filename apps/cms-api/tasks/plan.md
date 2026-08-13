@@ -141,6 +141,25 @@ three provider-specific `SPEC.md` success criteria now met. Commit.
   `error` and throws explicitly, to preserve the "send failures propagate uncaught" architecture
   decision. Worth checking whether Brevo/SendGrid's SDKs have the same resolve-not-throw shape when
   T4/T6 verify their real client types.
+- **T6:** `@sendgrid/mail@8.1.6`'s `index.d.ts` confirms `export = mail` — the package exports a
+  module-level singleton `MailService` instance, not a constructor (unlike `Resend`/`BrevoClient`).
+  `SendGridEmailSender` calls `sgMail.setApiKey(...)` in its constructor instead of `new`-ing a
+  client. Verified `MailDataRequired`'s shape (`to`/`from`/`subject`/`html`) matches SPEC.md's
+  assumption. Traced `sgMail.send()` → `@sendgrid/client`'s `axios(...).catch(error => reject(...))`
+  — it rejects the returned promise on API failure, matching Brevo/SMTP/Gmail's
+  "propagate uncaught" contract, unlike Resend's `{data, error}` resolve-not-throw shape. No
+  explicit error-checking needed, same as `BrevoEmailSender`.
+- **T6 (test gotcha):** Because `@sendgrid/mail` exports a singleton object rather than a class,
+  mocking it by referencing an outer `const mockFn = jest.fn()` directly inside the `jest.mock(...)`
+  factory's returned object hits Jest's mock-hoisting TDZ (`jest.mock` calls are hoisted above
+  `const` declarations, so the factory runs before the outer `const` initializes) — this only
+  surfaces under real Jest (`bun run test`/`test:cov`), not Bun's own test runner (`bun test`), so
+  always verify with `bun run test`/`test:cov` per `tasks/todo.md`, not the faster `bun test`.
+  `Resend`/`BrevoClient`'s mocks dodge this by referencing the outer mock fn from inside a nested
+  `mockImplementation(() => (...))` closure (deferred until the constructor actually runs, well
+  after the outer `const` is initialized) — not available here since there's no constructor to mock.
+  Fixed by declaring the mocks inline inside the factory (no outer reference) and obtaining typed
+  handles afterward via `jest.mocked(sgMail.setApiKey)` / `jest.mocked(sgMail.send)`.
 
 ## Open Questions
 

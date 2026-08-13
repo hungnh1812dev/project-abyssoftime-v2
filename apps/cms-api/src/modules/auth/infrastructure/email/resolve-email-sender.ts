@@ -10,6 +10,7 @@ import { ConsoleEmailSender } from "./console-email.sender";
 import { GmailApiEmailSender } from "./gmail-api-email.sender";
 import { IEmailTemplateRenderer } from "./renderers/email-template-renderer";
 import { ResendEmailSender } from "./resend-email.sender";
+import { SendGridEmailSender } from "./sendgrid-email.sender";
 import { SmtpEmailSender } from "./smtp-email.sender";
 
 export function resolveEmailSender(configService: ConfigService<EnvironmentVariables, true>, mailerService: MailerService, templateRenderer: IEmailTemplateRenderer): IEmailSender {
@@ -27,12 +28,16 @@ export function resolveEmailSender(configService: ConfigService<EnvironmentVaria
   if (provider === "brevo") {
     return new BrevoEmailSender(configService, templateRenderer);
   }
+  if (provider === "sendgrid") {
+    return new SendGridEmailSender(configService, templateRenderer);
+  }
   if (provider === "console") {
     return new ConsoleEmailSender();
   }
 
   // "auto": Gmail if GMAIL_CLIENT_ID is set, else SMTP if SMTP_HOST is set, else Resend if
-  // RESEND_API_KEY is set, else Brevo if BREVO_API_KEY is set, else console logging.
+  // RESEND_API_KEY is set, else Brevo if BREVO_API_KEY is set, else SendGrid if SENDGRID_API_KEY
+  // is set, else console logging.
   const gmailClientId = configService.get("GMAIL_CLIENT_ID", { infer: true });
   if (gmailClientId) {
     return new GmailApiEmailSender(configService, templateRenderer);
@@ -51,6 +56,11 @@ export function resolveEmailSender(configService: ConfigService<EnvironmentVaria
   const brevoApiKey = configService.get("BREVO_API_KEY", { infer: true });
   if (brevoApiKey) {
     return new BrevoEmailSender(configService, templateRenderer);
+  }
+
+  const sendgridApiKey = configService.get("SENDGRID_API_KEY", { infer: true });
+  if (sendgridApiKey) {
+    return new SendGridEmailSender(configService, templateRenderer);
   }
 
   return new ConsoleEmailSender();
