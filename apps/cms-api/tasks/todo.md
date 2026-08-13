@@ -1,211 +1,197 @@
-# Todo — Refresh Token Blacklist & Logout
+# Todo — Additional Email Providers (Resend, Brevo, SendGrid)
 
-See `tasks/plan.md` for full context, corrections found during planning, and rationale. See
-`SPEC.md` for the spec (objective, confirmed assumptions, boundaries, success criteria).
+See `tasks/plan.md` for full context, architecture decisions, and risks. See `SPEC.md` for the spec
+(objective, confirmed assumptions, boundaries, success criteria).
 
-**Plan reviewed and approved 2026-08-12.** Redis miss semantics resolved to the sticky-degraded
-cache, env vars to `REDIS_ENABLED` + `REDIS_URL`. One minor open question remains (Redis key
-prefix, `tasks/plan.md`) and only affects T9.
+**Plan awaiting review.** One open item carries into implementation: whether any provider needs more
+than a single API key (`tasks/plan.md` Open Questions #1), resolved per-provider as each sender is
+built, not guessed up front. Brevo's exact SDK shape (Open Questions #2) is unverified — T4 must
+confirm it against real docs/types before writing code.
 
-## Phase 1 — Foundation (no behavior change yet)
+## Phase 1 — Resend (first vertical slice, establishes the pattern)
 
-- [x] **T1 — `jti`/`exp` on the refresh payload.** `RefreshTokenPayload` gains `jti?: string` and
-  `exp?: number` (both optional, with the same "minted before this field existed" comment
-  `rememberMe` already carries). `JwtTokenService.signRefreshToken` generates the jti internally via
-  `randomUUID()` from `node:crypto` and still returns just the token string (plan Correction 4).
-  - Acceptance: every signed refresh token decodes to a payload with a unique UUID `jti`; two
-    consecutive calls produce different jtis; `signAccessToken` is untouched.
-  - Verify: `bun run test` — extend `jwt-token.service.spec.ts` with a jti-uniqueness case.
-  - Files: `src/common/types/jwt-payload.ts`, `src/common/token/jwt-token.service.ts`,
-    `src/common/token/jwt-token.service.spec.ts`
+- [x] **T1 — Resend env vars + dependency.** Add `RESEND_API_KEY: string = ""` to
+  `env.validation.ts`; extend the `EMAIL_PROVIDER` type/comment to include `"resend"`. Add
+  `RESEND_API_KEY=` under the existing Email Sender section of `.env.example`, and update its
+  `EMAIL_PROVIDER` comment to list `resend`. Install the `resend` package.
+  - Acceptance: app boots with `RESEND_API_KEY` unset (defaults to `""`, no validation error);
+    `EMAIL_PROVIDER=resend` passes env validation; `resend` appears in `package.json` `dependencies`.
+  - Verify: `bun install && bun run build`.
+  - Files: `src/config/env.validation.ts`, `.env.example`, `package.json`, `bun.lock`
   - Deps: none. Size: S
 
-- [x] **T2 — `RefreshTokenBlacklist` Prisma model + migration.** Postgres only — the mysql/sqlite
-  schemas are empty stubs (plan Correction 1). Columns: `jti String @id`, `userId String? @map("user_id")`,
-  `expiresAt DateTime @map("expires_at")`, `reason String`, `createdAt DateTime @default(now()) @map("created_at")`;
-  `@@index([expiresAt])`, `@@map("refresh_token_blacklist")`.
-  - Acceptance: `bun run prisma:generate` emits `prisma.refreshTokenBlacklist`; a new timestamped
-    migration exists under `prisma/postgresql/migrations/*_add_refresh_token_blacklist/`.
-  - Verify: `bun run prisma:generate && bun run prisma:migrate && bun run build`.
-  - Files: `prisma/postgresql/schema.prisma`, `prisma/postgresql/migrations/<ts>_add_refresh_token_blacklist/migration.sql`
-  - Deps: none (parallel with T1). Size: S
+- [x] **T2 — `ResendEmailSender` + `resolve-email-sender.ts` wiring.** New class implementing
+  `IEmailSender` (`sendOtpEmail`, `sendPasswordResetEmail`) per `SPEC.md`'s Code Style example:
+  constructs a `Resend` client from `RESEND_API_KEY`, reads `EMAIL_FROM`/`FRONTEND_URL` from
+  `ConfigService` in the constructor, calls `templateRenderer.renderOtpEmail`/
+  `renderPasswordResetEmail` for HTML, sends via the SDK's `emails.send()`. Wire it into
+  `resolveEmailSender`: explicit `EMAIL_PROVIDER === "resend"` branch, and insert into `"auto"`
+  between the existing `SMTP_HOST` check and the console fallback (checks `RESEND_API_KEY`).
+  - Acceptance: `EMAIL_PROVIDER=resend` resolves to `ResendEmailSender`; `sendOtpEmail`/
+    `sendPasswordResetEmail` call the SDK with the renderer's HTML output verbatim as `html`, correct
+    `to`/`from`/`subject`; constructing `ConsoleEmailSender`/`SmtpEmailSender`/`GmailApiEmailSender`
+    (i.e. any other provider selected) never constructs a `Resend` client, even with
+    `RESEND_API_KEY` unset; `"auto"` with no provider env vars set still falls through to
+    `ConsoleEmailSender` exactly as today.
+  - Verify: `bun run test` — new `resend-email.sender.spec.ts` (mocked `Resend` client, same pattern
+    as `smtp-email.sender.spec.ts`'s mocked `MailerService`); extend `resolve-email-sender.spec.ts`
+    with the new branch + auto-order cases. `bun run lint`.
+  - Files: `src/modules/auth/infrastructure/email/resend-email.sender.ts`,
+    `src/modules/auth/infrastructure/email/resend-email.sender.spec.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.spec.ts`
+  - Deps: T1. Size: M
 
-- [x] **T3 — Blacklist ports + Postgres-backed store.** `ITokenBlacklistStore` /
-  `ITokenBlacklistCache` / `BlacklistEntry` and the `TOKEN_BLACKLIST_STORE` / `TOKEN_BLACKLIST_CACHE`
-  `Symbol` DI tokens (plan Correction 3); `PrismaTokenBlacklistStore` implementing the store —
-  `blacklist()` upserts (idempotent: re-blacklisting the same jti must not throw on the PK),
-  `isBlacklisted()` finds by jti filtered on `expiresAt > now()`.
-  - Acceptance: store writes and reads a jti; an expired row reads back as not blacklisted;
-    blacklisting the same jti twice resolves without error.
-  - Verify: `bun run test` — new `prisma-token-blacklist.store.spec.ts` mocking `PrismaService`
-    (no `coverageThreshold` entry, per `docs/rules/workflow.md`).
-  - Files: `src/common/token-blacklist/token-blacklist.port.ts`,
-    `src/common/token-blacklist/prisma-token-blacklist.store.ts`,
-    `src/common/token-blacklist/prisma-token-blacklist.store.spec.ts`
-  - Deps: T2. Size: S
+- [ ] **Checkpoint A** — `bun run build && bun run lint && bun run test:cov` all green.
+  `EMAIL_PROVIDER` unset/`smtp`/`gmail`/`console` behave identically to before this phase (no
+  regression). **Manual:** set a real `RESEND_API_KEY` + `EMAIL_PROVIDER=resend` locally, trigger
+  register/resend-OTP and forgot-password, confirm both emails actually arrive with correct content.
+  Commit.
+  - Automated portion done 2026-08-13 (build/lint/test:cov green, 149 suites / 1081 tests, no
+    regressions in the pre-existing provider paths). **Manual send test deferred** — not yet run
+    against a real `RESEND_API_KEY`. Revisit before considering Resend production-ready.
 
-- [x] **T4 — `TokenBlacklistService` + `@Global()` module.** The service injects the store (always)
-  and an optional cache (`null` for now — Phase 4 fills it in): `blacklist()` writes the store then
-  mirrors to the cache if present; `isBlacklisted()` asks the cache first and falls through to the
-  store on `null`. `TokenBlacklistModule` is `@Global()` like `TokenModule`, binds
-  `TOKEN_BLACKLIST_STORE → PrismaTokenBlacklistStore` and `TOKEN_BLACKLIST_CACHE → null`, exports
-  the service; registered in `AppModule` next to `TokenModule`.
-  - Acceptance: service resolves through DI at boot; with a null cache every read hits the store;
-    with a stub cache returning `null` the read still falls through to the store.
-  - Verify: `bun run test` (new `token-blacklist.service.spec.ts`) + `bun run build`.
-  - Files: `src/common/token-blacklist/token-blacklist.service.ts`,
-    `src/common/token-blacklist/token-blacklist.service.spec.ts`,
-    `src/common/token-blacklist/token-blacklist.module.ts`, `src/app.module.ts`
-  - Deps: T3. Size: S
+## Phase 2 — Brevo
 
-- [x] **Checkpoint A** — `bun run build && bun run lint && bun run test:cov` green. Nothing calls the
-  blacklist yet, so **every existing test must pass unmodified** — any change to an existing
-  assertion here means T1 leaked a behavior change. Commit (this checklist's ticks go in the same
-  commit as the phase's code).
+- [x] **T3 — Brevo env vars + dependency.** Add `BREVO_API_KEY: string = ""` to `env.validation.ts`;
+  extend `EMAIL_PROVIDER` to include `"brevo"`. Add `BREVO_API_KEY=` to `.env.example`, update the
+  `EMAIL_PROVIDER` comment. Install `@getbrevo/brevo`.
+  - Acceptance: same shape as T1 — boots with the key unset, `EMAIL_PROVIDER=brevo` validates,
+    dependency installed.
+  - Verify: `bun install && bun run build`.
+  - Files: `src/config/env.validation.ts`, `.env.example`, `package.json`, `bun.lock`
+  - Deps: none (parallel with T1/T2). Size: S
 
-## Phase 2 — Logout actually revokes (first vertical slice)
+- [x] **T4 — `BrevoEmailSender` + `resolve-email-sender.ts` wiring.** **Before writing code**, verify
+  the real `@getbrevo/brevo` v6.0.3 client/method shape against its shipped TypeScript types
+  (`node_modules/@getbrevo/brevo`) or official docs — `tasks/plan.md`'s Context section flags the
+  shape used in `SPEC.md` as an unverified AI summary, not a confirmed fact. Then implement
+  `BrevoEmailSender` implementing `IEmailSender`, same constructor/render/send shape as
+  `ResendEmailSender`. Wire into `resolveEmailSender`: explicit `"brevo"` branch, and insert into
+  `"auto"` between the `resend` check and the console fallback (checks `BREVO_API_KEY`).
+  - Acceptance: same acceptance shape as T2, substituting Brevo; explicit regression check that the
+    Resend branch/tests from T2 are unmodified and still pass.
+  - Verify: `bun run test` — new `brevo-email.sender.spec.ts` (mocked Brevo client); extend
+    `resolve-email-sender.spec.ts`. `bun run lint`.
+  - Files: `src/modules/auth/infrastructure/email/brevo-email.sender.ts`,
+    `src/modules/auth/infrastructure/email/brevo-email.sender.spec.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.spec.ts`
+  - Deps: T2 (same file), T3. Size: M
 
-- [x] **T5 — `JwtRefreshStrategy.validate()` rejects blacklisted jtis.** Inject
-  `TokenBlacklistService`; `validate()` becomes async — when `payload.jti` is present and
-  blacklisted, throw `UnauthorizedException`; when the jti is absent (pre-migration token), skip the
-  check and pass through as today.
-  - Acceptance: blacklisted jti → `401 "Invalid or expired refresh token"` (the existing generic
-    message via `JwtRefreshGuard.handleRequest`, no new wording); non-blacklisted jti → unchanged;
-    missing jti → unchanged, no store call.
-  - Verify: `bun run test` — extend `jwt-refresh.strategy.spec.ts` with all three cases; the
-    extractor cases must still pass untouched.
-  - Files: `src/common/strategies/jwt-refresh.strategy.ts`,
-    `src/common/strategies/jwt-refresh.strategy.spec.ts`
-  - Deps: T4. Size: S
+- [ ] **Checkpoint B** — same as Checkpoint A, for Brevo, plus explicit regression: Resend path
+  (Checkpoint A's manual send) still works unmodified. Commit.
+  - Automated portion done 2026-08-13 (build/lint/test:cov green, 150 suites / 1095 tests, no
+    regressions — `resend-email.sender.ts`/`resolve-email-sender.ts` untouched by Phase 2's code).
+    **Manual send tests deferred** — neither the Resend regression send nor a real Brevo send
+    (`BREVO_API_KEY` + `EMAIL_PROVIDER=brevo`) has been run yet. Revisit before Brevo is considered
+    production-ready.
 
-- [x] **T6 — `LogoutService` + controller/module wiring.** New
-  `application/services/logout.service.ts` (plan Correction 7): takes the raw cookie value, and when
-  it verifies, blacklists `{ jti, userId: sub, expiresAt: new Date(exp * 1000), reason: "logout" }`;
-  any verification failure is swallowed so logout stays a public, always-`200`, idempotent route
-  (SPEC.md assumption 5). Controller reads the cookie off `@Req()`, awaits the service, then clears
-  the cookie exactly as today.
-  - Acceptance: valid cookie → blacklist written, `200`; missing/garbage/expired cookie → `200`,
-    no write, no throw; the `Set-Cookie` clearing behavior is byte-identical to today.
-  - Verify: `bun run test` — new `logout.service.spec.ts` + extended `auth.controller.spec.ts`.
-  - Files: `src/modules/auth/application/services/logout.service.ts`,
-    `src/modules/auth/application/services/logout.service.spec.ts`,
-    `src/modules/auth/presentation/auth.controller.ts`,
-    `src/modules/auth/presentation/auth.controller.spec.ts`,
-    `src/modules/auth/auth.module.ts`
-  - Deps: T5. Size: M
+## Phase 3 — SendGrid
 
-- [x] **Checkpoint B** — `bun run build && bun run lint && bun run test:cov` green. New
-  `test/refresh-token-blacklist.e2e-spec.ts`: login → logout → `/auth/refresh` with that cookie =
-  `401`; login → `/auth/refresh` **without** logging out = `200` (regression guard). `bun run test:e2e`
-  green; created rows cleaned up in `afterAll`. Manual: confirm one `refresh_token_blacklist` row
-  with `reason = 'logout'` and the right `expires_at`. Commit.
+- [x] **T5 — SendGrid env vars + dependency.** Add `SENDGRID_API_KEY: string = ""` to
+  `env.validation.ts`; extend `EMAIL_PROVIDER` to include `"sendgrid"`. Add `SENDGRID_API_KEY=` to
+  `.env.example`, update the `EMAIL_PROVIDER` comment (now lists all 6 values). Install
+  `@sendgrid/mail`.
+  - Acceptance: same shape as T1/T3.
+  - Verify: `bun install && bun run build`.
+  - Files: `src/config/env.validation.ts`, `.env.example`, `package.json`, `bun.lock`
+  - Deps: none (parallel with T1–T4). Size: S
+  - `.env.example` update deferred 2026-08-13 — this agent's global instructions forbid editing
+    `.env.example` (read-only exception). User needs to manually add `SENDGRID_API_KEY=` and update
+    the `EMAIL_PROVIDER` comment to list all 6 values, mirroring the `RESEND_API_KEY`/`BREVO_API_KEY`
+    lines already there.
 
-## Phase 3 — Rotation makes refresh tokens single-use
+- [x] **T6 — `SendGridEmailSender` + `resolve-email-sender.ts` wiring (final `"auto"` order).**
+  Implements `IEmailSender` using `@sendgrid/mail`'s confirmed pattern: `sgMail.setApiKey(...)` at
+  construction, `sgMail.send({ to, from, subject, html })` per send call. Wire into
+  `resolveEmailSender`: explicit `"sendgrid"` branch, and insert into `"auto"` between the `brevo`
+  check and the console fallback (checks `SENDGRID_API_KEY`) — this completes the final order
+  `gmail → smtp → resend → brevo → sendgrid → console`.
+  - Acceptance: same acceptance shape as T2/T4, substituting SendGrid; explicit regression check that
+    Resend and Brevo branches/tests are unmodified; full `"auto"` chain tested end-to-end (each of
+    the 6 env-var combinations resolves to the expected sender class).
+  - Verify: `bun run test` — new `sendgrid-email.sender.spec.ts` (mocked `sgMail`); extend
+    `resolve-email-sender.spec.ts` with the full 6-branch auto-order matrix. `bun run lint`.
+  - Files: `src/modules/auth/infrastructure/email/sendgrid-email.sender.ts`,
+    `src/modules/auth/infrastructure/email/sendgrid-email.sender.spec.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.ts`,
+    `src/modules/auth/infrastructure/email/resolve-email-sender.spec.ts`
+  - Deps: T4 (same file), T5. Size: M
 
-- [x] **T7 — `RefreshTokenService` blacklists the jti it just consumed.** `execute()` takes the
-  verified payload's `jti`/`exp` alongside `sub`/`rememberMe`; after the user/role lookups and token
-  signing succeed, writes `{ jti, userId: sub, expiresAt, reason: "rotation" }` as the **last** step
-  before returning (plan's fail-safe ordering). Skip the write when the old token carried no `jti`.
-  Controller passes the new fields through from `req.user`.
-  - Acceptance: a successful refresh blacklists the old jti; a failed refresh (unknown user, no
-    role) blacklists nothing; a pre-migration token without a jti refreshes successfully with no write.
-  - Verify: `bun run test` — extend `refresh-token.service.spec.ts` and `auth.controller.spec.ts`.
-  - Files: `src/modules/auth/application/services/refresh-token.service.ts`,
-    `src/modules/auth/application/services/refresh-token.service.spec.ts`,
-    `src/modules/auth/presentation/auth.controller.ts`,
-    `src/modules/auth/presentation/auth.controller.spec.ts`
+- [ ] **Checkpoint C** — same as B, for SendGrid, plus regression: Resend and Brevo paths both still
+  work unmodified. All three provider-specific `SPEC.md` success criteria now met. Commit.
+  - Automated portion done 2026-08-13 (build/lint/test:cov green, 151 suites / 1117 tests, no
+    regressions — `resend-email.sender.ts`/`brevo-email.sender.ts` untouched by Phase 3's code).
+    **Manual send tests deferred** — neither the Resend/Brevo regression sends nor a real SendGrid
+    send (`SENDGRID_API_KEY` + `EMAIL_PROVIDER=sendgrid`) has been run yet. Revisit before any of
+    the three providers is considered production-ready.
+
+## Phase 4 — Docs, review, cleanup (`docs/rules/workflow.md` steps 4–8)
+
+- [x] **T7 — New/updated techstack docs.** `docs/documents/auth-email-providers-techstack.md` (new)
+  — the official-SDK-vs-raw-fetch comparison table from `SPEC.md`'s Tech Stack section, plus any
+  provider-specific integration notes discovered during T2/T4/T6 (e.g. the real Brevo shape).
+  `docs/documents/auth-email-techstack.md` — add Resend/Brevo/SendGrid rows to the existing provider
+  comparison.
+  - Verify: both files exist and are linked from `docs/ENTRYPOINT.md`.
+  - Files: `docs/documents/auth-email-providers-techstack.md`,
+    `docs/documents/auth-email-techstack.md`, `docs/ENTRYPOINT.md`
   - Deps: T6. Size: S
 
-- [x] **Checkpoint C** — full suite + `bun run test:e2e` green, with a new e2e case: `/auth/refresh`
-  twice with the *same* cookie → second call `401`; the rotated-to token still works. **Manual
-  `cms-admin` walkthrough** (the "admin" half of this feature — no code changes there, plan
-  Correction 6): log in, click logout, confirm the old session cannot refresh; then log in again and
-  confirm normal navigation still refreshes cleanly across the 15-minute access-token boundary
-  (this is the regression that would bite real users hardest). Commit.
+- [x] **T8 — Update `auth.md` + repo-wide stale-provider-list sweep.** Rewrite `auth.md`'s
+  email-sending section to list all 6 providers and the final `"auto"` order. Then **grep the whole
+  repo** for `"gmail" | "smtp" | "console"` and similar enumerations (`.env.example` comments already
+  done in T1/T3/T5 — verify here; `docs/api-reference.md`/`docs/cms-admin-integration.md` only if
+  either mentions `EMAIL_PROVIDER`) and fix every stale list — a fixed file list is exactly what went
+  wrong in the JWT Bearer migration closeout.
+  - Verify: `grep -rn 'EMAIL_PROVIDER' docs/ .env.example` — every hit lists all 6 values.
+  - Files: `docs/documents/auth.md`, `docs/api-reference.md` (if applicable),
+    `docs/cms-admin-integration.md` (if applicable)
+  - Deps: T7. Size: S–M
+  - Done 2026-08-13: `auth.md`'s Domain port/Module wiring/Known gaps/Tests sections rewritten for all
+    6 providers. Repo grep found no stale enumeration in `api-reference.md`/`cms-admin-integration.md`
+    (neither mentions `EMAIL_PROVIDER`), but did find one outside the plan's file list — the class
+    diagram `docs/diagrams/app-permission-role-user-class-diagram.md`'s `AuthInfrastructure` still
+    listed only 3 senders; fixed. `.env.example`'s `EMAIL_PROVIDER` comment (missing `sendgrid`) and
+    missing `SENDGRID_API_KEY=` line remain deferred from T5 — this agent's global instructions
+    forbid editing `.env.example`; still a manual action item for the user.
 
-## Phase 4 — Optional Redis cache
-
-- [x] **T8 — Env vars + `ioredis` + lazy client provider.** Add `REDIS_ENABLED`
-  (bool, default `false`) and `REDIS_URL` (string, default `""`) to `EnvironmentVariables` and
-  `.env.example`; add `ioredis` to `dependencies` (SPEC.md assumption 6). `redis-client.provider.ts`
-  is a `useFactory` that returns `null` when the flag is off — **the client is never constructed**,
-  so nothing connects.
-  - Acceptance: app boots with the flag off and makes zero Redis connection attempts; with the flag
-    on and a valid `REDIS_URL`, a client is created; validation rejects the flag being on with an
-    empty `REDIS_URL`.
-  - Verify: `bun run test` + `bun run build`; boot locally with the flag off and confirm no Redis
-    traffic (`redis-cli monitor`, or simply no connection error with no Redis running).
-  - Files: `src/config/env.validation.ts`, `.env.example`, `package.json`,
-    `src/common/token-blacklist/redis-client.provider.ts`
-  - Deps: T4 (independent of T5–T7). Size: S
-
-- [x] **T9 — `RedisTokenBlacklistCache` + service composition.** Implements `ITokenBlacklistCache`
-  with the sticky-degraded behavior from plan Correction 2: `blacklist()` does
-  `SET refresh-blacklist:<jti> <reason> PX <ms-until-exp>`; `isBlacklisted()` returns `true`/`false`
-  while healthy and `null` once degraded; **any** Redis error (read or write) logs and permanently
-  flips `trusted = false` for the process. Bind it into `TokenBlacklistModule` in place of the `null`
-  cache when the client exists.
-  - Acceptance: healthy hit → `true`; healthy miss → `false`; after any thrown Redis error → every
-    subsequent call returns `null` (so `TokenBlacklistService` falls through to Postgres) and no
-    further Redis calls are attempted; TTL is derived from `expiresAt`, never a fixed constant.
-  - Verify: `bun run test` — new `redis-token-blacklist.cache.spec.ts` with a mocked ioredis client
-    (no real Redis in unit tests); extend `token-blacklist.service.spec.ts` for the cache-present paths.
-  - Files: `src/common/token-blacklist/redis-token-blacklist.cache.ts`,
-    `src/common/token-blacklist/redis-token-blacklist.cache.spec.ts`,
-    `src/common/token-blacklist/token-blacklist.module.ts`,
-    `src/common/token-blacklist/token-blacklist.service.spec.ts`
-  - Deps: T8. Size: M
-
-- [x] **Checkpoint D** — Flag **off** (the default): `build`/`lint`/`test:cov`/`test:e2e` all green
-  and zero Redis connection attempts at boot. Flag **on** against a local Redis: Checkpoint B and C
-  scenarios pass again by hand, and the blacklist key is visible in Redis with a sane TTL. Then kill
-  Redis mid-session and confirm `/auth/refresh` and `/auth/logout` keep working against Postgres
-  instead of erroring. Commit.
-
-## Phase 5 — Docs, review, cleanup (`docs/rules/workflow.md` steps 4–8)
-
-- [x] **T10 — New module docs.** `docs/documents/token-blacklist.md` (ports, the two stores, the
-  service's compose logic, env flags, the sticky-degraded rule and *why*, known gaps: no expired-row
-  sweep, pre-migration tokens unrevokable, access tokens still valid to their 15-minute expiry) and
-  `docs/documents/token-blacklist-techstack.md` (plan Correction 2's options table + an
-  ioredis-vs-alternatives table, per the decision-rationale rule).
-  - Verify: both files exist and are linked from `docs/ENTRYPOINT.md`.
-  - Files: `docs/documents/token-blacklist.md`, `docs/documents/token-blacklist-techstack.md`,
-    `docs/ENTRYPOINT.md`
-  - Deps: T9. Size: S
-
-- [x] **T11 — Update existing docs + stale-wording sweep.** Rewrite `docs/documents/auth.md`'s
-  "No server-side token revocation" known gap, its logout/refresh endpoint rows, and the
-  `JwtRefreshStrategy`/`RefreshTokenPayload` descriptions. Then **grep the whole repo** for
-  `no server-side token revocation`, `stateless`, `remains valid until`, and `logout` and fix every
-  stale claim — a fixed file list is exactly what went wrong in the JWT Bearer migration closeout.
-  Update `docs/api-reference.md` and `docs/cms-admin-integration.md` if the logout/refresh contract
-  description changes, and the Swagger `@ApiOperation`/`@ApiResponse` text on the two touched routes.
-  - Verify: `grep -ri "no server-side token revocation" .` returns nothing outside the changelog.
-  - Files: `docs/documents/auth.md`, `docs/api-reference.md`, `docs/cms-admin-integration.md`,
-    `docs/documents/swagger.md`, `src/modules/auth/presentation/auth.controller.ts` (Swagger text)
-  - Deps: T10. Size: M
-
-- [x] **T12 — Five-axis review** (correctness, readability, architecture, security, performance) via
-  `agent-skills:code-reviewer`. Security axis must explicitly cover: the blacklist check cannot be
-  bypassed by omitting `jti`; no raw token or JWT is ever logged; the degraded-cache path cannot
-  accept a revoked token; error messages leak nothing about *why* a refresh failed.
+- [x] **T9 — Five-axis review** (correctness, readability, architecture, security, performance) via
+  `agent-skills:code-reviewer`. Security axis must explicitly cover: no API key ever logged (request
+  bodies, error messages); a sender for a non-selected provider is never constructed or called;
+  send failures propagate rather than being silently swallowed; the three new SDKs are inert with no
+  network activity when their provider isn't selected.
   - Verify: findings triaged; anything Critical/Important fixed and re-verified.
-  - Deps: T11. Size: S
-  - **Result:** no Critical findings; all four required security properties confirmed correct.
-    Two Important findings, both fixed and re-verified same day — see `tasks/plan.md`'s "Notes
-    found during implementation" for the full account: (1) `LogoutService`'s blacklist write now
-    swallows/logs a DB failure instead of 500ing an always-`200` route; (2)
-    `RefreshTokenService` now atomically claims the consumed jti (`tryClaim`, a unique-constraint
-    `INSERT`) *before* signing new tokens instead of writing the blacklist entry last, closing a
-    TOCTOU race empirically reproduced (~1-in-5 failure rate) via a `Promise.all`-driven e2e test.
-    `bun run build`/`lint`/`test` (1068)/`test:e2e` (79) all green after the fix.
+  - Deps: T8. Size: S
+  - Done 2026-08-13: **APPROVE**. Reviewer traced the installed `resend`/`@getbrevo/brevo`/
+    `@sendgrid/mail` SDK source directly (not just docs) confirming: Resend's `{data,error}` union
+    can't false-positive, Brevo/SendGrid genuinely reject/throw on failure, all three client
+    constructors do zero network I/O and never throw on a non-empty key, and
+    `resolve-email-sender.spec.ts` has dedicated `not.toHaveBeenCalled()` assertions per SDK for every
+    non-selecting provider (a real guarantee, not prose). No logging of API keys/email bodies found.
+    Zero Critical/Important code findings. One Important **doc-accuracy** finding — `.env.example`
+    still missing `sendgrid` in the `EMAIL_PROVIDER` comment and lacking `SENDGRID_API_KEY=` — is the
+    already-tracked T5 deferral (this agent cannot edit `.env.example`); no new action, still a manual
+    item for the user.
 
-- [x] **T13 — Cleanup.** Reduce `SPEC.md` back to a pointer at `docs/documents/token-blacklist.md`
-  and `auth.md`, per `docs/rules/workflow.md`'s root-docs rule.
+- [x] **T10 — Cleanup.** Reduce `SPEC.md` back to a pointer at `docs/documents/auth-email.md` (or
+  wherever the final content lands), per `docs/rules/workflow.md`'s root-docs rule.
   - Files: `SPEC.md`
-  - Deps: T12. Size: XS
+  - Deps: T9. Size: XS
+  - Done 2026-08-13: `SPEC.md` reduced to a short pointer (same shape as the refresh-token-blacklist
+    feature's closeout, commit `ad0dfc7`) at `docs/documents/auth.md`, `auth-email-techstack.md`, and
+    `auth-email-providers-techstack.md` — the feature's full details, no longer duplicated in
+    `SPEC.md` itself.
 
-- [x] **Checkpoint E (final)** — Re-verify every success criterion in `SPEC.md` against the shipped
-  code, not against this checklist. `bun run build && bun run lint && bun run test:cov && bun run test:e2e`
-  green. Commit.
+- [ ] **Checkpoint D (final)** — Re-verify every success criterion in `SPEC.md` against the shipped
+  code, not against this checklist. `bun run build && bun run lint && bun run test:cov` green. Commit.
+  - Automated portion done 2026-08-13 (build clean, lint 0 errors/1 pre-existing unrelated
+    `main.ts` warning, test:cov 151 suites / 1117 tests all green; confirmed zero diff in
+    `register.service.ts`/`resend-otp.service.ts`/`forgot-password.service.ts` since before Phase 1).
+    Two of SPEC.md's original 8 success criteria remain open, both requiring the user (not this
+    agent): (1) `.env.example` still lacks `sendgrid` in the `EMAIL_PROVIDER` comment and a
+    `SENDGRID_API_KEY=` line — blocked by this agent's global instructions, which forbid editing
+    `.env.example`; (2) no real send has yet been verified through Resend/Brevo/SendGrid (needs live
+    API keys) — same deferral already recorded at Checkpoints A/B/C. User confirmed 2026-08-13:
+    commit now, track both as open follow-ups rather than blocking the checkpoint.

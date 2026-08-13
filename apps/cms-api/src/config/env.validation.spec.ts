@@ -41,6 +41,45 @@ describe("validate", () => {
     expect(result.FRONTEND_URL).toBe("http://localhost:3000");
     expect(result.REDIS_ENABLED).toBe(false);
     expect(result.REDIS_URL).toBe("");
+    expect(result.RESEND_API_KEY).toBe("");
+    expect(result.BREVO_API_KEY).toBe("");
+    expect(result.SENDGRID_API_KEY).toBe("");
+  });
+
+  it("accepts EMAIL_PROVIDER=resend", () => {
+    const result = validate({ ...requiredConfig, EMAIL_PROVIDER: "resend" });
+
+    expect(result.EMAIL_PROVIDER).toBe("resend");
+  });
+
+  it("overrides RESEND_API_KEY when explicitly provided", () => {
+    const result = validate({ ...requiredConfig, RESEND_API_KEY: "re_123" });
+
+    expect(result.RESEND_API_KEY).toBe("re_123");
+  });
+
+  it("accepts EMAIL_PROVIDER=brevo", () => {
+    const result = validate({ ...requiredConfig, EMAIL_PROVIDER: "brevo" });
+
+    expect(result.EMAIL_PROVIDER).toBe("brevo");
+  });
+
+  it("overrides BREVO_API_KEY when explicitly provided", () => {
+    const result = validate({ ...requiredConfig, BREVO_API_KEY: "xkeysib-123" });
+
+    expect(result.BREVO_API_KEY).toBe("xkeysib-123");
+  });
+
+  it("accepts EMAIL_PROVIDER=sendgrid", () => {
+    const result = validate({ ...requiredConfig, EMAIL_PROVIDER: "sendgrid" });
+
+    expect(result.EMAIL_PROVIDER).toBe("sendgrid");
+  });
+
+  it("overrides SENDGRID_API_KEY when explicitly provided", () => {
+    const result = validate({ ...requiredConfig, SENDGRID_API_KEY: "SG.123" });
+
+    expect(result.SENDGRID_API_KEY).toBe("SG.123");
   });
 
   it("transforms COOKIE_SECURE 'true' to boolean true", () => {

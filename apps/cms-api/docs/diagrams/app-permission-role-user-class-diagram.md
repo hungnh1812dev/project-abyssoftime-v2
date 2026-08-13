@@ -111,6 +111,9 @@ classDiagram
             ConsoleEmailSender
             SmtpEmailSender
             GmailApiEmailSender
+            ResendEmailSender
+            BrevoEmailSender
+            SendGridEmailSender
             ApiTokenStrategy
             JwtStrategy
             JwtRefreshStrategy
