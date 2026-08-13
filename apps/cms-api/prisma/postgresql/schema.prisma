@@ -125,3 +125,18 @@ model User {
     @@index([roleId])
     @@map("users")
 }
+
+// Revoked refresh-token jtis (logout or rotation). Not a client-facing CRUD resource — jti is
+// already a UUID and serves as the primary key, so this deliberately skips the documentId/
+// updatedAt/updatedBy convention the other models use. userId has no @relation (unused today,
+// groundwork for a future "log out everywhere" feature — see docs/documents/token-blacklist.md).
+model RefreshTokenBlacklist {
+    jti       String   @id
+    userId    String?  @map("user_id")
+    reason    String
+    expiresAt DateTime @map("expires_at")
+    createdAt DateTime @default(now()) @map("created_at")
+
+    @@index([expiresAt])
+    @@map("refresh_token_blacklist")
+}

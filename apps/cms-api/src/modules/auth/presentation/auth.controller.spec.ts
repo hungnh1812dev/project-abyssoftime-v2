@@ -8,6 +8,7 @@ import { ForgotPasswordService } from "../application/services/forgot-password.s
 import { GetMeService } from "../application/services/get-me.service";
 import { HasUsersService } from "../application/services/has-users.service";
 import { LoginService } from "../application/services/login.service";
+import { LogoutService } from "../application/services/logout.service";
 import { RefreshTokenService } from "../application/services/refresh-token.service";
 import { RegisterService } from "../application/services/register.service";
 import { ResendOtpService } from "../application/services/resend-otp.service";
@@ -34,6 +35,7 @@ describe("AuthController", () => {
   let hasUsersService: jest.Mocked<HasUsersService>;
   let loginService: jest.Mocked<LoginService>;
   let refreshTokenService: jest.Mocked<RefreshTokenService>;
+  let logoutService: jest.Mocked<LogoutService>;
   let forgotPasswordService: jest.Mocked<ForgotPasswordService>;
   let resetPasswordService: jest.Mocked<ResetPasswordService>;
   let getMeService: jest.Mocked<GetMeService>;
@@ -53,6 +55,7 @@ describe("AuthController", () => {
         { provide: HasUsersService, useValue: { execute: jest.fn() } },
         { provide: LoginService, useValue: { execute: jest.fn() } },
         { provide: RefreshTokenService, useValue: { execute: jest.fn() } },
+        { provide: LogoutService, useValue: { execute: jest.fn() } },
         { provide: ForgotPasswordService, useValue: { execute: jest.fn() } },
         { provide: ResetPasswordService, useValue: { execute: jest.fn() } },
         { provide: GetMeService, useValue: { execute: jest.fn() } },
@@ -67,6 +70,7 @@ describe("AuthController", () => {
     hasUsersService = module.get(HasUsersService);
     loginService = module.get(LoginService);
     refreshTokenService = module.get(RefreshTokenService);
+    logoutService = module.get(LogoutService);
     forgotPasswordService = module.get(ForgotPasswordService);
     resetPasswordService = module.get(ResetPasswordService);
     getMeService = module.get(GetMeService);
@@ -151,31 +155,46 @@ describe("AuthController", () => {
     expect(result).toEqual({ message: "Login successful.", accessToken: "access-token" });
   });
 
-  it("refresh() delegates to RefreshTokenService with the guard-verified sub/rememberMe, returns the rotated accessToken in the body, and rotates only the refresh cookie", async () => {
-    const req = { user: { sub: "user-1", rememberMe: true } } as unknown as AuthenticatedRefreshRequest;
+  it("refresh() delegates to RefreshTokenService with the guard-verified sub/rememberMe/jti/exp, returns the rotated accessToken in the body, and rotates only the refresh cookie", async () => {
+    const req = { user: { sub: "user-1", rememberMe: true, jti: "old-jti", exp: 1234567890 } } as unknown as AuthenticatedRefreshRequest;
     refreshTokenService.execute.mockResolvedValue({ accessToken: "new-access-token", refreshToken: "new-refresh-token", refreshTokenMaxAgeMs: 30 * 24 * 60 * 60 * 1000 });
 
     const result = await controller.refresh(req, res as unknown as Response);
 
-    expect(refreshTokenService.execute).toHaveBeenCalledWith("user-1", true);
+    expect(refreshTokenService.execute).toHaveBeenCalledWith("user-1", true, "old-jti", 1234567890);
     expect(res.cookie).toHaveBeenCalledTimes(1);
     expect(res.cookie).toHaveBeenCalledWith(REFRESH_TOKEN_COOKIE, "new-refresh-token", expect.objectContaining({ maxAge: 30 * 24 * 60 * 60 * 1000 }));
     expect(result).toEqual({ message: "Token refreshed.", accessToken: "new-access-token" });
   });
 
-  it("refresh() defaults rememberMe to false for a pre-change refresh token that carries no rememberMe field", async () => {
+  it("refresh() defaults rememberMe to false and passes undefined jti/exp for a pre-change refresh token that carries none of those fields", async () => {
     const req = { user: { sub: "user-1" } } as unknown as AuthenticatedRefreshRequest;
     refreshTokenService.execute.mockResolvedValue({ accessToken: "new-access-token", refreshToken: "new-refresh-token", refreshTokenMaxAgeMs: 7 * 24 * 60 * 60 * 1000 });
 
     await controller.refresh(req, res as unknown as Response);
 
-    expect(refreshTokenService.execute).toHaveBeenCalledWith("user-1", false);
+    expect(refreshTokenService.execute).toHaveBeenCalledWith("user-1", false, undefined, undefined);
   });
 
-  it("logout() clears only the refresh cookie", () => {
-    const result = controller.logout(res as unknown as Response);
+  it("logout() passes the refresh cookie to LogoutService and clears only the refresh cookie", async () => {
+    const req = { cookies: { [REFRESH_TOKEN_COOKIE]: "raw-refresh-token" } } as unknown as Request;
+    logoutService.execute.mockResolvedValue(undefined);
 
+    const result = await controller.logout(req, res as unknown as Response);
+
+    expect(logoutService.execute).toHaveBeenCalledWith("raw-refresh-token");
     expect(res.clearCookie).toHaveBeenCalledTimes(1);
+    expect(res.clearCookie).toHaveBeenCalledWith(REFRESH_TOKEN_COOKIE);
+    expect(result).toEqual({ message: "Logged out." });
+  });
+
+  it("logout() passes undefined to LogoutService when there is no refresh cookie, and still clears the cookie", async () => {
+    const req = { cookies: {} } as unknown as Request;
+    logoutService.execute.mockResolvedValue(undefined);
+
+    const result = await controller.logout(req, res as unknown as Response);
+
+    expect(logoutService.execute).toHaveBeenCalledWith(undefined);
     expect(res.clearCookie).toHaveBeenCalledWith(REFRESH_TOKEN_COOKIE);
     expect(result).toEqual({ message: "Logged out." });
   });

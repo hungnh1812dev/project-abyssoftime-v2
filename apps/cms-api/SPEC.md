@@ -1,3 +1,7 @@
 # Spec
 
-No active backend spec. See `docs/documents/access-tokens.md` ("Content-type-scoped document permissions"), `docs/documents/content-type.md` ("Document permission catalog sync"), `docs/documents/document.md` (`DocumentPermissionsGuard`), `docs/documents/graphql.md` (`assertApiTokenPermission`'s `contentTypeSlug` param), and `docs/documents/permissions.md` ("System-managed scoped permission rows") for the completed backend cycle — API access tokens can now scope a `document:*` permission to one content type (e.g. `document:read:cv-page`) instead of only "all content types", enforced identically on REST and GraphQL. The matching `cms-admin` token-creation UI (Phase 5) is still pending — see `tasks/todo.md`.
+No active spec. See `docs/documents/token-blacklist.md` (+ `docs/documents/token-blacklist-techstack.md`)
+and `docs/documents/auth.md` for the completed Refresh Token Blacklist & Logout feature — refresh
+tokens now carry a `jti`, revocations persist in Postgres (optionally mirrored to Redis behind
+`REDIS_ENABLED`), and both `/auth/logout` and `/auth/refresh` (rotation) write to it, making refresh
+tokens single-use and logout actually revoke server-side state.

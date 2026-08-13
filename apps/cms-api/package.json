@@ -51,6 +51,7 @@
     "dataloader": "^2.2.3",
     "graphql": "^16.11.0",
     "handlebars": "^4.7.9",
+    "ioredis": "^6.0.0",
     "nodemailer": "^9.0.3",
     "passport": "^0.7.0",
     "passport-http-bearer": "^1.0.1",

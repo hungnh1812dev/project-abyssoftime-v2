@@ -1,11 +1,12 @@
 import { type Request } from "express";
 import { Strategy, type StrategyOptions } from "passport-jwt";
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
 
 import { REFRESH_TOKEN_COOKIE } from "@/common/guards/jwt-refresh.guard";
+import { TokenBlacklistService } from "@/common/token-blacklist/token-blacklist.service";
 import { RefreshTokenPayload } from "@/common/types/jwt-payload";
 import { EnvironmentVariables } from "@/config/env.validation";
 
@@ -18,7 +19,10 @@ export function jwtRefreshCookieExtractor(req: Request): string | null {
 
 @Injectable()
 export class JwtRefreshStrategy extends PassportStrategy(Strategy, "jwt-refresh") {
-  constructor(configService: ConfigService<EnvironmentVariables, true>) {
+  constructor(
+    configService: ConfigService<EnvironmentVariables, true>,
+    private readonly tokenBlacklistService: TokenBlacklistService,
+  ) {
     super({
       jwtFromRequest: jwtRefreshCookieExtractor,
       ignoreExpiration: false,
@@ -26,7 +30,11 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, "jwt-refresh"
     } satisfies StrategyOptions);
   }
 
-  validate(payload: RefreshTokenPayload): RefreshTokenPayload {
+  async validate(payload: RefreshTokenPayload): Promise<RefreshTokenPayload> {
+    if (payload.jti && (await this.tokenBlacklistService.isBlacklisted(payload.jti))) {
+      throw new UnauthorizedException();
+    }
+
     return payload;
   }
 }
