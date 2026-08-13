@@ -8,7 +8,7 @@
         "start": "next start --port 5005",
         "lint": "BROWSERSLIST_IGNORE_OLD_DATA=1 eslint ./src",
         "analyze": "ANALYZE=true next build",
-        "test": "bun test"
+        "test": "bun test src"
     },
     "dependencies": {
         "@codemirror/autocomplete": "^6.19.1",

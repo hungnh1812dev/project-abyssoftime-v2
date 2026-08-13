@@ -262,18 +262,28 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
   - Files: `e2e/{auth-login,nav-role-visibility,route-guard}.test.ts`
   - Deps: T15. Size: M
 
-- [ ] **T17 — Documentation.** Reconcile `SPEC.md` with what shipped — the Auth.js adoption
-  (Correction 1, replacing the hand-rolled BFF session), the `src/lib/` correction (2), the
-  `useSessionTimeout` reversal (3), and the resolved open questions.
-  - Acceptance: SPEC.md's session-design section rewritten around Auth.js with Q1–Q5 marked resolved;
-    `AUTH_SECRET` + `CMS_API_URL` documented and `APP_PASSCODE`/`SESSION_SECRET` removed; the D10
-    refresh-race mitigation written down (it is the least obvious thing here); `tasks/todo.md`
-    checkboxes complete.
-  - Verify: re-read `SPEC.md` against the diff; no stale `src/libs/` or hand-rolled-cookie references.
-  - Files: `SPEC.md`, `README.md`, `.env.example`, `tasks/todo.md`
+- [x] **T17 — Documentation.** ✅ **Done (2026-08-13, plan Correction 21)** — Reconciled `SPEC.md`
+  with what shipped — the Auth.js adoption (Correction 1, replacing the hand-rolled BFF session),
+  the `src/lib/` correction (2), the `useSessionTimeout` reversal (3), and the resolved open
+  questions.
+  - Acceptance: SPEC.md's session-design section rewritten around Auth.js with Q1–Q5 marked resolved
+    (done); `AUTH_SECRET` + `CMS_API_URL` documented in SPEC.md's env table (done) and
+    `APP_PASSCODE`/`SESSION_SECRET` marked removed (done — grep confirms zero hits); the D10
+    refresh-race mitigation written down in full (done); `tasks/todo.md` checkboxes complete (done,
+    this edit). **`.env.example` itself is not updated** — this assistant's own global instructions
+    block editing/creating/deleting any `.env*` file besides reading `.env.example`; the exact
+    required diff is written up in SPEC.md's "Known gaps" section and plan.md Correction 21 instead,
+    for the user (or a future session with file access) to apply.
+  - Verify: re-read `SPEC.md` against the diff — no stale `src/libs/` or hand-rolled-`abyss_session`
+    references remain (both explicitly called out as superseded, not silently dropped).
+  - Files: `SPEC.md`, `README.md`, `tasks/todo.md`. **`.env.example` not touched — see above.**
   - Deps: T16. Size: S
 
 ### ✅ Checkpoint F — Complete
-- [ ] All 12 SPEC.md success criteria met
-- [ ] `bun test` + `bunx playwright test` + `bun run lint` + `bun run build` all green
-- [ ] Ready for `/agent-skills:review`
+- [ ] All 12 SPEC.md success criteria met — 11/12 met, #10 partial: `bunx playwright test` isn't
+  fully green yet, blocked on `E2E_ADMIN_*`/`E2E_SUPER_ADMIN_*` missing from `.env.local`
+  (Corrections 19–21), not on a code defect
+- [x] `bun test` + `bun run lint` + `bun run build` all green
+- [ ] `bunx playwright test` fully green — owed, see above
+- [ ] Ready for `/agent-skills:review` — code-complete, but recommend closing the E2E-credential gap
+  first so review isn't done against a suite that can't fully run

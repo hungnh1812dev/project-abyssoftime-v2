@@ -409,6 +409,40 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     `Missing E2E_<ROLE>_EMAIL/PASSWORD` error as T15's specs, not a generic timeout. `bunx tsc
     --noEmit` clean.
 
+21. **T17 (docs) shipped 2026-08-13 — full `SPEC.md` rewrite, plus two real bugs found while
+    fact-checking the rewrite against the filesystem.** `SPEC.md`'s Session Design section is
+    rewritten entirely around Auth.js (D1's comparison table, the real `authjs.session-token`
+    cookie shape, the actual login/refresh/logout flows through `auth.config.ts`'s callbacks),
+    Decisions & Rationale gained D5–D11 (previously only tracked in this plan file, now also in
+    SPEC.md so it's the durable reference), the Contract section's worked example was replaced with
+    the real shipped nav table (Correction 17/20 — no `/cv-2`), and Q1–Q5 are all marked resolved.
+    Two things caught by verifying every claim before committing rather than trusting memory:
+    - The Project Structure tree's first draft put `auth.config.ts`/`auth.ts` at
+      `apps/frontend/auth.config.ts` (repo root) — wrong; they're `src/auth.config.ts`/`src/auth.ts`
+      (confirmed via `find` and the `@/auth` import alias in `HeaderBar.tsx`). Every other path in
+      the tree was then individually checked to exist via a loop of `[ -e "$f" ]` before shipping
+      the doc, rather than assuming the rest were right too.
+    - `package.json`'s `"test": "bun test"` script has been broken since T4 — never caught because
+      every prior verification in this plan (Corrections 10–20) ran the already-scoped
+      `bun test src` by hand and never exercised the bare `bun run test`/`bun test` command. Bun's
+      default test glob also picks up `e2e/*.test.ts`, which are Playwright specs; running them
+      under Bun's own test runner throws (`test.describe() did not expect to be called here`).
+      Fixed: `"test": "bun test src"`. Verified: `bun run test` now runs clean (78 pass), where it
+      previously failed with `exit code 1` after 10 errors from the e2e collision.
+    `README.md`'s one stale reference (`APP_PASSCODE`/`SESSION_SECRET`, and a broken link to a
+    `rules/frontend/auth.md` that turns out not to exist at all — checked, not just assumed) is
+    fixed to point at `AUTH_SECRET`/`CMS_API_URL` and SPEC.md's Session Design section instead.
+    **`.env.example` — in T17's own declared `Files:` list — was not touched.** This assistant's
+    global instructions (`~/.claude/CLAUDE.md`) block editing/creating/deleting any `.env*` file
+    except reading `.env.example`; there's no override for a task file list saying otherwise. The
+    exact required diff (drop the stale "Strapi CMS" labels, add `CMS_API_URL`'s `/api/v1` note, add
+    the four `E2E_<ROLE>_EMAIL`/`PASSWORD` vars from Corrections 19–20) is written into SPEC.md's new
+    "Known gaps" section instead, for the user or a future session with file access to apply.
+    Also carried into SPEC.md and `tasks/todo.md`'s Checkpoint F rather than glossed over: Success
+    Criterion 10 is genuinely only **partial** — `bun test`/`bun run lint`/`bun run build` are all
+    verified clean this session, but `bunx playwright test` is not fully green pending the
+    `E2E_ADMIN_*`/`E2E_SUPER_ADMIN_*` credentials (same gap as Corrections 19–20, still open).
+
 ## Resolved open questions
 
 | Q | Resolution |
