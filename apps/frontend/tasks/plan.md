@@ -239,6 +239,40 @@ may reach each page from the CMS, and the frontend enforces it server-side with 
     `unstable_after`) in place of the `NextFetchEvent.waitUntil` the proxy passes — same
     `(promise) => void` shape `getNavRouteRules` already expects, so no signature change was needed.
 
+16. **T13's coalescer takes an injectable fetcher instead of mocking the `cms-auth.client` module
+    (2026-08-13).** `refreshAccessToken(refreshToken, fetcher = cmsRefresh)` — real ESM named
+    exports are read-only bindings, so `bun:test`'s `mock()` can't monkey-patch `cmsRefresh` the
+    way earlier tasks stubbed `globalThis.fetch`; a plain default-parameter seam is simpler than
+    reaching for `mock.module()` and keeps the D10 single-flight guarantee (10 concurrent calls for
+    the same refresh token → exactly one underlying call) directly assertable.
+    `auth.config.ts`'s `jwt` callback (not `auth.ts`, same as Correction 11) refreshes on an early
+    60s skew window before `accessTokenExpires`, or unconditionally when `trigger === "update"`
+    (useSessionTimeout's "extend session" action) — but *not* on every request once `token.error`
+    is already set, so an already-blacklisted refresh token doesn't get retried against cms-api on
+    every single request forever. A failed refresh nulls `roleSlug`/`name`/`email` in the `session`
+    callback's output (not just a flag) so proxy/`requireRole`'s existing `roleSlug`-based gating
+    fails closed on the very next request without needing new logic there — "clears the session"
+    happens through the same mechanism as an anonymous visitor, deliberately, rather than a second
+    code path. Two new session-visible fields were added to support this: `accessTokenExpires`
+    (a plain timestamp, not a secret — lets the client drive `useSessionTimeout`'s countdown
+    without polling) and `error?: "RefreshTokenError"`.
+    `useSessionTimeout` (`src/hooks/useSessionTimeout.ts`) is now genuinely re-pointed at that real
+    expiry via `useSession()` instead of the old idle-activity timer — `extendSession` calls
+    `update()`, which round-trips through the `jwt` callback above and forces a refresh. Its
+    props (`enabled`, `onExpire`) are unchanged, so `Secret.tsx`/`AccountManager.tsx` needed no
+    edits, matching the plan's declared `Files:` list for this task. One ESLint fix along the way:
+    `react-hooks/refs` (the React Compiler's stricter refs rule) flags writing `ref.current` during
+    render even for a "just mirror the latest callback" ref — moved into its own `useEffect`.
+    **Verification, same shape as Corrections 10–15:** `bun test src` (78 pass across 9 files,
+    including 6 new coalescer cases), `bun run lint`, `bunx tsc --noEmit`, `bun run build` (with an
+    inline placeholder `AUTH_SECRET`, not written to any file) all clean. The task's own
+    highest-value Verify step — shorten cms-api's access-token TTL, fire 10 parallel requests
+    across the expiry boundary, assert exactly one `/auth/refresh` call server-side — needs a
+    running cms-api and frontend dev server; neither was up this session (same live-infra gap as
+    Corrections 10–14). Also still owed: a real browser check that the warning dialog appears
+    before expiry and "extend" dismisses it, and that a blacklisted-refresh scenario actually lands
+    the user back on `/auth` rather than just failing closed at the next server-rendered request.
+
 ## Resolved open questions
 
 | Q | Resolution |

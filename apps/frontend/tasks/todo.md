@@ -206,7 +206,7 @@ still describes the hand-rolled session and `src/libs/` paths; T17 reconciles it
 
 ## Phase 5 — Refresh and teardown
 
-- [ ] **T13 — Refresh rotation with coalescing (D10).** The highest-risk task. Refresh cms-api's
+- [x] **T13 — Refresh rotation with coalescing (D10).** The highest-risk task. Refresh cms-api's
   token pair from the `jwt` callback, but **not** the way the Auth.js guide writes it — route the
   rotation through a module-level in-flight map keyed on the refresh token, mirroring `healthCache`'s
   single-flight shape. Refresh on an early skew window, not at expiry. On failure set

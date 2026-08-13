@@ -78,6 +78,21 @@ export async function cmsGetMe(accessToken: string): Promise<CmsMeResult> {
   };
 }
 
+// Same request shape as cmsLogin's rotation half: the refresh token travels as a Cookie header
+// (never a body), and cms-api responds with a fresh access token plus a rotated refresh_token
+// cookie — the consumed one is blacklisted server-side the moment this call lands (tryClaim()).
+export async function cmsRefresh(refreshToken: string): Promise<CmsLoginResult> {
+  const res = await fetch(`${CMS_API_URL}/auth/refresh`, {
+    method: "POST",
+    headers: { Cookie: `${REFRESH_TOKEN_COOKIE}=${refreshToken}` },
+  });
+
+  if (!res.ok) throw new CmsAuthError(res.status, `cms-api refresh failed with status ${res.status}`);
+
+  const body = (await res.json()) as { accessToken: string };
+  return { accessToken: body.accessToken, refreshToken: extractRefreshToken(res) };
+}
+
 // cms-api's logout endpoint reads the refresh token off a `refresh_token` cookie, never a body or
 // Authorization header (see jwtRefreshCookieExtractor) — the same asymmetry as login's Set-Cookie,
 // mirrored in the opposite direction.
