@@ -4,18 +4,8 @@ import fs from "fs";
 test("CV page spacing screenshot", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 
-  await page.goto("/en/auth?returnTo=/en/cv");
-  await page.waitForLoadState("networkidle");
-
-  const input = page.locator("input[type='password'], input[type='text'], input").first();
-  await input.fill("123456");
-
-  // Click submit button
-  const submitBtn = page.locator("button[type='submit'], button").first();
-  await submitBtn.click();
-
-  // Wait for navigation to CV page — exact path match (not inside query string)
-  await page.waitForURL(/localhost:4000\/en\/cv$/, { timeout: 10000 });
+  // /cv has requiresRole "all" in the CMS nav — public, no login needed.
+  await page.goto("/en/cv");
   await page.waitForLoadState("networkidle");
 
   console.log("Current URL:", page.url());

@@ -1,7 +1,10 @@
 import { test, expect } from "@playwright/test";
 
+import { loginAs } from "./test-helpers";
+
 test("Load Content button: disabled by default, enabled when filePassword has value", async ({ page }) => {
-  await page.goto("http://localhost:4000/en/secret");
+  // /secret requires super_admin (T1 audited it into the CMS nav) — it was never gated pre-T14.
+  await loginAs(page, "super_admin", "/en/secret");
 
   const loadBtn = page.getByRole("button", { name: "Load Content" });
 

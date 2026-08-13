@@ -27,8 +27,9 @@ bun run analyze    # ANALYZE=true next build — bundle analyzer
 bunx playwright test   # E2E suite
 ```
 
-Copy `.env.example` to `.env.local` and fill in `APP_PASSCODE`/`SESSION_SECRET` for local auth
-(both have fallback defaults if unset — see `rules/frontend/auth.md`).
+Copy `.env.example` to `.env.local` and fill in `AUTH_SECRET`/`CMS_API_URL` for local auth (the app
+fails loudly at boot if `AUTH_SECRET` is unset) — see `SPEC.md`'s Session Design section for the
+full Auth.js v5 flow.
 
 ## Deploy
 

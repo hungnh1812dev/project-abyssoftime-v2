@@ -1,15 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { unlockAndGoto } from "./test-helpers";
+import { loginAs } from "./test-helpers";
 
 test.describe("EN Vocab — URL-synced pack navigation", () => {
   test("direct URL load renders the requested group/pack", async ({ page }) => {
-    await unlockAndGoto(page, "/en/learning/english?group=2&pack=3");
+    await loginAs(page, "admin", "/en/learning/english?group=2&pack=3");
 
     await expect(page.getByRole("button", { name: /^Pack 13\b/ }).first()).toBeVisible();
   });
 
   test("selecting a different pack replaces the URL instead of pushing a new history entry", async ({ page }) => {
-    await unlockAndGoto(page, "/en/learning/english?group=1&pack=1");
+    await loginAs(page, "admin", "/en/learning/english?group=1&pack=1");
 
     await page.goto("/en/learning/english?group=1&pack=2");
     await page.waitForLoadState("networkidle");
@@ -29,7 +29,7 @@ test.describe("EN Vocab — URL-synced pack navigation", () => {
   });
 
   test("out-of-range group/pack in the URL clamps to a valid pack", async ({ page }) => {
-    await unlockAndGoto(page, "/en/learning/english?group=999&pack=1");
+    await loginAs(page, "admin", "/en/learning/english?group=999&pack=1");
 
     await expect(page).not.toHaveURL(/group=999/);
   });
