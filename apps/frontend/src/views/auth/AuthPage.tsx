@@ -22,6 +22,9 @@ interface AuthPageProps {
 const ERROR_MESSAGES: Record<string, string> = {
   unverified: "Tài khoản chưa được xác thực. Vui lòng kiểm tra email.",
   credentials: "Email hoặc mật khẩu không đúng.",
+  // Deliberately does not say "thử lại" (try again) — that wording is what drives the retry burst
+  // this error exists to stop; telling the user to wait is the fix.
+  rate_limited: "Bạn đã thử đăng nhập quá nhiều lần. Vui lòng đợi khoảng 1 phút rồi thử lại.",
 };
 const FALLBACK_ERROR_MESSAGE = "Đăng nhập không thành công. Vui lòng thử lại.";
 

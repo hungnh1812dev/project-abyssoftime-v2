@@ -37,6 +37,16 @@ class UnverifiedAccountError extends CredentialsSignin {
   code = "unverified";
 }
 
+// cms-api's login route is behind a per-IP token-bucket (RateLimitGuard) — a burst of attempts
+// (typos, double-clicks, or several users sharing one IP/proxy) trips it and returns 429. Without
+// this, authorize() fell through to `throw error` for any non-401/403 status, which Auth.js turns
+// into a generic CallbackRouteError with no `code` AuthPage can key off of — the resulting fallback
+// message ("Login failed, try again") reads as a normal failure and invites exactly the retry that
+// keeps the bucket pinned, compounding into a burst of calls that never gets through.
+class RateLimitedError extends CredentialsSignin {
+  code = "rate_limited";
+}
+
 // Split from auth.ts (which calls NextAuth(authConfig)) so future OAuth providers drop in here
 // without restructuring. The proxy guard (T11) does NOT use this config directly — see
 // `proxyAuthConfig` below — because its `jwt` callback attempts a refresh, and the proxy and a
@@ -78,6 +88,7 @@ export const authConfig = {
         } catch (error) {
           if (error instanceof CmsAuthError && error.status === 403) throw new UnverifiedAccountError();
           if (error instanceof CmsAuthError && error.status === 401) return null;
+          if (error instanceof CmsAuthError && error.status === 429) throw new RateLimitedError();
           throw error;
         }
       },
