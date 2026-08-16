@@ -14,7 +14,7 @@ State: `{ user, loading }` where `user: MeUser | null` (`documentId`, `email`, `
 
 ## `HealthContext` (`src/context/HealthContext.tsx`)
 
-Independent of auth — polls `GET {VITE_API_URL}/health` (unprefixed, no `/api/v1`, no credentials) on an adaptive interval: 14 minutes while healthy, 10 seconds while unhealthy, 5s fetch timeout via `AbortController`. Pauses polling when the tab is hidden (`visibilitychange`) and re-pings immediately on becoming visible. Renders `ConnectionOverlay` (full-screen blocking spinner, "Connecting to service...") as a sibling to `children` whenever unhealthy — this is what covers a cold backend start for the whole app, login screen included, hence why `HealthProvider` wraps `BrowserRouter` in `main.tsx` (see [app-shell.md](./app-shell.md)).
+Independent of auth — polls `GET {VITE_API_URL}/health` (unprefixed, no `/api/v1`, no credentials) on an adaptive interval: 14 minutes while healthy, 10 seconds while unhealthy, 5s fetch timeout via `AbortController`. Pauses polling when the tab is hidden (`visibilitychange`) and re-pings immediately on becoming visible. Tracks a tri-state `status: "checking" | "healthy" | "unhealthy"` (starts `"checking"`, not an optimistic `"healthy"` — the initial ping's in-flight window needs to be covered too). Renders `ConnectionOverlay` (full-screen blocking spinner, "Connecting to service...") as a sibling to `children` whenever `status !== "healthy"` — this is what covers a cold backend start for the whole app, login screen included, hence why `HealthProvider` wraps `BrowserRouter` in `main.tsx` (see [app-shell.md](./app-shell.md)).
 
 ## `ProtectedRoute` (`src/components/ProtectedRoute.tsx`)
 

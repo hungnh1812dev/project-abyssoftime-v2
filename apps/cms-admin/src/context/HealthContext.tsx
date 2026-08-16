@@ -6,14 +6,16 @@ const PING_INTERVAL_HEALTHY = 14 * 60 * 1000;
 const PING_INTERVAL_UNHEALTHY = 10 * 1000;
 const PING_TIMEOUT = 5 * 1000;
 
+type HealthStatus = "checking" | "healthy" | "unhealthy";
+
 interface HealthContextValue {
-  isApiHealthy: boolean;
+  status: HealthStatus;
 }
 
 const HealthContext = createContext<HealthContextValue | null>(null);
 
 export function HealthProvider({ children }: { children: ReactNode }) {
-  const [isApiHealthy, setIsApiHealthy] = useState(true);
+  const [status, setStatus] = useState<HealthStatus>("checking");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const pingRef = useRef<() => void>(() => {});
@@ -38,10 +40,10 @@ export function HealthProvider({ children }: { children: ReactNode }) {
         if (!mountedRef.current) return;
 
         if (response.ok) {
-          setIsApiHealthy(true);
+          setStatus("healthy");
           timerRef.current = setTimeout(() => pingRef.current(), PING_INTERVAL_HEALTHY);
         } else {
-          setIsApiHealthy(false);
+          setStatus("unhealthy");
           timerRef.current = setTimeout(() => pingRef.current(), PING_INTERVAL_UNHEALTHY);
         }
       })
@@ -49,7 +51,7 @@ export function HealthProvider({ children }: { children: ReactNode }) {
         clearTimeout(timeoutId);
         if (!mountedRef.current) return;
 
-        setIsApiHealthy(false);
+        setStatus("unhealthy");
         timerRef.current = setTimeout(() => pingRef.current(), PING_INTERVAL_UNHEALTHY);
       });
   }
@@ -84,9 +86,9 @@ export function HealthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <HealthContext.Provider value={{ isApiHealthy }}>
+    <HealthContext.Provider value={{ status }}>
       {children}
-      <ConnectionOverlay visible={!isApiHealthy} />
+      <ConnectionOverlay visible={status !== "healthy"} />
     </HealthContext.Provider>
   );
 }

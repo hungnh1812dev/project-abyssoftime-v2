@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HealthProvider, useHealthStatus } from "@/context/HealthContext";
 
 function HealthDisplay() {
-  const { isApiHealthy } = useHealthStatus();
-  return <span data-testid="health">{isApiHealthy ? "healthy" : "unhealthy"}</span>;
+  const { status } = useHealthStatus();
+  return <span data-testid="health">{status}</span>;
 }
 
 function flushPromises() {
@@ -30,7 +30,7 @@ describe("HealthProvider", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders children with healthy state initially and no overlay blocking", async () => {
+  it("hides overlay once the initial health check resolves healthy", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
 
     render(
@@ -39,12 +39,36 @@ describe("HealthProvider", () => {
       </HealthProvider>,
     );
 
+    await flushAll();
+
     expect(screen.getByTestId("health")).toHaveTextContent("healthy");
 
     const overlay = screen.getByRole("alert");
     expect(overlay).toHaveClass("pointer-events-none");
     expect(overlay).toHaveClass("opacity-0");
 
+    vi.unstubAllGlobals();
+  });
+
+  it("shows overlay while initial health check is still in flight", async () => {
+    let resolveFetch: (value: { ok: boolean }) => void;
+    const pendingFetch = new Promise<{ ok: boolean }>((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(pendingFetch));
+
+    render(
+      <HealthProvider>
+        <HealthDisplay />
+      </HealthProvider>,
+    );
+
+    // Fetch has been called but has not resolved yet — health status is unknown.
+    const overlay = screen.getByRole("alert");
+    expect(overlay).not.toHaveClass("pointer-events-none");
+    expect(overlay).not.toHaveClass("opacity-0");
+
+    resolveFetch!({ ok: true });
     await flushAll();
     vi.unstubAllGlobals();
   });
