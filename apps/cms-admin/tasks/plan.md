@@ -279,8 +279,8 @@ renders `ConnectionOverlay` until Task 4). Expected, in-progress state.
     ```
 
 - **Acceptance criteria:**
-  - [ ] `ConnectionOverlay` renders exactly once in the whole app, from `BootOverlay`.
-  - [ ] `BootOverlay.test.tsx` covers the 4-case truth table above.
+  - [x] `ConnectionOverlay` renders exactly once in the whole app, from `BootOverlay`.
+  - [x] `BootOverlay.test.tsx` covers the 4-case truth table above.
 - **Verify:** `bun run test -- src/components/__tests__/BootOverlay.test.tsx`; `bun run test` (full
   suite); `bun run build`; `bun run lint`.
 - **Dependencies:** Task 1; sequenced last.

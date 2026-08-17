@@ -26,7 +26,7 @@ each task completes.
 - [ ] **Checkpoint** — full suite lint/test/build clean; commit
 
 ## Phase 4: BootOverlay + wiring
-- [ ] 4. New `components/BootOverlay.tsx` + `BootOverlay.test.tsx`; wire into `main.tsx`
+- [x] 4. New `components/BootOverlay.tsx` + `BootOverlay.test.tsx`; wire into `main.tsx`
 - [ ] **Final Checkpoint** — full lint/test/build clean; live walkthrough (no blank flash, no
       spurious logout across a simulated 14.5min ping); commit
 

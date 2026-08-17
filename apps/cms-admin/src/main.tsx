@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "sonner";
 
+import { BootOverlay } from "@/components/BootOverlay";
 import { AuthProvider } from "@/context/AuthContext";
 import { HealthProvider } from "@/context/HealthContext";
 import { queryClient } from "@/lib/queryClient";
@@ -19,6 +20,7 @@ createRoot(document.getElementById("root")!).render(
         <BrowserRouter>
           <AuthProvider>
             <AppRouter />
+            <BootOverlay />
           </AuthProvider>
         </BrowserRouter>
       </HealthProvider>
