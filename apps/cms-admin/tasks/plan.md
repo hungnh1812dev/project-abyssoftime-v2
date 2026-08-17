@@ -289,28 +289,38 @@ renders `ConnectionOverlay` until Task 4). Expected, in-progress state.
 - **Scope:** S/M.
 
 ### Final Checkpoint
-- [ ] Full `bun run lint` + `bun run test` + `bun run build` clean across the whole diff.
-- [ ] `grep -rn "ConnectionOverlay" src` shows exactly 2 non-test hits: its own definition and the
+- [x] Full `bun run lint` + `bun run test` + `bun run build` clean across the whole diff.
+- [x] `grep -rn "ConnectionOverlay" src` shows exactly 2 non-test hits: its own definition and the
       single render site inside `BootOverlay.tsx`.
-- [ ] **Live/manual walkthrough**: `bun run dev`, hard-refresh, confirm a single continuous
+- [~] **Live/manual walkthrough**: `bun run dev`, hard-refresh, confirm a single continuous
       connecting overlay through to Login/Admin with no intermediate blank white flash. Optionally
       throttle the backend to make a regression visually obvious. Separately verify the
       anti-logout invariant for real: stay logged in past a simulated 14.5-minute health ping cycle
       and confirm the session survives a transient ping failure without logging out.
+  - Deferred to the user — no browser tool available in this environment to perform it.
   - Commit as soon as Task 4's automated checks pass — don't hold the commit open waiting on this
-    manual walkthrough.
-- [ ] **Update docs:**
+    manual walkthrough. (Done: `e52ec7b`.)
+- [x] **Update docs:**
   - `docs/documents/app-shell.md` — `ConnectionOverlay` now renders from `BootOverlay` (inside
     `AuthProvider`), not `HealthProvider` directly; the new reason `HealthProvider` still wraps
     `BrowserRouter`/`AuthProvider` is so `AuthContext` can call `useHealthStatus()`. Document the
     `14.5 * 60 * 1000` keep-alive interval and the Render 15-minute idle-suspend rationale.
   - `docs/documents/auth.md` — its `HealthContext` section and intro "API-health gating" line go
     stale; update to describe the new gated sequencing and the flap-safety `startedRef` invariant.
-- [ ] **Update spec**: reflect final shipped state in `specs/cms-admin-boot-overlay-sequencing.md`.
-- [ ] **Review**: five-axis code review (correctness, readability, architecture, security,
-      performance) — correctness axis re-verifies the `startedRef` flap-safety invariant and the
-      `healthStatus`/`status` shadowing fix.
-- [ ] **Clean up**: delete `specs/cms-admin-boot-overlay-sequencing.md` after Review completes.
+  - Committed `f1f9f36`.
+- [x] **Update spec**: reflect final shipped state in `specs/cms-admin-boot-overlay-sequencing.md`
+      (before deletion, below).
+- [x] **Review**: five-axis code review (correctness, readability, architecture, security,
+      performance) via the `agent-skills:code-reviewer` subagent over `git diff f0835fd..HEAD` —
+      **APPROVE**, no correctness issues. Both specifically-asked questions confirmed sound: the
+      `startedRef` guard holds under React 19 StrictMode's double-invoke (the gating effect can't
+      fire during the synchronous replay since the real `/health` fetch can't resolve within that
+      window), and the `{ status: healthStatus }` rename has no other shadowing collision. Two
+      minor, non-blocking notes: the (now-deleted) spec said "React 18" instead of 19 (doc-only
+      typo), and `BootOverlay`'s full-screen reblock on a transient steady-state ping hiccup is
+      pre-existing, tested, intentional behavior, not a regression.
+- [x] **Clean up**: delete `specs/cms-admin-boot-overlay-sequencing.md` after Review completes.
+      Committed `c21bb8e`.
 
 ## Risks and Mitigations
 
