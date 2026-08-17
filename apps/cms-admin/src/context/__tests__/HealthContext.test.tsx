@@ -30,7 +30,7 @@ describe("HealthProvider", () => {
     vi.restoreAllMocks();
   });
 
-  it("hides overlay once the initial health check resolves healthy", async () => {
+  it("resolves healthy once the initial health check succeeds", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
 
     render(
@@ -43,14 +43,10 @@ describe("HealthProvider", () => {
 
     expect(screen.getByTestId("health")).toHaveTextContent("healthy");
 
-    const overlay = screen.getByRole("alert");
-    expect(overlay).toHaveClass("pointer-events-none");
-    expect(overlay).toHaveClass("opacity-0");
-
     vi.unstubAllGlobals();
   });
 
-  it("shows overlay while initial health check is still in flight", async () => {
+  it("stays checking while the initial health check is in flight", async () => {
     let resolveFetch: (value: { ok: boolean }) => void;
     const pendingFetch = new Promise<{ ok: boolean }>((resolve) => {
       resolveFetch = resolve;
@@ -64,16 +60,14 @@ describe("HealthProvider", () => {
     );
 
     // Fetch has been called but has not resolved yet — health status is unknown.
-    const overlay = screen.getByRole("alert");
-    expect(overlay).not.toHaveClass("pointer-events-none");
-    expect(overlay).not.toHaveClass("opacity-0");
+    expect(screen.getByTestId("health")).toHaveTextContent("checking");
 
     resolveFetch!({ ok: true });
     await flushAll();
     vi.unstubAllGlobals();
   });
 
-  it("shows overlay when ping fails", async () => {
+  it("flips to unhealthy when ping fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network error")));
 
     render(
@@ -88,14 +82,10 @@ describe("HealthProvider", () => {
       expect(screen.getByTestId("health")).toHaveTextContent("unhealthy");
     });
 
-    const overlay = screen.getByRole("alert");
-    expect(overlay).not.toHaveClass("pointer-events-none");
-    expect(overlay).not.toHaveClass("opacity-0");
-
     vi.unstubAllGlobals();
   });
 
-  it("recovers and hides overlay when ping succeeds after failure", async () => {
+  it("recovers to healthy when ping succeeds after failure", async () => {
     let callCount = 0;
     vi.stubGlobal(
       "fetch",
@@ -126,9 +116,6 @@ describe("HealthProvider", () => {
       expect(screen.getByTestId("health")).toHaveTextContent("healthy");
     });
 
-    const overlay = screen.getByRole("alert");
-    expect(overlay).toHaveClass("opacity-0");
-
     vi.unstubAllGlobals();
   });
 
@@ -158,7 +145,7 @@ describe("HealthProvider", () => {
     vi.unstubAllGlobals();
   });
 
-  it("schedules next ping in 14 minutes on success", async () => {
+  it("schedules next ping in 14m30s on success", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -177,7 +164,7 @@ describe("HealthProvider", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(14 * 60 * 1000 - 10_000);
+      await vi.advanceTimersByTimeAsync(14.5 * 60 * 1000 - 10_000);
     });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 

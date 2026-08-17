@@ -2,9 +2,10 @@ import { act, screen, waitFor } from "@testing-library/react";
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AuthProvider, MOUNT_REFRESH_RETRY_DELAYS_MS, type MeUser, useAuth } from "@/context/AuthContext";
+import { AuthProvider, type MeUser, MOUNT_REFRESH_RETRY_DELAYS_MS, useAuth } from "@/context/AuthContext";
+import { HealthProvider } from "@/context/HealthContext";
 import { api, setAccessToken } from "@/lib/api";
-import { renderWithProviders } from "@/test-utils";
+import { renderWithProviders, stubHealthyPing } from "@/test-utils";
 
 function makeMeUser(overrides: Partial<MeUser> = {}): MeUser {
   return {
@@ -32,11 +33,13 @@ const PROD_RETRY_DELAYS_MS = [...MOUNT_REFRESH_RETRY_DELAYS_MS];
 beforeEach(() => {
   mock = new MockAdapter(api);
   MOUNT_REFRESH_RETRY_DELAYS_MS.splice(0, MOUNT_REFRESH_RETRY_DELAYS_MS.length, 5, 5, 5);
+  stubHealthyPing();
 });
 
 afterEach(() => {
   mock.restore();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
   MOUNT_REFRESH_RETRY_DELAYS_MS.splice(0, MOUNT_REFRESH_RETRY_DELAYS_MS.length, ...PROD_RETRY_DELAYS_MS);
   setAccessToken(null);
 });
@@ -59,9 +62,11 @@ describe("AuthProvider — mount-time session hydration", () => {
     mock.onPost("/auth/refresh").reply(401);
 
     renderWithProviders(
-      <AuthProvider>
-        <AuthDisplay />
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <AuthDisplay />
+        </AuthProvider>
+      </HealthProvider>,
     );
 
     await waitFor(() => expect(screen.getByTestId("userId")).toHaveTextContent("none"));
@@ -72,9 +77,11 @@ describe("AuthProvider — mount-time session hydration", () => {
     mock.onPost("/auth/refresh").reply(401);
 
     renderWithProviders(
-      <AuthProvider>
-        <AuthDisplay />
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <AuthDisplay />
+        </AuthProvider>
+      </HealthProvider>,
     );
 
     expect(screen.getByTestId("loading")).toBeInTheDocument();
@@ -90,9 +97,11 @@ describe("AuthProvider — mount-time session hydration", () => {
     mock.onGet("/auth/me").reply(200, makeMeUser());
 
     renderWithProviders(
-      <AuthProvider>
-        <AuthDisplay />
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <AuthDisplay />
+        </AuthProvider>
+      </HealthProvider>,
     );
 
     await waitFor(() => expect(screen.getByTestId("role")).toHaveTextContent("admin"));
@@ -107,9 +116,11 @@ describe("AuthProvider — mount-time session hydration", () => {
     });
 
     renderWithProviders(
-      <AuthProvider>
-        <AuthDisplay />
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <AuthDisplay />
+        </AuthProvider>
+      </HealthProvider>,
     );
 
     await waitFor(() => expect(screen.getByTestId("userId")).toHaveTextContent("none"));
@@ -121,9 +132,11 @@ describe("AuthProvider — mount-time session hydration", () => {
     mock.onGet("/auth/me").reply(200, makeMeUser());
 
     renderWithProviders(
-      <AuthProvider>
-        <AuthDisplay />
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <AuthDisplay />
+        </AuthProvider>
+      </HealthProvider>,
     );
 
     await waitFor(() => expect(screen.getByTestId("role")).toHaveTextContent("admin"));
@@ -136,9 +149,11 @@ describe("AuthProvider — mount-time session hydration", () => {
     mock.onGet("/auth/me").reply(200, makeMeUser());
 
     renderWithProviders(
-      <AuthProvider>
-        <AuthDisplay />
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <AuthDisplay />
+        </AuthProvider>
+      </HealthProvider>,
     );
 
     await waitFor(() => expect(screen.getByTestId("role")).toHaveTextContent("admin"));
@@ -151,9 +166,11 @@ describe("AuthProvider — mount-time session hydration", () => {
     mock.onGet("/auth/me").reply(401);
 
     renderWithProviders(
-      <AuthProvider>
-        <AuthDisplay />
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <AuthDisplay />
+        </AuthProvider>
+      </HealthProvider>,
     );
 
     await waitFor(() => expect(screen.getByTestId("userId")).toHaveTextContent("none"));
@@ -166,7 +183,8 @@ describe("AuthProvider — login()/logout()", () => {
     mock.onGet("/auth/me").reply(200, makeMeUser({ documentId: "u2", role: { documentId: "r2", name: "Guest", slug: "guest", permissions: [], level: 0, isDefault: true } }));
 
     function LoginTrigger() {
-      const { login, userId } = useAuth();
+      const { login, userId, loading } = useAuth();
+      if (loading) return <span data-testid="loading">loading</span>;
       return (
         <div>
           <span data-testid="userId">{userId ?? "none"}</span>
@@ -176,11 +194,16 @@ describe("AuthProvider — login()/logout()", () => {
     }
 
     const { getByRole } = renderWithProviders(
-      <AuthProvider>
-        <LoginTrigger />
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <LoginTrigger />
+        </AuthProvider>
+      </HealthProvider>,
     );
 
+    // Wait for the mount-time session bootstrap (gated on health) to settle as
+    // unauthenticated before logging in — otherwise its late-arriving 401
+    // could clobber the state login() is about to set.
     await waitFor(() => expect(screen.queryByTestId("loading")).not.toBeInTheDocument());
     await act(async () => getByRole("button", { name: "login" }).click());
 
@@ -210,9 +233,11 @@ describe("AuthProvider — login()/logout()", () => {
     }
 
     const { getByRole } = renderWithProviders(
-      <AuthProvider>
-        <LogoutTrigger />
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <LogoutTrigger />
+        </AuthProvider>
+      </HealthProvider>,
     );
 
     await waitFor(() => expect(screen.getByTestId("userId")).not.toHaveTextContent("none"));
@@ -231,9 +256,11 @@ describe("AuthProvider — login()/logout()", () => {
     mock.onGet("/auth/me").reply(200, makeMeUser());
 
     renderWithProviders(
-      <AuthProvider>
-        <AuthDisplay />
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <AuthDisplay />
+        </AuthProvider>
+      </HealthProvider>,
     );
 
     await waitFor(() => expect(screen.getByTestId("role")).toHaveTextContent("admin"));
@@ -244,5 +271,55 @@ describe("AuthProvider — login()/logout()", () => {
     await expect(api.get("/protected")).rejects.toBeTruthy();
 
     await waitFor(() => expect(screen.getByTestId("userId")).toHaveTextContent("none"));
+  });
+});
+
+describe("AuthProvider — health-status flap safety", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("does not re-trigger the mount-time session bootstrap when health flaps unhealthy then healthy again", async () => {
+    mock.onPost("/auth/refresh").reply(200, { message: "Refresh successful" });
+    mock.onGet("/auth/me").reply(200, makeMeUser());
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithProviders(
+      <HealthProvider>
+        <AuthProvider>
+          <AuthDisplay />
+        </AuthProvider>
+      </HealthProvider>,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await waitFor(() => expect(screen.getByTestId("role")).toHaveTextContent("admin"));
+    expect(mock.history.post.filter((request) => request.url === "/auth/refresh")).toHaveLength(1);
+
+    // Flip health unhealthy (ping fails, retries every 10s), then back healthy.
+    fetchMock.mockRejectedValueOnce(new Error("Network error"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    fetchMock.mockResolvedValue({ ok: true } as Response);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    // The flap must not re-run attemptMountSession() or disturb the already-hydrated session.
+    expect(mock.history.post.filter((request) => request.url === "/auth/refresh")).toHaveLength(1);
+    expect(screen.getByTestId("userId")).toHaveTextContent("u1");
+    expect(screen.getByTestId("role")).toHaveTextContent("admin");
+
+    vi.unstubAllGlobals();
   });
 });

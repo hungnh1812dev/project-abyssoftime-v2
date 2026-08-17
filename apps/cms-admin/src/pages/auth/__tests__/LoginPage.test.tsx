@@ -4,9 +4,10 @@ import MockAdapter from "axios-mock-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthProvider } from "@/context/AuthContext";
+import { HealthProvider } from "@/context/HealthContext";
 import { api, setAccessToken } from "@/lib/api";
 import { LoginPage } from "@/pages/auth/LoginPage";
-import { renderWithProviders } from "@/test-utils";
+import { renderWithProviders, stubHealthyPing } from "@/test-utils";
 
 let mock: MockAdapter;
 
@@ -14,23 +15,49 @@ beforeEach(() => {
   mock = new MockAdapter(api);
   mock.onPost("/auth/refresh").reply(401);
   mock.onGet("/auth/has-users").reply(200, { hasUsers: true });
+  stubHealthyPing();
 });
 
 afterEach(() => {
   mock.restore();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
   setAccessToken(null);
 });
 
 function renderLogin() {
   return renderWithProviders(
-    <AuthProvider>
-      <LoginPage />
-    </AuthProvider>,
+    <HealthProvider>
+      <AuthProvider>
+        <LoginPage />
+      </AuthProvider>
+    </HealthProvider>,
   );
 }
 
 describe("LoginPage", () => {
+  it("does not request /auth/has-users until the health check succeeds", async () => {
+    let resolveHealth!: (value: { ok: boolean }) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockReturnValue(
+        new Promise((resolve) => {
+          resolveHealth = resolve;
+        }),
+      ),
+    );
+
+    renderLogin();
+
+    // Health is still "checking" — nothing should have hit the API yet.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mock.history.get.some((request) => request.url === "/auth/has-users")).toBe(false);
+
+    resolveHealth({ ok: true });
+
+    await waitFor(() => expect(mock.history.get.some((request) => request.url === "/auth/has-users")).toBe(true));
+  });
+
   it("renders email and password fields with a submit button", async () => {
     renderLogin();
     await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
