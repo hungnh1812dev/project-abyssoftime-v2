@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
+import { useHealthStatus } from "@/context/HealthContext";
 import { api } from "@/lib/api";
 
 interface LoginFields {
@@ -19,12 +20,17 @@ interface LoginFields {
 export function LoginPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { status } = useHealthStatus();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Gated on health so this doesn't hit the API before cms-api is confirmed ready — BootOverlay
+  // visually covers this page until then, but that alone doesn't stop it from mounting and firing
+  // its own queries underneath.
   const { data: hasUsersData, isLoading: hasUsersLoading } = useQuery({
     queryKey: ["auth-has-users"],
     queryFn: () => api.get<{ hasUsers: boolean }>("/auth/has-users").then((response) => response.data),
     staleTime: 30_000,
+    enabled: status === "healthy",
   });
 
   const {
@@ -49,7 +55,7 @@ export function LoginPage() {
     },
   });
 
-  if (hasUsersLoading) {
+  if (status !== "healthy" || hasUsersLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-muted-foreground text-sm">Loading…</p>

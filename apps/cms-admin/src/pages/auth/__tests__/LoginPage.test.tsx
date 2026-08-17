@@ -36,6 +36,28 @@ function renderLogin() {
 }
 
 describe("LoginPage", () => {
+  it("does not request /auth/has-users until the health check succeeds", async () => {
+    let resolveHealth!: (value: { ok: boolean }) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockReturnValue(
+        new Promise((resolve) => {
+          resolveHealth = resolve;
+        }),
+      ),
+    );
+
+    renderLogin();
+
+    // Health is still "checking" — nothing should have hit the API yet.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mock.history.get.some((request) => request.url === "/auth/has-users")).toBe(false);
+
+    resolveHealth({ ok: true });
+
+    await waitFor(() => expect(mock.history.get.some((request) => request.url === "/auth/has-users")).toBe(true));
+  });
+
   it("renders email and password fields with a submit button", async () => {
     renderLogin();
     await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
