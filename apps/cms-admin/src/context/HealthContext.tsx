@@ -1,8 +1,6 @@
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 
-import { ConnectionOverlay } from "@/components/ConnectionOverlay";
-
-const PING_INTERVAL_HEALTHY = 14 * 60 * 1000;
+const PING_INTERVAL_HEALTHY = 14.5 * 60 * 1000;
 const PING_INTERVAL_UNHEALTHY = 10 * 1000;
 const PING_TIMEOUT = 5 * 1000;
 
@@ -85,12 +83,7 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  return (
-    <HealthContext.Provider value={{ status }}>
-      {children}
-      <ConnectionOverlay visible={status !== "healthy"} />
-    </HealthContext.Provider>
-  );
+  return <HealthContext.Provider value={{ status }}>{children}</HealthContext.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

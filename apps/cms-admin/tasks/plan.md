@@ -1,124 +1,319 @@
-# Plan: Gate mutating action buttons on granted permissions
+# Plan: Fix cms-admin boot sequence (overlay flash / blank-page gap)
 
-Spec: `specs/action-button-permission-gating.md`. Decision rationale: `docs/documents/permission-gating-techstack.md`. Frontend-only — no backend changes.
+Spec: `specs/cms-admin-boot-overlay-sequencing.md`. Frontend-only — no backend changes.
+All paths below are relative to `apps/cms-admin/` unless given as a full repo path.
 
 ## Context
 
-Survey (in the spec) found only `UsersPage` correctly gates its mutating buttons; every other
-mutating button across Access Tokens, Roles, Permissions, Media Library, and Content-Type
-records/documents renders active regardless of the current user's permissions, relying entirely
-on the backend to reject. Document actions (create/update/delete/publish/unpublish) additionally
-support a content-type-scoped permission form (`document:<action>:<slug>`) that the existing
-`hasPermission()` doesn't understand.
+On cms-admin boot, the user sees: the "Connecting to service..." overlay shows, then hides almost
+immediately, then a blank white page, then finally either the Login or the Admin page. Root cause
+(confirmed by reading the code, captured in the spec): `HealthContext` and `AuthContext` run two
+uncoordinated readiness checks in parallel. `HealthContext` pings a shallow, dependency-free
+`GET /health` and hides its own `ConnectionOverlay` as soon as that resolves — fast, even during a
+backend cold start. `AuthContext` independently runs the real, DB-backed readiness check
+(`/auth/refresh` → `/auth/me`) with its own retry ladder, and while that's in flight,
+`ProtectedRoute` renders `null` — an unguarded blank gap.
+
+Two requirements came out of the spec conversation with the user:
+1. **All actions must wait for health-check completion.** `AuthContext` must not fire any request
+   until `HealthContext` confirms cms-api is ready — not just run in parallel with it.
+2. **Exactly one continuous loading UI**, no two-overlay handoff, no blank frame.
+3. **Keep-alive**: once healthy, ping every 14m30s (not 14m) — Render suspends an idle instance
+   after 15 minutes with no request, so the steady-state ping must land just under that.
+
+This plan implements the design agreed in the spec: `HealthContext` becomes pure state,
+`AuthContext` gates its bootstrap on `status === "healthy"`, and a new single `BootOverlay`
+component becomes the only place `ConnectionOverlay` renders.
+
+Stack facts: React 19 + TypeScript, Vite, React Router v7, TanStack Query, Tailwind, Bun as
+package manager/script runner — always `bun run lint`/`bun run test`/`bun run build`, never
+`bunx eslint` directly (`docs/rules/workflow.md`'s Linting section).
+
+## Target Design
+
+1. `HealthContext` becomes pure state — stops rendering `ConnectionOverlay`, only exposes
+   `{ status }` via `useHealthStatus()`.
+2. `AuthContext` consumes `useHealthStatus()` and defers `attemptMountSession()` until
+   `status === "healthy"`, guarded by a `startedRef` so it fires exactly once per app load — never
+   re-triggered by a later health flap (the 14m30s steady-state ping later reporting
+   unhealthy-then-healthy again must not restart the session bootstrap and spuriously log an
+   active user out).
+3. New `src/components/BootOverlay.tsx` reads both hooks and is the only place `ConnectionOverlay`
+   renders going forward: `<ConnectionOverlay visible={status !== "healthy" || loading} />`.
+4. `ProtectedRoute` stays unchanged — its `return null` gap is now safely covered by
+   `BootOverlay`'s `fixed inset-0 z-50` overlay sitting on top.
+5. Keep-alive: `PING_INTERVAL_HEALTHY` moves from `14 * 60 * 1000` to `14.5 * 60 * 1000` (870000ms).
 
 ## Dependency Graph
 
 ```
-Task 1 (foundation: hasDocumentPermission, usePermissionGate, ui/tooltip.tsx, PermissionTooltip)
-   │
-   ├── Task 2 (AccessTokensPage)
-   ├── Task 3 (RolesPage)
-   ├── Task 4 (PermissionsPage)
-   ├── Task 5 (MediaLibraryPage)
-   ├── Task 6 (MediaLibrary picker)
-   │         [Tasks 2-6 are independent of each other, all depend only on Task 1]
-   │
-   ├── Task 7 (CollectionListPage — scoped)
-   └── Task 8 (ContentTypeBuilder + ContentTypePanel — scoped)
-             [Tasks 7-8 are independent of each other and of 2-6, depend only on Task 1]
+Task 0 (relocate SPEC.md -> apps/cms-admin/specs/, trim root SPEC.md to a pointer)
+   — independent, purely a doc move, no code dependency on anything below.
+   ▼
+Task 1 (HealthContext: state-only + interval bump + own test fixes)
+   │   — self-contained; only HealthContext.tsx (+ its test) changes. MUST land before Task 3,
+   │     because Task 3 adds a second role="alert" element into 3 test trees that don't expect
+   │     one until this is gone (LoginPage.test.tsx asserts role="alert" for its own error banner).
+   ▼
+Task 2 (AuthContext: health-gated bootstrap + shared test helper + AuthContext.test.tsx fixes)
+   │   — the risky one: restructures the mount effect, adds startedRef, adds stubHealthyPing() to
+   │     test-utils.tsx, updates AuthContext.test.tsx's own tree, adds the flap-safety regression
+   │     test.
+   ▼
+Task 3 (same HealthProvider-wrap + stubHealthyPing() pattern applied to the 3 other real-
+        AuthProvider test files: RouteGuards.test.tsx, AdminLayout.test.tsx, LoginPage.test.tsx)
+   │   — mechanical repeat of Task 2's pattern; depends on Task 2's helper existing.
+   ▼
+Task 4 (BootOverlay component + main.tsx wiring)
+   — purely additive; sequenced last so the Final Checkpoint's live walkthrough exercises the
+     complete, coherent boot sequence in one pass.
 ```
-
-Tasks 2-8 all depend on Task 1 only, not on each other — safe to parallelize across sessions once
-Task 1 lands. Grouped into three phases below purely for checkpoint cadence (settings pages vs.
-scoped document pages), not because of a real dependency between them.
 
 ## Task List
 
-### Phase 0: Foundation
+### Task 0: Relocate the spec to match repo convention
 
-- [ ] **Task 1: Shared gating primitives**
-  - `src/lib/permissions.ts`: add `hasDocumentPermission(granted: string[], action: string, contentTypeSlug: string): boolean` — mirrors backend `isDocumentActionGranted` exactly (`apps/cms-api/src/common/authorization/document-permission.util.ts`): `granted.includes(`document:${action}`) || granted.includes(`document:${action}:${contentTypeSlug}`)`. Add `usePermissionGate(required: string, contentTypeSlug?: string): { allowed: boolean; reason: string }` — reads `permissions` from `useAuth()`; without `contentTypeSlug` uses `hasPermission()` (bare, with existing `:read`←`:manager` fallback); with it, treats `required` as a document action base and uses `hasDocumentPermission()`. `reason` is the fixed template `Requires the "${required}" permission` (or a scoped variant when `contentTypeSlug` is given).
-  - New `src/components/ui/tooltip.tsx`: wraps `@base-ui/react/tooltip`, following `dropdown-menu.tsx`'s wrapper shape (`data-slot`, `cn()`, Portal/Positioner/Popup, `TooltipProvider`/`Tooltip`/`TooltipTrigger`/`TooltipContent` exports).
-  - New `src/components/permissions/PermissionTooltip.tsx`: composes the gate hook + tooltip. Props: `required`, optional `contentTypeSlug`, `children` (a single disable-able trigger element, typically a `Button`). When `!allowed`, clones/wraps the child with `disabled` and wires the tooltip to show `reason` — **wrap the disabled child in a non-disabled `<span tabIndex={0}>` tooltip trigger**, since disabled elements don't reliably fire the hover/focus events tooltips depend on in most browsers/Base UI. When `allowed`, renders the child unmodified (no tooltip wrapper, no behavior change).
+- **Description:** Move `SPEC.md`'s content to `apps/cms-admin/specs/cms-admin-boot-overlay-sequencing.md`
+  (matching `media-input-documentid-fix.md`'s precedent: `# Spec: ...` header + a one-line note
+  that it's a transient file deleted after Review). Replace root `SPEC.md` with a short pointer,
+  per `docs/rules/workflow.md`'s "Root docs" rule.
+- **Acceptance criteria:**
+  - [x] `apps/cms-admin/specs/cms-admin-boot-overlay-sequencing.md` exists with the full spec
+        content.
+  - [x] Root `SPEC.md` is trimmed to a short pointer, no longer duplicates module detail.
+- **Verify:** Manual read-through; no build/test impact (docs only).
+- **Dependencies:** None.
+- **Files:** `SPEC.md`, `apps/cms-admin/specs/cms-admin-boot-overlay-sequencing.md` (new).
+- **Scope:** XS.
 
-  **Acceptance criteria:** spec's AC 8-9; `hasDocumentPermission` unit-tested against the same bare/scoped cases as the backend's `isDocumentActionGranted` tests; `usePermissionGate` unit-tested for both bare and scoped modes; `PermissionTooltip` has a render test confirming disabled+tooltip-trigger-present when denied, and unmodified passthrough when allowed.
-  **Verification:** `bun run test -- src/lib/__tests__/permissions.test.ts src/components/permissions/__tests__/PermissionTooltip.test.tsx`; `bun run build` (typecheck).
-  **Files:** `src/lib/permissions.ts`, `src/lib/__tests__/permissions.test.ts`, `src/components/ui/tooltip.tsx`, `src/components/permissions/PermissionTooltip.tsx`, `src/components/permissions/__tests__/PermissionTooltip.test.tsx`.
-  **Estimated scope:** M (5 files, 1 new UI primitive + 1 new composition component + lib additions).
+### Checkpoint 0
+- [x] Confirm file move is clean; no other change yet.
 
-### Checkpoint: Foundation
+---
 
+### Task 1: `HealthContext` — stop rendering the overlay, bump the keep-alive interval
+
+- **Description:** `HealthContext.tsx`: remove the `ConnectionOverlay` import and its render call
+  — the provider now returns `<HealthContext.Provider value={{ status }}>{children}</HealthContext.Provider>`
+  only. Change `PING_INTERVAL_HEALTHY` from `14 * 60 * 1000` to `14.5 * 60 * 1000` (870000ms). Do
+  **not** export `PING_INTERVAL_HEALTHY`/`PING_INTERVAL_UNHEALTHY`/`PING_TIMEOUT` — not referenced
+  outside this file today; keep hardcoding the literal in the test, matching this file's own
+  existing convention.
+
+  `HealthContext.test.tsx`: for the 4 tests currently asserting on `screen.getByRole("alert")` /
+  `pointer-events-none`/`opacity-0` classes, trim the overlay assertions but **keep the
+  `status`-testid assertions**:
+  - "hides overlay once the initial health check resolves healthy" → rename "resolves healthy once
+    the initial health check succeeds"; drop overlay block, keep `"healthy"` testid assertion.
+  - "shows overlay while initial health check is still in flight" → rename "stays checking while
+    the initial health check is in flight"; assert `status` testid is `"checking"`.
+  - "shows overlay when ping fails" → rename "flips to unhealthy when ping fails".
+  - "recovers and hides overlay when ping succeeds after failure" → rename "recovers to healthy
+    when ping succeeds after failure".
+  - "schedules next ping in 14 minutes on success" → rename "schedules next ping in 14m30s on
+    success"; change the `14 * 60 * 1000 - 10_000` advance to `14.5 * 60 * 1000 - 10_000`.
+  - The other 5 tests are untouched.
+
+- **Acceptance criteria:**
+  - [ ] `HealthProvider` no longer imports or renders `ConnectionOverlay`.
+  - [ ] `useHealthStatus()` return shape unchanged: `{ status }`.
+  - [ ] `PING_INTERVAL_HEALTHY === 870000` (14.5 min).
+  - [ ] All 10 tests in `HealthContext.test.tsx` pass; no `role="alert"`/overlay CSS class
+        references remain in the file.
+- **Verify:** `bun run test -- src/context/__tests__/HealthContext.test.tsx`; `bun run build`;
+  `bun run lint`.
+- **Dependencies:** Task 0 (ordering only).
+- **Files:** `src/context/HealthContext.tsx`, `src/context/__tests__/HealthContext.test.tsx`.
+- **Scope:** S.
+
+**Note:** this task alone temporarily removes all boot-overlay UI from the running app (nothing
+renders `ConnectionOverlay` until Task 4). Expected, in-progress state.
+
+### Checkpoint 1
 - [ ] `bun run lint`, `bun run test`, `bun run build` all clean.
-- [ ] Review with human before starting Phase 1/2 (foundation shape affects every later task's call-site code).
+- [ ] `grep -rn "ConnectionOverlay" src` — only the component's own file + its own test remain;
+      `HealthContext.tsx` no longer appears.
+- [ ] Commit once the above passes.
 
-### Phase 1: Settings pages (bare permission, independent slices)
+---
 
-- [x] **Task 2: `AccessTokensPage` — Revoke/Delete**
-  Wrap the Revoke button (`AccessTokensPage.tsx:175-177`) and Delete button (`:178-187`) in `<PermissionTooltip required="api_token:manager">`.
-  **Acceptance:** spec AC 1. **Verify:** `bun run test -- src/pages/admin/settings/__tests__/AccessTokensPage.test.tsx`; add a denied-permission case + an allowed case.
-  **Files:** `AccessTokensPage.tsx`, `__tests__/AccessTokensPage.test.tsx`. **Scope:** S.
+### Task 2: `AuthContext` — defer `attemptMountSession()` until health is healthy
 
-- [x] **Task 3: `RolesPage` — Create/Edit/Delete**
-  Wrap "Create Role" (`RolesPage.tsx:147-149`), "Edit" (`:180-182`), "Delete" (`:184-194`) in `<PermissionTooltip required="role:manager">`.
-  **Acceptance:** spec AC 2. **Verify:** `bun run test -- src/pages/admin/settings/__tests__/RolesPage.test.tsx`.
-  **Files:** `RolesPage.tsx`, `__tests__/RolesPage.test.tsx`. **Scope:** S.
+- **Description:**
+  - Import `useHealthStatus`. Destructure as `const { status: healthStatus } = useHealthStatus();`
+    — **not** `status` — to avoid shadowing the existing local `const status = axios.isAxiosError(error)
+    ? error.response?.status : undefined;` inside `attemptMountSession`'s catch block.
+  - Add `const startedRef = useRef(false);` alongside `mountedRef`.
+  - Convert `attemptMountSession` into a `useCallback(async () => { ...unchanged body... },
+    [fetchMe])`.
+  - Split the mount `useEffect` into two:
+    1. Unchanged lifecycle effect (`[]` deps): `mountedRef`/`onSessionExpired` setup+cleanup only,
+       no longer calls `attemptMountSession()` directly.
+    2. New gating effect:
+       ```tsx
+       useEffect(() => {
+         if (healthStatus !== "healthy" || startedRef.current) return;
+         startedRef.current = true;
+         void attemptMountSession();
+       }, [healthStatus, attemptMountSession]);
+       ```
+  - `state.loading`'s initial value (`true`) and all other behavior (login/logout, definitive-401
+    vs. transient-failure retry ladder) are unchanged.
 
-- [x] **Task 4: `PermissionsPage` — Create/Edit/Delete**
-  Wrap "Create Permission" (`:129-131`), "Edit" (`:157-159`), "Delete" (`:160-169`) in `<PermissionTooltip required="permission:manager">`.
-  **Acceptance:** spec AC 3. **Verify:** `bun run test -- src/pages/admin/settings/__tests__/PermissionsPage.test.tsx`.
-  **Files:** `PermissionsPage.tsx`, `__tests__/PermissionsPage.test.tsx`. **Scope:** S.
+  - `test-utils.tsx`: add one new named export (no change to `renderWithProviders` itself):
+    ```ts
+    import { vi } from "vitest";
 
-- [x] **Task 5: `MediaLibraryPage` — Upload/Delete**
-  Gate the Upload button (`:49-51`) and per-asset delete icon-button (`:94-100`) on `media:manager`. The delete icon is a raw `<button>` (not `Button`), so `PermissionTooltip` must accept a raw `<button>` child too — verify/adjust its typing in Task 1 if this surfaces a gap. **No test file exists for this page yet** — create `MediaLibraryPage.test.tsx` (new).
-  **Acceptance:** spec AC 4 (page half). **Verify:** `bun run test -- src/pages/admin/settings/__tests__/MediaLibraryPage.test.tsx`.
-  **Files:** `MediaLibraryPage.tsx`, new `__tests__/MediaLibraryPage.test.tsx`. **Scope:** M (new test file from scratch).
+    // Stubs global fetch so any HealthProvider mounted in the tree resolves /health as ok almost
+    // immediately, letting AuthContext's health-gated bootstrap effect actually fire.
+    // Callers must add `afterEach(() => vi.unstubAllGlobals())`.
+    export function stubHealthyPing() {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true } as Response));
+    }
+    ```
 
-- [x] **Task 6: `MediaLibrary` (embedded picker) — Upload/Delete**
-  Same gate (`media:manager`) on the picker's "Upload More"-triggered upload button (`:109-111`) and per-asset delete icon-button (`:135-144`).
-  **Acceptance:** spec AC 4 (picker half). **Verify:** `bun run test -- src/components/media/__tests__/MediaLibrary.test.tsx`.
-  **Files:** `MediaLibrary.tsx`, `__tests__/MediaLibrary.test.tsx`. **Scope:** S.
+  - `AuthContext.test.tsx`:
+    - Import `HealthProvider` and `stubHealthyPing`; add `stubHealthyPing();` to `beforeEach`,
+      `vi.unstubAllGlobals();` to `afterEach`.
+    - Wrap every `<AuthProvider>...</AuthProvider>` render tree with `<HealthProvider>`.
+    - **New test**: `describe("AuthProvider — health-status flap safety", ...)`, own
+      `beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))` /
+      `afterEach(() => vi.useRealTimers())` scoped locally:
+      1. Render with `HealthProvider` + `AuthProvider`, `fetch`/`/auth/refresh`/`/auth/me` mocked
+         to succeed; wait for hydration.
+      2. Drive `fetch` to fail, advance fake timers past `PING_INTERVAL_UNHEALTHY` (10s) so status
+         flips `"unhealthy"`, then drive `fetch` back to ok and advance again to flip back
+         `"healthy"`.
+      3. Assert `/auth/refresh` was only ever called once, `user`/`role` unchanged after the flap.
 
-### Checkpoint: Settings pages
+- **Acceptance criteria:**
+  - [ ] `attemptMountSession()` never fires while `healthStatus !== "healthy"`.
+  - [ ] Fires exactly once per mount once `healthStatus` becomes `"healthy"`.
+  - [ ] A later health flap does not re-fire it or change `user`/`role`.
+  - [ ] All existing `AuthContext.test.tsx` behavior unchanged.
+- **Verify:** `bun run test -- src/context/__tests__/AuthContext.test.tsx`; `bun run build`.
+- **Dependencies:** Task 1.
+- **Files:** `src/context/AuthContext.tsx`, `src/test-utils.tsx`,
+  `src/context/__tests__/AuthContext.test.tsx`.
+- **Scope:** M.
 
-- [x] `bun run lint`, `bun run test`, `bun run build` all clean, no new warnings.
-- [x] Live walkthrough: log in as a role with only `*:read` grants (Guest, extended with `role:read`/`permission:read`/`api_token:read`/`media:read`); confirmed every button from Tasks 2-6 is visibly disabled with a tooltip on hover (`AccessTokensPage` Revoke, `RolesPage` Create Role, `PermissionsPage` Create Permission, `MediaLibraryPage` upload/delete) — re-enable-on-grant not separately re-verified this session (permissions were set before login, not changed mid-session).
-- [x] Commit (per checkpoint-commit-timing rule): once automated checks pass, before starting Phase 2.
+### Checkpoint 2
+- [ ] `bun run test -- src/context/__tests__/AuthContext.test.tsx src/context/__tests__/HealthContext.test.tsx` clean.
+- [ ] `bun run lint`, `bun run build` clean.
+- [ ] **Expected, not a regression:** whole-suite `bun run test` still shows 3 failing files here
+      (`RouteGuards.test.tsx`, `AdminLayout.test.tsx`, `LoginPage.test.tsx`) — that's Task 3.
+- [ ] Commit once the above passes.
 
-### Phase 2: Content-type / document pages (scoped permission)
+---
 
-- [x] **Task 7: `CollectionListPage` — Add/Duplicate/Delete/bulk-delete**
-  Gate "Add new item" (`:341`) and the row "Duplicate" button (`:460-462`, since duplicating creates a new record) on `hasDocumentPermission(permissions, "create", contentType.slug)`. Gate the row "Delete" (`:463-465`) and "Delete selected" bulk button (`:385-387`) on `hasDocumentPermission(permissions, "delete", contentType.slug)`. Leave "Edit" (pencil, navigation-only) ungated.
-  **Risk:** this file is already 505 lines (over the project's 500-line module cap) before this change. Mitigation: extract the delete-confirmation `<Dialog>` (`:356-380`) into a sibling `DeleteConfirmDialog` component in the same directory as part of this task, to both offset the added gating code and bring the file back under budget — do this extraction first, verify it's a pure no-op refactor (existing tests still pass), then add the gating.
-  **Acceptance:** spec AC 5. **Verify:** `bun run test -- src/pages/admin/panels/collection-type/layout/__tests__/CollectionListPage.test.tsx`; file line count back at or under 500 (`wc -l`).
-  **Files:** `CollectionListPage.tsx`, new `DeleteConfirmDialog.tsx` (extraction), `__tests__/CollectionListPage.test.tsx`. **Scope:** M.
+### Task 3: Apply the `HealthProvider` + `stubHealthyPing()` pattern to the 3 other real-`AuthProvider` test files
 
-- [x] **Task 8: `ContentTypeBuilder` + `ContentTypePanel` — Save/Publish/Unpublish**
-  Add a `requiredPermission: string` prop to `ContentTypeBuilder` (threaded to `FormActions`'s Save button at `ContentTypeBuilder.tsx:24`, wrapped in `PermissionTooltip` with `contentTypeSlug`). Caller (`ContentTypePanel.tsx`) computes it per call site: line-102 branch → `isNew ? "create" : "update"` (single-type first-save is always `"update"`, no create endpoint exists for single types); line-163 branch (doc exists) → always `"update"`. Gate Publish (`:173-183`) on `hasDocumentPermission(permissions, "publish", contentType.slug)` and Unpublish (`:184-194`) on `"unpublish"`, layered on top of the existing `canPublish`/`canUnpublish` visibility conditions (unchanged).
-  **Acceptance:** spec AC 6. **Verify:** `bun run test -- src/pages/admin/panels/content-type/__tests__/ContentTypeBuilder.test.tsx src/pages/admin/panels/content-type/__tests__/ContentTypePanel.test.tsx`.
-  **Files:** `ContentTypeBuilder.tsx`, `ContentTypePanel.tsx`, both `__tests__` files. **Scope:** M.
+- **Description:** Identical shape in `RouteGuards.test.tsx`, `AdminLayout.test.tsx`
+  (`src/pages/admin/layout/__tests__/`), `LoginPage.test.tsx` (`src/pages/auth/__tests__/`):
+  - Import `HealthProvider`, `stubHealthyPing`; add to `beforeEach`/`afterEach`.
+  - Wrap the `<AuthProvider>` in each file's local composition helper (`RouteGuards.test.tsx`'s
+    `wrap()`; `AdminLayout.test.tsx`'s `renderSidebar()` + inline `TopBar` render; `LoginPage.test.tsx`'s
+    `renderLogin()`) with `<HealthProvider>`.
+  - No existing assertion should need to change — they already use `waitFor(...)`. Confirm
+    `LoginPage.test.tsx`'s `screen.getByRole("alert")` still resolves to exactly one element
+    (Task 1 already removed `HealthContext`'s own `role="alert"`; `BootOverlay` isn't in this
+    test's tree yet).
 
-### Checkpoint: Content-type / document pages
+- **Acceptance criteria:**
+  - [ ] All 3 files' full test suites pass.
+  - [ ] No test changed its actual assertions, only its render-tree setup.
+- **Verify:** `bun run test -- src/components/__tests__/RouteGuards.test.tsx src/pages/admin/layout/__tests__/AdminLayout.test.tsx src/pages/auth/__tests__/LoginPage.test.tsx`.
+- **Dependencies:** Task 2.
+- **Files:** `src/components/__tests__/RouteGuards.test.tsx`,
+  `src/pages/admin/layout/__tests__/AdminLayout.test.tsx`, `src/pages/auth/__tests__/LoginPage.test.tsx`.
+- **Scope:** S.
 
-- [x] `bun run lint`, `bun run test`, `bun run build` all clean, no new warnings.
-- [x] Live walkthrough: as Guest with `document:read` (bare) + `document:create:cv-page` only (no bare `document:create`), confirmed "Add new item" is enabled on `cv-page` and disabled on `en-it-vocab`; confirmed the `CollectionListPage` Duplicate/Delete icons on `en-it-vocab` are disabled with the scoped tooltip text (`Requires the "document:create"/"document:delete" permission for this content type`); confirmed `ContentTypeBuilder` Save/Unpublish disabled with scoped tooltip on an existing `en-it-vocab` doc, and Save enabled on a new `cv-page` doc. Bare unscoped-grant-enables-everywhere case not separately re-verified this session (would require a second role/session swap).
-- [x] Commit once automated checks pass (checkpoint-commit-timing rule).
+### Checkpoint 3
+- [ ] `bun run test` (full suite) clean.
+- [ ] `bun run lint`, `bun run build` clean.
+- [ ] Commit once the above passes.
+
+---
+
+### Task 4: `BootOverlay` component + `main.tsx` wiring
+
+- **Description:**
+  - New `src/components/BootOverlay.tsx`:
+    ```tsx
+    import { ConnectionOverlay } from "@/components/ConnectionOverlay";
+    import { useAuth } from "@/context/AuthContext";
+    import { useHealthStatus } from "@/context/HealthContext";
+
+    export function BootOverlay() {
+      const { status } = useHealthStatus();
+      const { loading } = useAuth();
+      return <ConnectionOverlay visible={status !== "healthy" || loading} />;
+    }
+    ```
+  - New `src/components/__tests__/BootOverlay.test.tsx`, real `HealthProvider` + `AuthProvider`
+    with independently controllable pending promises for both the `/health` fetch and the
+    `/auth/refresh` axios call, asserting the truth table:
+    1. Both still resolving → overlay visible.
+    2. Health healthy, auth still loading → overlay stays visible (proves the fix).
+    3. Health healthy AND auth resolved → overlay hides.
+    4. Health unhealthy, auth `loading === false` → overlay stays visible (sanity check).
+  - `main.tsx`: render `BootOverlay` as a sibling of `<AppRouter />`, inside `<AuthProvider>`,
+    itself inside `<HealthProvider>`:
+    ```tsx
+    <HealthProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <AppRouter />
+          <BootOverlay />
+        </AuthProvider>
+      </BrowserRouter>
+    </HealthProvider>
+    ```
+
+- **Acceptance criteria:**
+  - [ ] `ConnectionOverlay` renders exactly once in the whole app, from `BootOverlay`.
+  - [ ] `BootOverlay.test.tsx` covers the 4-case truth table above.
+- **Verify:** `bun run test -- src/components/__tests__/BootOverlay.test.tsx`; `bun run test` (full
+  suite); `bun run build`; `bun run lint`.
+- **Dependencies:** Task 1; sequenced last.
+- **Files:** `src/components/BootOverlay.tsx` (new), `src/components/__tests__/BootOverlay.test.tsx`
+  (new), `src/main.tsx`.
+- **Scope:** S/M.
 
 ### Final Checkpoint
-
-- [x] Full `bun run lint` + `bun run test` + `bun run build` clean across the whole diff.
-- [x] **Update docs** (workflow step 5): mention button-level permission gating in `docs/documents/access-control.md` (settings pages), `docs/documents/content-type.md` or `documents.md` (scoped document actions), `docs/documents/media.md` (upload/delete gating).
-- [x] **Review**: five-axis code review (correctness, readability, architecture, security, performance) — security axis specifically checks that this is UI-only defense-in-depth, not a substitute for the (already-correct) backend guards. Verdict: APPROVE, no findings.
-- [x] **Clean up**: delete `specs/action-button-permission-gating.md` per workflow step 7, after Review completes.
+- [ ] Full `bun run lint` + `bun run test` + `bun run build` clean across the whole diff.
+- [ ] `grep -rn "ConnectionOverlay" src` shows exactly 2 non-test hits: its own definition and the
+      single render site inside `BootOverlay.tsx`.
+- [ ] **Live/manual walkthrough**: `bun run dev`, hard-refresh, confirm a single continuous
+      connecting overlay through to Login/Admin with no intermediate blank white flash. Optionally
+      throttle the backend to make a regression visually obvious. Separately verify the
+      anti-logout invariant for real: stay logged in past a simulated 14.5-minute health ping cycle
+      and confirm the session survives a transient ping failure without logging out.
+  - Commit as soon as Task 4's automated checks pass — don't hold the commit open waiting on this
+    manual walkthrough.
+- [ ] **Update docs:**
+  - `docs/documents/app-shell.md` — `ConnectionOverlay` now renders from `BootOverlay` (inside
+    `AuthProvider`), not `HealthProvider` directly; the new reason `HealthProvider` still wraps
+    `BrowserRouter`/`AuthProvider` is so `AuthContext` can call `useHealthStatus()`. Document the
+    `14.5 * 60 * 1000` keep-alive interval and the Render 15-minute idle-suspend rationale.
+  - `docs/documents/auth.md` — its `HealthContext` section and intro "API-health gating" line go
+    stale; update to describe the new gated sequencing and the flap-safety `startedRef` invariant.
+- [ ] **Update spec**: reflect final shipped state in `specs/cms-admin-boot-overlay-sequencing.md`.
+- [ ] **Review**: five-axis code review (correctness, readability, architecture, security,
+      performance) — correctness axis re-verifies the `startedRef` flap-safety invariant and the
+      `healthStatus`/`status` shadowing fix.
+- [ ] **Clean up**: delete `specs/cms-admin-boot-overlay-sequencing.md` after Review completes.
 
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| `CollectionListPage.tsx` already exceeds the 500-line module cap | Medium — adding code without addressing this compounds an existing violation | Task 7 extracts `DeleteConfirmDialog` first (see Task 7) |
-| Base UI Tooltip may not fire on a truly `disabled` DOM button (known cross-library issue, not confirmed yet for `@base-ui/react`) | Medium — silently broken tooltip would fail AC 8 without an obvious test failure | `PermissionTooltip` wraps the disabled child in a focusable/hoverable `<span>` (Task 1); add an explicit RTL test asserting the tooltip trigger element itself isn't `disabled` even though the inner button is |
-| `MediaLibraryPage` has no existing test file — first test added alongside a behavior change rather than as a pure baseline | Low | Keep the new test file scoped to exactly the gating behavior (Task 5), not a full retroactive test suite for the whole page |
-| Granting a permission via the Roles page may not immediately reflect in an already-logged-in session's `useAuth().permissions` (cache/staleness) | Low-Medium — could make the live walkthrough steps look "broken" when it's actually a pre-existing session-refresh gap outside this spec's scope | Note actual observed behavior during the Phase 1 checkpoint walkthrough; if permissions genuinely don't refresh without re-login, flag as a separate follow-up, don't silently expand this spec to fix it |
+| `healthStatus` naming collision with the pre-existing local `status` (HTTP status code) inside `AuthContext`'s catch block | Medium — silent shadowing bug if missed | Task 2 explicitly destructures as `{ status: healthStatus }` |
+| React 19 `StrictMode` double-invokes effects in dev | Low — the gated effect is a synchronous ref-check-then-set, self-correcting under double-invoke | No fix needed |
+| `stubHealthyPing()`'s unscoped `vi.stubGlobal("fetch", ...)` could mask an unexpected real `fetch()` call later | Low today | Revisit to match on URL if a future test needs a distinct `fetch` mock |
+| New flap-safety test mixes fake timers into a file whose other tests use real timers | Low — scoped per-`describe`, same pattern `HealthContext.test.tsx` already uses | Scope fake timers to the new `describe` block only |
+| Whole-suite `bun run test` intentionally fails between Checkpoint 2 and 3 | Low, expected | Called out at Checkpoint 2 |
 
 ## Open Questions
 
-- Should `PermissionTooltip`'s reason text differentiate "you don't have this permission" from "this is a document action scoped to a different content type" (e.g. user has `document:create:other-post` but not for the current type)? The spec's fixed-template approach doesn't distinguish these; flag during Review if it reads as confusing in the live walkthrough.
+None blocking.
