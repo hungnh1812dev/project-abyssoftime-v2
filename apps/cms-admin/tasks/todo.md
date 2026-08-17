@@ -11,10 +11,10 @@ each task completes.
 ## Phase 1: HealthContext becomes pure state
 - [x] 1. `HealthContext.tsx` — stop rendering `ConnectionOverlay`; `PING_INTERVAL_HEALTHY` 14m →
       14m30s; trim/rename the 5 affected `HealthContext.test.tsx` cases
-- [ ] **Checkpoint** — lint/test/build clean; commit
+- [x] **Checkpoint** — lint/test/build clean; commit
 
 ## Phase 2: AuthContext health-gated bootstrap
-- [ ] 2. `AuthContext.tsx` — defer `attemptMountSession()` on `useHealthStatus()`, `startedRef`
+- [x] 2. `AuthContext.tsx` — defer `attemptMountSession()` on `useHealthStatus()`, `startedRef`
       guard; `stubHealthyPing()` in `test-utils.tsx`; `AuthContext.test.tsx` wrap + new
       flap-safety test
 - [ ] **Checkpoint** — `AuthContext`/`HealthContext` tests + lint/build clean; whole-suite failure

@@ -115,10 +115,10 @@ Task 4 (BootOverlay component + main.tsx wiring)
   - The other 5 tests are untouched.
 
 - **Acceptance criteria:**
-  - [ ] `HealthProvider` no longer imports or renders `ConnectionOverlay`.
-  - [ ] `useHealthStatus()` return shape unchanged: `{ status }`.
-  - [ ] `PING_INTERVAL_HEALTHY === 870000` (14.5 min).
-  - [ ] All 10 tests in `HealthContext.test.tsx` pass; no `role="alert"`/overlay CSS class
+  - [x] `HealthProvider` no longer imports or renders `ConnectionOverlay`.
+  - [x] `useHealthStatus()` return shape unchanged: `{ status }`.
+  - [x] `PING_INTERVAL_HEALTHY === 870000` (14.5 min).
+  - [x] All 10 tests in `HealthContext.test.tsx` pass; no `role="alert"`/overlay CSS class
         references remain in the file.
 - **Verify:** `bun run test -- src/context/__tests__/HealthContext.test.tsx`; `bun run build`;
   `bun run lint`.
@@ -130,10 +130,10 @@ Task 4 (BootOverlay component + main.tsx wiring)
 renders `ConnectionOverlay` until Task 4). Expected, in-progress state.
 
 ### Checkpoint 1
-- [ ] `bun run lint`, `bun run test`, `bun run build` all clean.
-- [ ] `grep -rn "ConnectionOverlay" src` — only the component's own file + its own test remain;
+- [x] `bun run lint`, `bun run test`, `bun run build` all clean.
+- [x] `grep -rn "ConnectionOverlay" src` — only the component's own file + its own test remain;
       `HealthContext.tsx` no longer appears.
-- [ ] Commit once the above passes.
+- [x] Commit once the above passes.
 
 ---
 
