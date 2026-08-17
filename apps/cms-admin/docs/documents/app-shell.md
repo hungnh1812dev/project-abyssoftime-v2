@@ -4,7 +4,7 @@ Bootstrap, HTTP client, routing table, and shared types that every other module 
 
 ## Bootstrap (`src/main.tsx`)
 
-Provider nesting, outside-in: `QueryClientProvider` → `HealthProvider` → `BrowserRouter` → `AuthProvider` → `AppRouter`, with `Toaster` (sonner) and `ReactQueryDevtools` as siblings inside `QueryClientProvider`. `HealthProvider` wraps `BrowserRouter` (not the other way around) so `ConnectionOverlay` (see [auth.md](./auth.md)) can render over the whole app including the login screen.
+Provider nesting, outside-in: `QueryClientProvider` → `HealthProvider` → `BrowserRouter` → `AuthProvider` → `{ AppRouter, BootOverlay }`, with `Toaster` (sonner) and `ReactQueryDevtools` as siblings inside `QueryClientProvider`. `HealthProvider` wraps `BrowserRouter`/`AuthProvider` so `AuthContext` can call `useHealthStatus()` and gate its mount-time session bootstrap on API readiness (see [auth.md](./auth.md)) — `HealthContext` itself is pure state and renders nothing. `BootOverlay`, rendered as a sibling of `AppRouter` inside `AuthProvider`, is the single place `ConnectionOverlay` renders in the whole app: `visible={status !== "healthy" || loading}`, so it covers the entire window from first paint through both health confirmation and session hydration with no intermediate blank frame.
 
 `src/App.tsx` is the unmodified Vite/React template starter (counter button, Vite/React logos) — **dead code**, not imported anywhere in `main.tsx` or `router.tsx`. Same for `src/App.css` and the `assets/react.svg`/`assets/vite.svg`/`assets/hero.png` it pulls in.
 

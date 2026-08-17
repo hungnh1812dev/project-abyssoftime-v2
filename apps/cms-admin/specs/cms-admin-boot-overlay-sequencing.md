@@ -2,6 +2,10 @@
 
 Transient feature spec per `docs/rules/workflow.md`'s spec→build→update-docs→review→cleanup workflow. Delete this file once the Review step completes.
 
+## Status: Shipped (2026-08-17)
+
+Implemented exactly as designed below across four tasks (`tasks/plan.md`): `HealthContext` is now pure state (`PING_INTERVAL_HEALTHY = 870000`ms, no `ConnectionOverlay` render); `AuthContext` gates `attemptMountSession()` on `useHealthStatus()` via a `startedRef`-latched effect; `BootOverlay` is the app's single `ConnectionOverlay` render site, wired into `main.tsx`. Shipped state is documented in `docs/documents/app-shell.md` (Bootstrap section) and `docs/documents/auth.md` (`AuthContext`/`HealthContext`/`BootOverlay`/`ProtectedRoute` sections). One implementation-time addition beyond this spec's original scope: a latent test race surfaced in `AuthContext.test.tsx`'s `login()` test — its `waitFor` checked a `"loading"` testid the test's own `LoginTrigger` never rendered, a pre-existing no-op wait that only stayed harmless because the old synchronous mount effect settled before the test's click; once the bootstrap moved behind the async health gate, that stale wait let the test click "login" before the mount session settled, so its late-arriving `401` clobbered the login state the test asserted on next. Fixed by giving `LoginTrigger` a real `loading` branch (see `tasks/plan.md` Task 2). No production behavior implication — `BootOverlay` already prevents this ordering from being reachable in the real app, since nothing is interactive until `loading` is false.
+
 ## Objective
 
 On cms-admin boot (cold or warm), the user currently sees:
