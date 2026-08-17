@@ -187,10 +187,18 @@ renders `ConnectionOverlay` until Task 4). Expected, in-progress state.
       3. Assert `/auth/refresh` was only ever called once, `user`/`role` unchanged after the flap.
 
 - **Acceptance criteria:**
-  - [ ] `attemptMountSession()` never fires while `healthStatus !== "healthy"`.
-  - [ ] Fires exactly once per mount once `healthStatus` becomes `"healthy"`.
-  - [ ] A later health flap does not re-fire it or change `user`/`role`.
-  - [ ] All existing `AuthContext.test.tsx` behavior unchanged.
+  - [x] `attemptMountSession()` never fires while `healthStatus !== "healthy"`.
+  - [x] Fires exactly once per mount once `healthStatus` becomes `"healthy"`.
+  - [x] A later health flap does not re-fire it or change `user`/`role`.
+  - [x] All existing `AuthContext.test.tsx` *assertions* unchanged. One test's synchronization
+        changed: the `login()` test's `waitFor` was checking a `"loading"` testid `LoginTrigger`
+        never rendered (a pre-existing no-op wait) — harmless before because mount-time
+        `attemptMountSession()` ran synchronously at mount and settled its 401 well before the
+        test's click; now that it's gated behind the async health ping, that stale wait let the
+        test click "login" before mount-session settled, so its late-arriving 401 clobbered the
+        just-set login state. Fixed by giving `LoginTrigger` a real `loading` branch (matching
+        `AuthDisplay`'s existing pattern) so the wait is a genuine signal. No assertion values
+        changed.
 - **Verify:** `bun run test -- src/context/__tests__/AuthContext.test.tsx`; `bun run build`.
 - **Dependencies:** Task 1.
 - **Files:** `src/context/AuthContext.tsx`, `src/test-utils.tsx`,
@@ -198,11 +206,11 @@ renders `ConnectionOverlay` until Task 4). Expected, in-progress state.
 - **Scope:** M.
 
 ### Checkpoint 2
-- [ ] `bun run test -- src/context/__tests__/AuthContext.test.tsx src/context/__tests__/HealthContext.test.tsx` clean.
-- [ ] `bun run lint`, `bun run build` clean.
-- [ ] **Expected, not a regression:** whole-suite `bun run test` still shows 3 failing files here
+- [x] `bun run test -- src/context/__tests__/AuthContext.test.tsx src/context/__tests__/HealthContext.test.tsx` clean.
+- [x] `bun run lint`, `bun run build` clean.
+- [x] **Expected, not a regression:** whole-suite `bun run test` still shows 3 failing files here
       (`RouteGuards.test.tsx`, `AdminLayout.test.tsx`, `LoginPage.test.tsx`) — that's Task 3.
-- [ ] Commit once the above passes.
+- [x] Commit once the above passes.
 
 ---
 
@@ -220,8 +228,8 @@ renders `ConnectionOverlay` until Task 4). Expected, in-progress state.
     test's tree yet).
 
 - **Acceptance criteria:**
-  - [ ] All 3 files' full test suites pass.
-  - [ ] No test changed its actual assertions, only its render-tree setup.
+  - [x] All 3 files' full test suites pass.
+  - [x] No test changed its actual assertions, only its render-tree setup.
 - **Verify:** `bun run test -- src/components/__tests__/RouteGuards.test.tsx src/pages/admin/layout/__tests__/AdminLayout.test.tsx src/pages/auth/__tests__/LoginPage.test.tsx`.
 - **Dependencies:** Task 2.
 - **Files:** `src/components/__tests__/RouteGuards.test.tsx`,
@@ -229,9 +237,9 @@ renders `ConnectionOverlay` until Task 4). Expected, in-progress state.
 - **Scope:** S.
 
 ### Checkpoint 3
-- [ ] `bun run test` (full suite) clean.
-- [ ] `bun run lint`, `bun run build` clean.
-- [ ] Commit once the above passes.
+- [x] `bun run test` (full suite) clean.
+- [x] `bun run lint`, `bun run build` clean.
+- [x] Commit once the above passes.
 
 ---
 

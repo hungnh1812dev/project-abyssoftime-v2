@@ -4,9 +4,10 @@ import MockAdapter from "axios-mock-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthProvider } from "@/context/AuthContext";
+import { HealthProvider } from "@/context/HealthContext";
 import { api, setAccessToken } from "@/lib/api";
 import { LoginPage } from "@/pages/auth/LoginPage";
-import { renderWithProviders } from "@/test-utils";
+import { renderWithProviders, stubHealthyPing } from "@/test-utils";
 
 let mock: MockAdapter;
 
@@ -14,19 +15,23 @@ beforeEach(() => {
   mock = new MockAdapter(api);
   mock.onPost("/auth/refresh").reply(401);
   mock.onGet("/auth/has-users").reply(200, { hasUsers: true });
+  stubHealthyPing();
 });
 
 afterEach(() => {
   mock.restore();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
   setAccessToken(null);
 });
 
 function renderLogin() {
   return renderWithProviders(
-    <AuthProvider>
-      <LoginPage />
-    </AuthProvider>,
+    <HealthProvider>
+      <AuthProvider>
+        <LoginPage />
+      </AuthProvider>
+    </HealthProvider>,
   );
 }
 

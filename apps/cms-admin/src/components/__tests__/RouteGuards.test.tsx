@@ -1,13 +1,14 @@
 import { screen, waitFor } from "@testing-library/react";
 import MockAdapter from "axios-mock-adapter";
 import { Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AuthProvider } from "@/context/AuthContext";
-import { api } from "@/lib/api";
-import { renderWithProviders } from "@/test-utils";
 import type { MeUser } from "@/context/AuthContext";
+import { HealthProvider } from "@/context/HealthContext";
+import { api } from "@/lib/api";
+import { renderWithProviders, stubHealthyPing } from "@/test-utils";
 
 function makeMeUser(overrides: Partial<MeUser> = {}): MeUser {
   return {
@@ -29,22 +30,26 @@ let mock: MockAdapter;
 
 beforeEach(() => {
   mock = new MockAdapter(api);
+  stubHealthyPing();
 });
 
 afterEach(() => {
   mock.restore();
+  vi.unstubAllGlobals();
 });
 
 function wrap(ui: React.ReactNode, initialEntries = ["/"]) {
   return renderWithProviders(
-    <AuthProvider>
-      <Routes>
-        <Route path="/login" element={<p>Login page</p>} />
-        <Route path="/register" element={<p>Register page</p>} />
-        <Route path="/403" element={<p>403 Forbidden</p>} />
-        {ui}
-      </Routes>
-    </AuthProvider>,
+    <HealthProvider>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<p>Login page</p>} />
+          <Route path="/register" element={<p>Register page</p>} />
+          <Route path="/403" element={<p>403 Forbidden</p>} />
+          {ui}
+        </Routes>
+      </AuthProvider>
+    </HealthProvider>,
     { initialEntries },
   );
 }

@@ -17,11 +17,11 @@ each task completes.
 - [x] 2. `AuthContext.tsx` — defer `attemptMountSession()` on `useHealthStatus()`, `startedRef`
       guard; `stubHealthyPing()` in `test-utils.tsx`; `AuthContext.test.tsx` wrap + new
       flap-safety test
-- [ ] **Checkpoint** — `AuthContext`/`HealthContext` tests + lint/build clean; whole-suite failure
+- [x] **Checkpoint** — `AuthContext`/`HealthContext` tests + lint/build clean; whole-suite failure
       in the 3 ripple files is expected here, not a regression; commit
 
 ## Phase 3: Ripple fix — other real-AuthProvider test files
-- [ ] 3. `RouteGuards.test.tsx`, `AdminLayout.test.tsx`, `LoginPage.test.tsx` — same
+- [x] 3. `RouteGuards.test.tsx`, `AdminLayout.test.tsx`, `LoginPage.test.tsx` — same
       `HealthProvider` + `stubHealthyPing()` wrap
 - [ ] **Checkpoint** — full suite lint/test/build clean; commit
 
