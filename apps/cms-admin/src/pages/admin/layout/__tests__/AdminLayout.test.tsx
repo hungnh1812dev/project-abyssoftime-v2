@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider, SidebarShell } from "@/components/sidebar";
 import { AuthProvider } from "@/context/AuthContext";
 import type { MeUser } from "@/context/AuthContext";
+import { HealthProvider } from "@/context/HealthContext";
 import { api } from "@/lib/api";
 import { TopBar } from "@/pages/admin/layout/TopBar";
-import { renderWithProviders } from "@/test-utils";
+import { renderWithProviders, stubHealthyPing } from "@/test-utils";
 import type { ContentType } from "@/types/cms";
 
 function makeMeUser(overrides: Partial<MeUser> = {}): MeUser {
@@ -43,22 +44,26 @@ let mock: MockAdapter;
 
 beforeEach(() => {
   mock = new MockAdapter(api);
+  stubHealthyPing();
 });
 
 afterEach(() => {
   mock.restore();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function renderSidebar(user: MeUser = makeMeUser()) {
   mock.onPost("/auth/refresh").reply(200, { message: "Refresh successful" });
   mock.onGet("/auth/me").reply(200, user);
   return renderWithProviders(
-    <AuthProvider>
-      <SidebarProvider>
-        <SidebarShell />
-      </SidebarProvider>
-    </AuthProvider>,
+    <HealthProvider>
+      <AuthProvider>
+        <SidebarProvider>
+          <SidebarShell />
+        </SidebarProvider>
+      </AuthProvider>
+    </HealthProvider>,
     { initialEntries: ["/admin"] },
   );
 }
@@ -142,11 +147,13 @@ describe("TopBar", () => {
     mock.onPost("/auth/refresh").reply(200, { message: "Refresh successful" });
     mock.onGet("/auth/me").reply(200, makeMeUser());
     renderWithProviders(
-      <AuthProvider>
-        <SidebarProvider>
-          <TopBar />
-        </SidebarProvider>
-      </AuthProvider>,
+      <HealthProvider>
+        <AuthProvider>
+          <SidebarProvider>
+            <TopBar />
+          </SidebarProvider>
+        </AuthProvider>
+      </HealthProvider>,
       { initialEntries: ["/admin/settings/media"] },
     );
     await waitFor(() => expect(screen.getByText("Home")).toBeInTheDocument());

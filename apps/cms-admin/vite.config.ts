@@ -30,6 +30,7 @@ export default defineConfig({
     proxy: {
       '/api': { target: process.env.VITE_API_URL ?? 'http://localhost:8080', changeOrigin: true },
       '/auth': { target: process.env.VITE_API_URL ?? 'http://localhost:8080', changeOrigin: true },
+      '/health': { target: process.env.VITE_API_URL ?? 'http://localhost:8080', changeOrigin: true },
     },
   },
   test: {
