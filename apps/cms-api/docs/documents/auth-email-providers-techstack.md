@@ -1,7 +1,7 @@
 # Auth Email Sender — Resend/Brevo/SendGrid SDK Decision
 
 Decision rationale for the three `IEmailSender` implementations added in the 2026-08-13 iteration
-(`ResendEmailSender`, `BrevoEmailSender`, `SendGridEmailSender`), per `docs/rules/workflow.md`'s
+(`ResendEmailSender`, `BrevoEmailSender`, `SendGridEmailSender`), per repo root `docs/workflow.md`'s
 decision-rationale rule. See `docs/documents/auth-email-techstack.md` for the original
 Gmail/SMTP/Console provider comparison these three sit alongside.
 

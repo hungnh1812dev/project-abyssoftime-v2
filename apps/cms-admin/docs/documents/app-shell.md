@@ -1,6 +1,6 @@
 # App Shell
 
-Bootstrap, HTTP client, routing table, and shared types that every other module depends on. React 19 + TypeScript + Vite (not Bun's own `Bun.serve`/HTML-import bundler — see `docs/rules/bun.md`'s Frontend section, which doesn't apply to this app; Bun is used only as the package manager/script runner). Bundling is Vite, tests run on Vitest (`bun run test` → `vitest run`), not `bun test`.
+Bootstrap, HTTP client, routing table, and shared types that every other module depends on. React 19 + TypeScript + Vite (not Bun's own `Bun.serve`/HTML-import bundler — see repo root `docs/rules/bun.md`'s Frontend section, which doesn't apply to this app; Bun is used only as the package manager/script runner). Bundling is Vite, tests run on Vitest (`bun run test` → `vitest run`), not `bun test`.
 
 ## Bootstrap (`src/main.tsx`)
 

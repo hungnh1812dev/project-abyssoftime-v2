@@ -3,8 +3,8 @@
 Index of rule/doc files for this project (`apps/cms-admin`, the CMS admin frontend). Any agent working on this repo only needs to start here.
 
 - `/SPEC.md` — objective, tech stack, commands, project structure, code style, testing strategy, boundaries. Pointer-only per the Root docs rule below — module details live in `/docs/documents/*`.
-- `/docs/rules/workflow.md` — feature workflow (spec > build > update spec/docs > review > cleanup), module rules (max 500 lines, independent modules), commit, formatting, and naming conventions.
-- `/docs/rules/bun.md` — Bun runtime/tooling conventions, shared with the sibling `apps/cms-api` backend. Only the package-manager/script-runner commands (`bun install`, `bun run <script>`, `bunx <package>`) apply to this app; its Frontend/Testing API sections (`Bun.serve`, `bun:sqlite`, `bun test`) describe Bun-native patterns this Vite + Vitest app doesn't use — see `/SPEC.md`'s Tech Stack section.
+- repo root `docs/workflow.md` — feature workflow (spec > build > update spec/docs > review > cleanup), module rules (max 500 lines, independent modules), commit, formatting, and naming conventions. Shared with the sibling apps.
+- repo root `docs/rules/bun.md` — Bun runtime/tooling conventions, shared with the sibling `apps/cms-api` backend. Only the package-manager/script-runner commands (`bun install`, `bun run <script>`, `bunx <package>`) apply to this app; its Frontend/Testing API sections (`Bun.serve`, `bun:sqlite`, `bun test`) describe Bun-native patterns this Vite + Vitest app doesn't use — see `/SPEC.md`'s Tech Stack section.
 - `/docs/documents/app-shell.md` — bootstrap (`main.tsx`), the shared axios client (`lib/api.ts`, in-memory access token + silent-refresh interceptor), query client defaults, the route table (`router.tsx`), and shared `types/cms.ts`; notes the dead `App.tsx`/`AdminRoute.tsx`.
 - `/docs/documents/auth.md` — `AuthContext` (mount-time silent refresh, permission fetch), `HealthContext`/`ConnectionOverlay` (API cold-start gating), `ProtectedRoute`, and the login/register/invite-accept pages.
 - `/docs/documents/navigation-shell.md` — collapsible `Sidebar` (permission-gated settings links, live content-type list), `AdminLayout`/`TopBar`/`StickyActionBar`, and `useBreadcrumbs`.
@@ -17,5 +17,5 @@ Index of rule/doc files for this project (`apps/cms-admin`, the CMS admin fronte
 
 ## Root docs
 
-- `SPEC.md` and `CLAUDE.md` only contain guidance pointing to module files — not the module details themselves (see `docs/rules/workflow.md`'s Root docs rule).
+- `SPEC.md` and `CLAUDE.md` only contain guidance pointing to module files — not the module details themselves (see repo root `docs/workflow.md`'s Root docs rule).
 - Once a feature's details are fully captured in `/docs/documents/*`, remove that feature's section from `SPEC.md` rather than letting it accumulate already-documented content.

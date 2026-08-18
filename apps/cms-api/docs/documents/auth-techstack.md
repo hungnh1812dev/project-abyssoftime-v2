@@ -1,6 +1,6 @@
 # Auth Module — Tech/Pattern/Design Decisions
 
-Comparison tables for the choices made building `src/modules/auth/**`, per `docs/rules/workflow.md`'s "Decision rationale" rule. See [auth.md](./auth.md) for the module's full implementation writeup.
+Comparison tables for the choices made building `src/modules/auth/**`, per repo root `docs/workflow.md`'s "Decision rationale" rule. See [auth.md](./auth.md) for the module's full implementation writeup.
 
 ## Password / OTP hashing library
 

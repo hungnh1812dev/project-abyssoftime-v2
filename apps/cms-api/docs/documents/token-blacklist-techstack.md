@@ -1,7 +1,7 @@
 # Refresh Token Blacklist — Tech/Pattern/Design Decisions
 
 Comparison tables for the choices made building `src/common/token-blacklist/**`, per
-`docs/rules/workflow.md`'s "Decision rationale" rule. See
+repo root `docs/workflow.md`'s "Decision rationale" rule. See
 [token-blacklist.md](./token-blacklist.md) for the module's full implementation writeup.
 
 ## Cache-miss semantics on Redis failure: sticky-degraded (chosen) vs. three alternatives

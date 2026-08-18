@@ -1,6 +1,6 @@
 # CORS Wiring — Tech/Pattern/Design Decisions
 
-Comparison table for the choice made wiring `app.enableCors()` into `src/bootstrap/configure-app.ts`, per `docs/rules/workflow.md`'s "Decision rationale" rule. See [cors.md](./cors.md) for the module's full implementation writeup.
+Comparison table for the choice made wiring `app.enableCors()` into `src/bootstrap/configure-app.ts`, per repo root `docs/workflow.md`'s "Decision rationale" rule. See [cors.md](./cors.md) for the module's full implementation writeup.
 
 ## Two policies on one Express app: single `enableCors(delegate)` (chosen) vs. two `app.use(cors(...))` middlewares
 

@@ -30,6 +30,18 @@ vi.mock("ckeditor5", () => ({
   MediaEmbed: class {},
   Table: class {},
   TableToolbar: class {},
+  SourceEditing: class {},
+  FontFamily: class {},
+  FontSize: class {},
+  FontColor: class {},
+  FontBackgroundColor: class {},
+  Strikethrough: class {},
+  Subscript: class {},
+  Superscript: class {},
+  Underline: class {},
+  Alignment: class {},
+  CodeBlock: class {},
+  TodoList: class {},
 }));
 
 function createClient() {

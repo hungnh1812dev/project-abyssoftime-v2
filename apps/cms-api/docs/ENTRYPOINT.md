@@ -2,8 +2,8 @@
 
 Index of rule/doc files for this project. Any agent working on this repo only needs to start here.
 
-- `/docs/rules/workflow.md` — feature workflow (spec > build > update spec/docs > review > cleanup), module rules (max 1000 lines, independent modules), commit, formatting, and naming conventions.
-- `/docs/rules/bun.md` — Bun runtime/tooling conventions (use Bun instead of Node.js, testing, frontend).
+- repo root `docs/workflow.md` — feature workflow (spec > build > update spec/docs > review > cleanup), module rules (max 500 lines, independent modules), commit, formatting, and naming conventions. Shared with the sibling apps.
+- repo root `docs/rules/bun.md` — Bun runtime/tooling conventions (use Bun instead of Node.js, testing, frontend). Shared with the sibling apps.
 - `/docs/documents/access-tokens.md` — Access Tokens module: entity/repository, create/list/delete/revoke services, secret hashing/rotation, the standalone unwired `ApiTokenGuard`, and the seed/permissions-repository cross-cutting edits it required.
 - `/docs/documents/auth.md` — Auth module: register/verify-otp/login/refresh/logout/forgot-password/reset-password lifecycle, JWT cookies, the shared `common/` guards it depends on, why hashing uses `bcryptjs` instead of `Bun.password`, and email sending (`ConsoleEmailSender`/`SmtpEmailSender` via `@nestjs-modules/mailer`, Handlebars `.hbs` templates through `IEmailTemplateRenderer`), plus a practical env-setup guide (`EMAIL_PROVIDER` values, required vars, and where to get each vendor's API key) — see `auth-email-techstack.md`/`auth-email-providers-techstack.md` for the provider decision rationale.
 - `/docs/documents/auth-issues-fix.md` — Auth module hardening: the 10 code-review findings (race condition on `super_admin` promotion, username/email duplication races, password/username validation, per-route rate limiting, trust proxy, timing side-channels, `ConsoleEmailSender`) and the issue/resolution/rationale/trade-off for each.

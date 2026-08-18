@@ -1,0 +1,28 @@
+{
+  "private": true,
+  "scripts": {
+    "install:cms-api": "cd apps/cms-api && bun install --frozen-lockfile",
+    "install:cms-admin": "cd apps/cms-admin && bun install --frozen-lockfile",
+    "install:frontend": "cd apps/frontend && bun install --frozen-lockfile",
+    "install:all": "bun run install:cms-api && bun run install:cms-admin && bun run install:frontend",
+
+    "dev:cms-api": "cd apps/cms-api && bun run start:dev",
+    "dev:cms-admin": "cd apps/cms-admin && bun run dev",
+    "dev:frontend": "cd apps/frontend && bun run dev",
+
+    "build:cms-api": "cd apps/cms-api && bun run build",
+    "build:cms-admin": "cd apps/cms-admin && bun run build",
+    "build:frontend": "cd apps/frontend && bun run build",
+    "build:all": "bun run build:cms-api && bun run build:cms-admin && bun run build:frontend",
+
+    "test:cms-api": "cd apps/cms-api && bun run test",
+    "test:cms-admin": "cd apps/cms-admin && bun run test",
+    "test:frontend": "cd apps/frontend && bun run test",
+    "test:all": "bun run test:cms-api && bun run test:cms-admin && bun run test:frontend",
+
+    "lint:cms-api": "cd apps/cms-api && bun run lint",
+    "lint:cms-admin": "cd apps/cms-admin && bun run lint",
+    "lint:frontend": "cd apps/frontend && bun run lint",
+    "lint:all": "bun run lint:cms-api && bun run lint:cms-admin && bun run lint:frontend"
+  }
+}

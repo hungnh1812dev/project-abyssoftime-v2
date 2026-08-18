@@ -1,6 +1,6 @@
 # Roles Module — Tech/Pattern/Design Decisions
 
-Comparison table for the authorization-mechanism choice made when rolling out real auth to `src/modules/roles/**`, per `docs/rules/workflow.md`'s "Decision rationale" rule. See [roles.md](./roles.md) for the module's full implementation writeup.
+Comparison table for the authorization-mechanism choice made when rolling out real auth to `src/modules/roles/**`, per repo root `docs/workflow.md`'s "Decision rationale" rule. See [roles.md](./roles.md) for the module's full implementation writeup.
 
 ## Authorization mechanism (replacing the old numeric-`level` caller check)
 

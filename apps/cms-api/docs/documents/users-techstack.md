@@ -1,6 +1,6 @@
 # Users Module — Tech/Pattern/Design Decisions
 
-Comparison tables for the choices made when rolling out real auth to `src/modules/users/**`, per `docs/rules/workflow.md`'s "Decision rationale" rule. See [users.md](./users.md) for the module's full implementation writeup, and [roles-techstack.md](./roles-techstack.md) for the base authorization-mechanism comparison this module also inherits.
+Comparison tables for the choices made when rolling out real auth to `src/modules/users/**`, per repo root `docs/workflow.md`'s "Decision rationale" rule. See [users.md](./users.md) for the module's full implementation writeup, and [roles-techstack.md](./roles-techstack.md) for the base authorization-mechanism comparison this module also inherits.
 
 ## Why `users` gets an *extra* check beyond the permission-slug guard
 
