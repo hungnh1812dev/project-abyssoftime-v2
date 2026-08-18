@@ -48,7 +48,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   cms-api-install:
-    name: CMS API - Install Dependencies
+    name: CMS API - Install Deps
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -105,7 +105,7 @@ jobs:
         run: bun run lint
 
   cms-api-test:
-    name: CMS API - Unit Test
+    name: CMS API - Test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -165,7 +165,7 @@ jobs:
         run: bun run build
 
   cms-admin-install:
-    name: CMS Admin - Install Dependencies
+    name: CMS Admin - Install Deps
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -222,7 +222,7 @@ jobs:
         run: bun run lint
 
   cms-admin-test:
-    name: CMS Admin - Unit Test
+    name: CMS Admin - Test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -282,7 +282,7 @@ jobs:
         run: bun run build
 
   frontend-install:
-    name: Frontend - Install Dependencies
+    name: Frontend - Install Deps
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -339,7 +339,7 @@ jobs:
         run: bun run lint
 
   frontend-test:
-    name: Frontend - Unit Test
+    name: Frontend - Test
     runs-on: ubuntu-latest
     defaults:
       run:
