@@ -1,6 +1,6 @@
 # Permissions Module — Tech/Pattern/Design Decisions
 
-Comparison table for the one real choice made when rolling out real auth to `src/modules/permissions/**`, per `docs/rules/workflow.md`'s "Decision rationale" rule. See [permissions.md](./permissions.md) for the module's full implementation writeup, and [roles-techstack.md](./roles-techstack.md) for the fuller authorization-mechanism comparison this module inherits.
+Comparison table for the one real choice made when rolling out real auth to `src/modules/permissions/**`, per repo root `docs/workflow.md`'s "Decision rationale" rule. See [permissions.md](./permissions.md) for the module's full implementation writeup, and [roles-techstack.md](./roles-techstack.md) for the fuller authorization-mechanism comparison this module inherits.
 
 ## Authorization mechanism
 

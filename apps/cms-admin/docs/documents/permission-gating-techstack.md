@@ -1,6 +1,6 @@
 # Decision rationale: action-button permission gating
 
-Backing doc for the `action-button-permission-gating` spec (`/specs/action-button-permission-gating.md`). Two implementation choices compared here per `docs/rules/workflow.md`'s Decision rationale rule.
+Backing doc for the `action-button-permission-gating` spec (`/specs/action-button-permission-gating.md`). Two implementation choices compared here per repo root `docs/workflow.md`'s Decision rationale rule.
 
 ## Decision 1: how to gate a mutating button (disable + explain, not hide)
 
