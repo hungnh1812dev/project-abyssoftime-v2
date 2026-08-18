@@ -255,7 +255,7 @@ workaround applies.
 ## Tests
 
 Unit tests (Jest, no `coverageThreshold` entries — this module's Prisma-backed store follows
-`docs/rules/workflow.md`'s rule against gating Prisma files) live next to each source file:
+repo root `docs/workflow.md`'s rule against gating Prisma files) live next to each source file:
 `prisma-token-blacklist.store.spec.ts` (mocked `PrismaService`: write/read round trip, expired row
 reads as not-blacklisted, double-blacklist doesn't throw, plus `tryClaim()`: `true` on a successful
 `create`, `false` on a mocked `P2002`, rethrows any other error), `token-blacklist.service.spec.ts`

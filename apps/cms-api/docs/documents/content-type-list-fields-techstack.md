@@ -1,6 +1,6 @@
 # Content-Type `listFields` — Tech/Pattern/Design Decisions
 
-Comparison tables for the Configure-Columns backend cycle (`PATCH content-types/:slug/list-fields` + `updatedBy`), per `docs/rules/workflow.md`'s "Decision rationale" rule. See [content-type.md](./content-type.md#admin-mutable-listfields) for the module's full implementation writeup, and [document.md](./document.md#resolved-updatedby) for the `updatedBy` resolution path.
+Comparison tables for the Configure-Columns backend cycle (`PATCH content-types/:slug/list-fields` + `updatedBy`), per repo root `docs/workflow.md`'s "Decision rationale" rule. See [content-type.md](./content-type.md#admin-mutable-listfields) for the module's full implementation writeup, and [document.md](./document.md#resolved-updatedby) for the `updatedBy` resolution path.
 
 ## Persistence for admin-set `listFields`
 

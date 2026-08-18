@@ -13,7 +13,9 @@ package.json or workspace tooling; run commands from inside each app's directory
 | [`frontend`](apps/frontend/README.md) | `apps/frontend` | Next.js (App Router) | Public-facing site: CV, EN vocabulary trainer, Go/React learning modules, vaccine tracker, and client-side-encrypted data managers. |
 
 Each app has its own `README.md`/`SPEC.md`/`docs/` with full setup, architecture, and conventions
-— start there for anything app-specific.
+— start there for anything app-specific. Repo-wide rules and the feature workflow live in
+`docs/rules/*` / `docs/workflow.md`; `CLAUDE.md` is the entrypoint for any agent working in this
+repo.
 
 ## Getting started
 

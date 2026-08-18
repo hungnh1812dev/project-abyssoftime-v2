@@ -1,7 +1,7 @@
 # `GET /api/v1/auth/me` — Decision Rationale
 
 Two judgment calls made while spec'ing this endpoint (see `SPEC.md` while the spec is active; this file is
-the durable record once the spec is cleaned up per `docs/rules/workflow.md`).
+the durable record once the spec is cleaned up per repo root `docs/workflow.md`).
 
 ## 1. Permissions source: fresh DB read vs. JWT-embedded values
 

@@ -1,5 +1,8 @@
 # Workflow Rules
 
+Repo-wide — applies to every app (`apps/cms-api`, `apps/cms-admin`, `apps/frontend`) unless that
+app's own `docs/rules/*` overrides a specific point.
+
 ## Feature workflow
 
 For any new feature/page/module:
@@ -8,7 +11,7 @@ For any new feature/page/module:
 2. **Build (plan)** — override old `tasks/todo.md` and `tasks/plan.md` with the new task breakdown.
 3. **Build (execute)** — implement in multiple steps, verifying as you go.
 4. **Update spec** — reflect the final state in `/docs/specs/*`.
-5. **Update docs** — reflect the final state in `/docs/documents/*`. If the feature adds a new endpoint, also update the Swagger doc.
+5. **Update docs/rules** — reflect the final state in `/docs/documents/*`. If the feature adds a new endpoint, also update the Swagger doc. If the change adds, changes, or removes a rule, also update the relevant `docs/rules/*` file (the working app's own if the rule is app-specific, or the repo-root `docs/rules/*`/`docs/workflow.md` if it's shared across apps).
 6. **Review** — conduct a five-axis code review: correctness, readability, architecture, security, performance.
 7. **Clean up** — delete the completed spec from `/specs/*.md`, must be run after Review complete.
 8. **Complete** — workflow done.
@@ -27,7 +30,7 @@ For any new feature/page/module:
 
 ## Root docs
 
-- `SPEC.md` and `CLAUDE.md` only contain guidance pointing to module files — not the module details themselves.
+- Each app's `SPEC.md`/`CLAUDE.md` — and the repo root's `SPEC.md`/`CLAUDE.md` — only contain guidance pointing to module/rule files, not the module or rule details themselves.
 - Keep `SPEC.md` as small as possible: once a feature's details are fully captured in `/docs/documents/*`, remove that feature's section from `SPEC.md` rather than letting it accumulate already-documented content.
 
 ## Decision rationale
