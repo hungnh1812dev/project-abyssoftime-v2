@@ -17,8 +17,11 @@ Full detail in `tasks/plan.md`. Prior phase archived at `tasks/archive.md`.
 - [~] **Checkpoint** — `grep -rn "DialogNote\|DialogDescribedByContext" src/` returns only `ui/dialog.tsx` (confirmed); lint/build/test clean (confirmed, same 5 pre-existing unrelated failures throughout); human review before touching the shared primitive (pending)
 
 ### Phase 3: Revert the primitive
-- [ ] 9. Revert `ui/dialog.tsx` to the pre-`7ed48a2` vanilla baseline (also discards the current uncommitted header-border edit — `DialogPanel` carries that styling forward instead)
-- [ ] **Checkpoint** — full lint/build/test + browser walkthrough of every migrated dialog; `git diff --stat` shows only the expected files
+- [x] 9. Revert `ui/dialog.tsx` to the pre-`7ed48a2` vanilla baseline (also discarded the
+      uncommitted header-border edit — `DialogPanel` carries that styling forward instead)
+- [~] **Checkpoint** — full lint/build/test clean (confirmed, same 5 pre-existing unrelated
+      failures throughout); `git diff --stat 7ed48a2` shows only the expected files (confirmed);
+      browser walkthrough of every migrated dialog still outstanding — human follow-up
 
 ## Final
 - [ ] Five-axis review (correctness, readability, architecture, security, performance).

@@ -312,16 +312,19 @@ discards the still-uncommitted header-border edit currently sitting in the worki
 `DialogPanel` already carries that styling forward.
 
 **Acceptance criteria:**
-- [ ] `ui/dialog.tsx` exports exactly: `Dialog`, `DialogClose`, `DialogContent`,
+- [x] `ui/dialog.tsx` exports exactly: `Dialog`, `DialogClose`, `DialogContent`,
       `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogOverlay`, `DialogPortal`,
       `DialogTitle`, `DialogTrigger` — no `DialogNote`.
-- [ ] `git diff 7ed48a2^ -- src/components/ui/dialog.tsx` is empty (file matches the pre-contract baseline exactly).
+- [x] `git diff 7ed48a2^ -- src/components/ui/dialog.tsx` is empty (file matches the pre-contract baseline exactly).
 
 **Verification:**
-- [ ] Tests pass: `bun run test`
-- [ ] Build succeeds: `bun run build`
+- [x] Tests pass: `bun run test` — added `ui/__tests__/dialog.test.tsx` first (export-list
+      assertion + a plain title/description/footer smoke render), confirmed RED against the
+      still-augmented file (`DialogNote` present in the export list), then GREEN after the revert.
+      Full suite: 454 passing, same 5 pre-existing unrelated failures present since before Task 1.
+- [x] Build succeeds: `bun run build`
 - [ ] Manual check: full browser walkthrough — every dialog touched in Phase 2, plus a
-      non-dialog smoke check (nothing else imports from `ui/dialog.tsx` in a way this could break).
+      non-dialog smoke check. (Still outstanding — see Checkpoint: Complete below.)
 
 **Dependencies:** Tasks 3-8 (every direct-primitive call site must be migrated first).
 
@@ -332,10 +335,17 @@ discards the still-uncommitted header-border edit currently sitting in the worki
 
 ### Checkpoint: Complete
 
-- [ ] All acceptance criteria above met.
-- [ ] `git diff --stat` shows only `dialog.tsx`, `dialog-panel.tsx` (+test), `confirm-dialog.tsx`,
-      and the 6 migrated call sites — nothing else.
-- [ ] Ready for five-axis review.
+- [x] All acceptance criteria above met.
+- [x] `git diff --stat 7ed48a2` (everything this plan touched, since before Task 1) shows only
+      `dialog.tsx`, `dialog-panel.tsx` (+test), `confirm-dialog.tsx` (+test), the 6 migrated call
+      sites (+tests, including one brand-new `InternationalizePage.test.tsx`), and the `tasks/*`
+      planning docs — nothing else. Confirmed.
+- [ ] Browser walkthrough of every migrated dialog (deferred since Task 2's checkpoint) — the only
+      remaining item before this is ready for review. Every other check ran green throughout: 8
+      commits, one per task, each with characterization tests written and passing against the
+      pre-refactor code first, then re-verified green after; full suite held at the same 5
+      pre-existing unrelated failures the whole way, growing from 431 to 459 passing tests.
+- [ ] Ready for five-axis review (after the browser walkthrough above).
 - [ ] Once review passes: per the repo's feature workflow, update any `docs/documents/*` that
       reference the old `DialogNote`/header contract (none currently do — grep came up empty at
       plan time, but re-check), then clear this plan (archive `tasks/plan.md`/`tasks/todo.md` the
