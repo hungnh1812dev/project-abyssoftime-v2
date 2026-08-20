@@ -5,7 +5,7 @@ import { PermissionTree } from "@/components/permissions/PermissionTree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogNote, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,9 +37,10 @@ function TokenRevealDialog({ open, onOpenChange, token }: { open: boolean; onOpe
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Token</DialogTitle>
+          <DialogDescription>Your new access token has been generated.</DialogDescription>
         </DialogHeader>
+        <DialogNote>Copy this token now. It will not be shown again.</DialogNote>
         <div className="space-y-3">
-          <p className="text-muted-foreground text-sm">Copy this token now. It will not be shown again.</p>
           <div className="bg-muted rounded-md border p-3">
             <code className="text-xs break-all">{token}</code>
           </div>
@@ -116,6 +117,7 @@ export function AccessTokensPage() {
           <DialogContent className="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create Access Token</DialogTitle>
+              <DialogDescription>Generate a scoped API token for external integrations.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-1">
@@ -210,7 +212,8 @@ export function AccessTokensPage() {
         open={deleteTarget !== null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="Delete token"
-        description={deleteTarget && `Delete token "${deleteTarget.name}"? This action cannot be undone.`}
+        description={deleteTarget && `Delete token "${deleteTarget.name}"?`}
+        note="This action cannot be undone."
         confirmLabel="Delete"
         variant="destructive"
         loading={deleteToken.isPending}
@@ -224,7 +227,8 @@ export function AccessTokensPage() {
         open={revokeTarget !== null}
         onOpenChange={(open) => !open && setRevokeTarget(null)}
         title="Revoke token"
-        description={revokeTarget && `Revoke and rotate the secret for "${revokeTarget.name}"? The current token will stop working immediately.`}
+        description={revokeTarget && `Revoke and rotate the secret for "${revokeTarget.name}"?`}
+        note="The current token will stop working immediately."
         confirmLabel="Revoke"
         variant="destructive"
         loading={revokeToken.isPending}

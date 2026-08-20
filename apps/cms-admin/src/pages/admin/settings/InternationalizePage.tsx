@@ -2,6 +2,7 @@ import { Pencil, Star, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,6 +77,7 @@ export function InternationalizePage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingLocale ? "Edit locale" : "Add locale"}</DialogTitle>
+            <DialogDescription>{editingLocale ? "Update this locale's name and default status." : "Add a new locale for your content."}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -111,26 +113,24 @@ export function InternationalizePage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      <ConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
-        }}>
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Delete locale</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete the locale &quot;{deleteTarget?.name}&quot; ({deleteTarget?.code})? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleteLocale.isPending}>
-              {deleteLocale.isPending ? "Deleting…" : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        }}
+        title="Delete locale"
+        description={
+          deleteTarget && (
+            <>
+              Are you sure you want to delete the locale &quot;{deleteTarget.name}&quot; ({deleteTarget.code})?
+            </>
+          )
+        }
+        note="This action cannot be undone."
+        confirmLabel="Delete"
+        loading={deleteLocale.isPending}
+        onConfirm={handleDelete}
+      />
 
       <Table>
         <TableHeader>

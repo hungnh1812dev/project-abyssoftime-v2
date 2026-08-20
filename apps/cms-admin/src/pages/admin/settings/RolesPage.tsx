@@ -6,7 +6,7 @@ import { PermissionTree } from "@/components/permissions/PermissionTree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogNote, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -54,7 +54,9 @@ function RoleDialog({ open, onOpenChange, role, permissions }: RoleDialogProps) 
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Edit Role: ${role.name}` : "Create Role"}</DialogTitle>
+          <DialogDescription>{isEdit ? "Update this role's name, level, and permissions." : "Define a new role and its permission set."}</DialogDescription>
         </DialogHeader>
+        {fieldsDisabled && <DialogNote>This is a default role — name and level are locked, but permissions can still be edited.</DialogNote>}
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
@@ -208,7 +210,8 @@ export function RolesPage() {
         open={deleteTarget !== null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="Delete role"
-        description={deleteTarget && `Delete role "${deleteTarget.name}"? This action cannot be undone.`}
+        description={deleteTarget && `Delete role "${deleteTarget.name}"?`}
+        note="This action cannot be undone."
         confirmLabel="Delete"
         variant="destructive"
         loading={deleteRole.isPending}

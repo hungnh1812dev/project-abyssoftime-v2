@@ -1,7 +1,7 @@
 "use client";
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { XIcon } from "lucide-react";
+import { TriangleAlert, XIcon } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,29 @@ function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />;
+}
+
+// Base UI's Dialog.Popup only auto-links a single Description's id to aria-describedby, so
+// DialogNote (a second description-like block) registers here to be included alongside it.
+const DialogDescribedByContext = React.createContext<{ register: (id: string) => void; unregister: (id: string) => void } | null>(null);
+
+function useDescribedByIds() {
+  const [ids, setIds] = React.useState<string[]>([]);
+  const register = React.useCallback((id: string) => {
+    setIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  }, []);
+  const unregister = React.useCallback((id: string) => {
+    setIds((prev) => prev.filter((existing) => existing !== id));
+  }, []);
+  return { ids, register, unregister };
+}
+
+function useRegisterDescribedBy(id: string) {
+  const ctx = React.useContext(DialogDescribedByContext);
+  React.useEffect(() => {
+    ctx?.register(id);
+    return () => ctx?.unregister(id);
+  }, [ctx, id]);
 }
 
 function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
@@ -44,24 +67,29 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
 }) {
+  const { ids, register, unregister } = useDescribedByIds();
+  const describedByCtx = React.useMemo(() => ({ register, unregister }), [register, unregister]);
   return (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Popup
-        data-slot="dialog-content"
-        className={cn(
-          "bg-popover text-popover-foreground ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl p-4 text-sm ring-1 duration-100 outline-none sm:max-w-sm",
-          className,
-        )}
-        {...props}>
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close data-slot="dialog-close" render={<Button variant="ghost" className="absolute top-2 right-2" size="icon-sm" />}>
-            <XIcon />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
-        )}
-      </DialogPrimitive.Popup>
+      <DialogDescribedByContext.Provider value={describedByCtx}>
+        <DialogPrimitive.Popup
+          data-slot="dialog-content"
+          aria-describedby={ids.length > 0 ? ids.join(" ") : undefined}
+          className={cn(
+            "bg-popover text-popover-foreground ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl p-4 text-sm ring-1 duration-100 outline-none sm:max-w-sm",
+            className,
+          )}
+          {...props}>
+          {children}
+          {showCloseButton && (
+            <DialogPrimitive.Close data-slot="dialog-close" render={<Button variant="ghost" className="absolute top-2 right-2" size="icon-sm" />}>
+              <XIcon />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+          )}
+        </DialogPrimitive.Popup>
+      </DialogDescribedByContext.Provider>
     </DialogPortal>
   );
 }
@@ -86,18 +114,38 @@ function DialogFooter({
   );
 }
 
+function DialogNote({ className, children, id: idProp, ...props }: React.ComponentProps<"div">) {
+  const generatedId = React.useId();
+  const id = idProp ?? generatedId;
+  useRegisterDescribedBy(id);
+  return (
+    <div
+      data-slot="dialog-note"
+      id={id}
+      className={cn("flex items-start gap-2 rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400", className)}
+      {...props}>
+      <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <div>{children}</div>
+    </div>
+  );
+}
+
 function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
   return <DialogPrimitive.Title data-slot="dialog-title" className={cn("font-heading text-base leading-none font-medium", className)} {...props} />;
 }
 
-function DialogDescription({ className, ...props }: DialogPrimitive.Description.Props) {
+function DialogDescription({ className, id: idProp, ...props }: DialogPrimitive.Description.Props) {
+  const generatedId = React.useId();
+  const id = idProp ?? generatedId;
+  useRegisterDescribedBy(id);
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
+      id={id}
       className={cn("text-muted-foreground *:[a]:hover:text-foreground text-sm *:[a]:underline *:[a]:underline-offset-3", className)}
       {...props}
     />
   );
 }
 
-export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger };
+export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogNote, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger };

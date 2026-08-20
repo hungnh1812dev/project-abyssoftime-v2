@@ -4,7 +4,7 @@ import { useState } from "react";
 import { PermissionTooltip } from "@/components/permissions/PermissionTooltip";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogNote, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -58,7 +58,11 @@ function PermissionDialog({ open, onOpenChange, permission }: PermissionDialogPr
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEdit ? `Edit Permission: ${permission.slug}` : "Create Permission"}</DialogTitle>
+          <DialogDescription>{isEdit ? "Update this permission's name and description." : "Define a new permission slug in the format resource:action."}</DialogDescription>
         </DialogHeader>
+        {!isEdit && (
+          <DialogNote>Creating a permission here does not grant any new capability by itself — a developer must add a matching check in the backend code before this permission has any effect.</DialogNote>
+        )}
         <div className="space-y-4">
           <div className="space-y-1">
             <Label htmlFor="permission-slug">Slug</Label>
@@ -73,12 +77,6 @@ function PermissionDialog({ open, onOpenChange, permission }: PermissionDialogPr
             <Label htmlFor="permission-description">Description</Label>
             <Input id="permission-description" value={description} onChange={(event) => setDescription(event.target.value)} />
           </div>
-          {!isEdit && (
-            <p className="text-muted-foreground text-xs">
-              Creating a permission here does not grant any new capability by itself — a developer must add a matching check in the backend code before this permission has any
-              effect.
-            </p>
-          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -207,7 +205,8 @@ export function PermissionsPage() {
         open={deleteTarget !== null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="Delete permission"
-        description={deleteTarget && `Delete permission "${deleteTarget.slug}"? This action cannot be undone.`}
+        description={deleteTarget && `Delete permission "${deleteTarget.slug}"?`}
+        note="This action cannot be undone."
         confirmLabel="Delete"
         variant="destructive"
         loading={deletePermission.isPending}

@@ -110,7 +110,8 @@ export function UsersPage() {
         open={deleteTarget !== null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="Delete user"
-        description={deleteTarget && `Are you sure you want to delete ${deleteTarget.email}? This action cannot be undone.`}
+        description={deleteTarget && `Are you sure you want to delete ${deleteTarget.email}?`}
+        note="This action cannot be undone."
         confirmLabel="Delete"
         variant="destructive"
         loading={deleteUser.isPending}
