@@ -102,6 +102,33 @@ describe("RolesPage", () => {
     expect(screen.getByLabelText("Slug")).toBeDisabled();
   });
 
+  it("shows the default-role note, wired into aria-describedby, when editing a default role", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RolesPage />);
+    await waitFor(() => screen.getByText("Editor"));
+
+    const editorRow = screen.getByText("Editor").closest("tr") as HTMLElement;
+    await user.click(within(editorRow).getByText("Edit"));
+
+    await waitFor(() => screen.getByText(/name and level are locked/i));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-describedby")?.split(" ")).toHaveLength(2);
+  });
+
+  it("omits the default-role note when editing a non-default role", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RolesPage />);
+    await waitFor(() => screen.getByText("Custom"));
+
+    const customRow = screen.getByText("Custom").closest("tr") as HTMLElement;
+    await user.click(within(customRow).getByText("Edit"));
+
+    await waitFor(() => expect(screen.getByDisplayValue("Custom")).toBeInTheDocument());
+    expect(screen.queryByText(/name and level are locked/i)).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-describedby")?.split(" ")).toHaveLength(1);
+  });
+
   it("tree Select All checks every permission and unchecking a leaf clears the group/top checkbox", async () => {
     const user = userEvent.setup();
     renderWithProviders(<RolesPage />);

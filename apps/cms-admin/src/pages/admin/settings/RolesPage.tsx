@@ -6,7 +6,8 @@ import { PermissionTree } from "@/components/permissions/PermissionTree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogNote, DialogTitle } from "@/components/ui/dialog";
+import { DialogFooter } from "@/components/ui/dialog";
+import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -50,43 +51,42 @@ function RoleDialog({ open, onOpenChange, role, permissions }: RoleDialogProps) 
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? `Edit Role: ${role.name}` : "Create Role"}</DialogTitle>
-          <DialogDescription>{isEdit ? "Update this role's name, level, and permissions." : "Define a new role and its permission set."}</DialogDescription>
-        </DialogHeader>
-        {fieldsDisabled && <DialogNote>This is a default role — name and level are locked, but permissions can still be edited.</DialogNote>}
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label htmlFor="role-name">Name</Label>
-              <Input id="role-name" value={name} onChange={(event) => setName(event.target.value)} disabled={fieldsDisabled} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="role-slug">Slug</Label>
-              <Input id="role-slug" value={slug} onChange={(event) => setSlug(event.target.value)} disabled={isEdit} placeholder="e.g. content-manager" />
-            </div>
+    <DialogPanel
+      open={open}
+      onOpenChange={handleOpenChange}
+      contentClassName="max-h-[85vh] overflow-y-auto"
+      title={isEdit ? `Edit Role: ${role.name}` : "Create Role"}
+      description={isEdit ? "Update this role's name, level, and permissions." : "Define a new role and its permission set."}
+      note={fieldsDisabled && "This is a default role — name and level are locked, but permissions can still be edited."}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor="role-name">Name</Label>
+            <Input id="role-name" value={name} onChange={(event) => setName(event.target.value)} disabled={fieldsDisabled} />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="role-level">Level (0-100)</Label>
-            <Input id="role-level" type="number" min={0} max={100} value={level} onChange={(event) => setLevel(Number(event.target.value))} disabled={fieldsDisabled} />
-          </div>
-          <div className="space-y-1">
-            <Label>Permissions</Label>
-            <PermissionTree permissions={permissions} selected={selected} onChange={setSelected} />
+            <Label htmlFor="role-slug">Slug</Label>
+            <Input id="role-slug" value={slug} onChange={(event) => setSlug(event.target.value)} disabled={isEdit} placeholder="e.g. content-manager" />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={saving || !name || (!isEdit && !slug)}>
-            {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Role"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="space-y-1">
+          <Label htmlFor="role-level">Level (0-100)</Label>
+          <Input id="role-level" type="number" min={0} max={100} value={level} onChange={(event) => setLevel(Number(event.target.value))} disabled={fieldsDisabled} />
+        </div>
+        <div className="space-y-1">
+          <Label>Permissions</Label>
+          <PermissionTree permissions={permissions} selected={selected} onChange={setSelected} />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
+        <Button onClick={handleSave} disabled={saving || !name || (!isEdit && !slug)}>
+          {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Role"}
+        </Button>
+      </DialogFooter>
+    </DialogPanel>
   );
 }
 

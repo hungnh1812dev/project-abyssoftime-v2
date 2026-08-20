@@ -11,7 +11,7 @@ Full detail in `tasks/plan.md`. Prior phase archived at `tasks/archive.md`.
 - [x] 3. Migrate `DeleteConfirmDialog`
 - [x] 4. Migrate `AccessTokensPage` (`TokenRevealDialog` + create-token dialog)
 - [x] 5. Migrate `PermissionsPage`'s `PermissionDialog`
-- [ ] 6. Migrate `RolesPage`'s `RoleDialog`
+- [x] 6. Migrate `RolesPage`'s `RoleDialog`
 - [ ] 7. Migrate `InternationalizePage`'s add/edit locale dialog
 - [ ] 8. Migrate `ColumnChooserDialog`
 - [ ] **Checkpoint** — `grep -rn "DialogNote\|DialogDescribedByContext" src/` returns only `ui/dialog.tsx`; lint/build/test clean; human review before touching the shared primitive

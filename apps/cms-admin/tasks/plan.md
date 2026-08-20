@@ -221,13 +221,16 @@ have no `DialogFooter` — their action button stays inline in `children`, right
 #### Task 6: Migrate `RolesPage`'s `RoleDialog`
 
 **Acceptance criteria:**
-- [ ] Renders via `DialogPanel`; note still conditional on `fieldsDisabled`.
-- [ ] No more direct header/note primitive imports in `RolesPage.tsx`.
+- [x] Renders via `DialogPanel`; note still conditional on `fieldsDisabled`.
+- [x] No more direct header/note primitive imports in `RolesPage.tsx`.
 
 **Verification:**
-- [ ] Build succeeds: `bun run build`
+- [x] Build succeeds: `bun run build`
+- [x] Tests pass: `bun run test RolesPage` — extended the existing suite with 2 new
+      characterization tests (note + `aria-describedby` present editing the default "Editor" role,
+      absent editing the non-default "Custom" role), both green before and after the refactor.
 - [ ] Manual check: edit a default role (note visible, name/level locked) and a custom role (note
-      absent).
+      absent). (Deferred to the Phase 2 checkpoint.)
 
 **Dependencies:** Task 1.
 
