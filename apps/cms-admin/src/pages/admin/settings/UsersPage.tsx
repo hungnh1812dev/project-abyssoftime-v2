@@ -1,10 +1,13 @@
+import { useState } from "react";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
 import { type RoleItem, useRoleList } from "@/hooks/useRoles";
-import { useDeleteUser, useUpdateUserRole, useUserList } from "@/hooks/useUsers";
+import { type UserItem, useDeleteUser, useUpdateUserRole, useUserList } from "@/hooks/useUsers";
 
 export function UsersPage() {
   const { role: myRole, permissions, userId } = useAuth();
@@ -13,6 +16,8 @@ export function UsersPage() {
   const { data: roles = [] } = useRoleList();
   const updateRole = useUpdateUserRole();
   const deleteUser = useDeleteUser();
+  const [deleteTarget, setDeleteTarget] = useState<UserItem | null>(null);
+  const [roleChangeTarget, setRoleChangeTarget] = useState<{ user: UserItem; role: RoleItem } | null>(null);
 
   const roleById = new Map(roles.map((role) => [role.documentId, role]));
   const myLevel = myRole?.level ?? 0;
@@ -65,8 +70,10 @@ export function UsersPage() {
                       <div className="flex justify-end gap-2">
                         {canChangeRole && (
                           <Select
+                            value={null}
                             onValueChange={(roleId: string | null) => {
-                              if (roleId) updateRole.mutate({ id: user.documentId, roleId });
+                              const role = availableRoles.find((candidate) => candidate.documentId === roleId);
+                              if (role) setRoleChangeTarget({ user, role });
                             }}>
                             <SelectTrigger className="h-8 w-32 text-xs">
                               <SelectValue placeholder="Change role" />
@@ -81,14 +88,7 @@ export function UsersPage() {
                           </Select>
                         )}
                         {canDelete && (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              if (confirm(`Delete user ${user.email}?`)) {
-                                deleteUser.mutate(user.documentId);
-                              }
-                            }}>
+                          <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(user)}>
                             Delete
                           </Button>
                         )}
@@ -105,6 +105,34 @@ export function UsersPage() {
       <p className="text-muted-foreground text-sm">
         {users.length} user{users.length !== 1 ? "s" : ""}
       </p>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete user"
+        description={deleteTarget && `Are you sure you want to delete ${deleteTarget.email}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleteUser.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteUser.mutate(deleteTarget.documentId, { onSuccess: () => setDeleteTarget(null) });
+        }}
+      />
+
+      <ConfirmDialog
+        open={roleChangeTarget !== null}
+        onOpenChange={(open) => !open && setRoleChangeTarget(null)}
+        title="Change role"
+        description={roleChangeTarget && `Change ${roleChangeTarget.user.email}'s role to "${roleChangeTarget.role.name}"?`}
+        confirmLabel="Change role"
+        variant="default"
+        loading={updateRole.isPending}
+        onConfirm={() => {
+          if (!roleChangeTarget) return;
+          updateRole.mutate({ id: roleChangeTarget.user.documentId, roleId: roleChangeTarget.role.documentId }, { onSuccess: () => setRoleChangeTarget(null) });
+        }}
+      />
     </div>
   );
 }

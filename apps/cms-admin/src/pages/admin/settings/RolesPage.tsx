@@ -5,6 +5,7 @@ import { PermissionTooltip } from "@/components/permissions/PermissionTooltip";
 import { PermissionTree } from "@/components/permissions/PermissionTree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -125,6 +126,7 @@ export function RolesPage() {
   const deleteRole = useDeleteRole();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RoleItem | null>(null);
 
   function openCreate() {
     setEditingRole(null);
@@ -187,14 +189,7 @@ export function RolesPage() {
                     </PermissionTooltip>
                     {!role.isDefault && (
                       <PermissionTooltip required="role:manager">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => {
-                            if (confirm(`Delete role "${role.name}"?`)) {
-                              deleteRole.mutate(role.documentId);
-                            }
-                          }}>
+                        <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(role)}>
                           Delete
                         </Button>
                       </PermissionTooltip>
@@ -208,6 +203,20 @@ export function RolesPage() {
       )}
 
       <RoleDialog key={editingRole?.documentId ?? "create"} open={dialogOpen} onOpenChange={setDialogOpen} role={editingRole} permissions={permissions ?? []} />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete role"
+        description={deleteTarget && `Delete role "${deleteTarget.name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleteRole.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteRole.mutate(deleteTarget.documentId, { onSuccess: () => setDeleteTarget(null) });
+        }}
+      />
     </div>
   );
 }

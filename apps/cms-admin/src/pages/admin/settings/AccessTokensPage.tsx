@@ -4,12 +4,13 @@ import { PermissionTooltip } from "@/components/permissions/PermissionTooltip";
 import { PermissionTree } from "@/components/permissions/PermissionTree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { type ExpiresIn, useAccessTokenList, useCreateAccessToken, useDeleteAccessToken, useRevokeAccessToken } from "@/hooks/useAccessTokens";
+import { type AccessTokenItem, type ExpiresIn, useAccessTokenList, useCreateAccessToken, useDeleteAccessToken, useRevokeAccessToken } from "@/hooks/useAccessTokens";
 import { usePermissions } from "@/hooks/usePermissions";
 
 const EXPIRY_OPTIONS: Array<{ label: string; value: ExpiresIn }> = [
@@ -20,6 +21,11 @@ const EXPIRY_OPTIONS: Array<{ label: string; value: ExpiresIn }> = [
   { label: "1 year", value: "1y" },
   { label: "Never", value: "never" },
 ];
+
+// Passed as Select's `items` prop so the trigger can resolve the selected
+// item's label even after the popup (and its mounted SelectItems) unmounts —
+// without it, base-ui falls back to displaying the raw value (e.g. "1h").
+const EXPIRY_ITEMS = Object.fromEntries(EXPIRY_OPTIONS.map((option) => [option.value, option.label]));
 
 function TokenRevealDialog({ open, onOpenChange, token }: { open: boolean; onOpenChange: (open: boolean) => void; token: string | null }) {
   function copyToken() {
@@ -52,6 +58,8 @@ export function AccessTokensPage() {
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [expiresIn, setExpiresIn] = useState<ExpiresIn>("never");
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AccessTokenItem | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<AccessTokenItem | null>(null);
 
   const { data: tokens = [], isLoading } = useAccessTokenList();
   const { data: permissions = [] } = usePermissions();
@@ -81,12 +89,13 @@ export function AccessTokensPage() {
     );
   }
 
-  function handleRevoke(id: string, name: string) {
-    if (!confirm(`Revoke and rotate the secret for "${name}"? The current token will stop working immediately.`)) return;
+  function handleRevoke() {
+    if (!revokeTarget) return;
     revokeToken.mutate(
-      { id },
+      { id: revokeTarget.documentId },
       {
         onSuccess: (response) => {
+          setRevokeTarget(null);
           setRevealedToken(response.token);
         },
       },
@@ -120,7 +129,7 @@ export function AccessTokensPage() {
               </div>
               <div className="space-y-1">
                 <Label>Expiration</Label>
-                <Select value={expiresIn} onValueChange={(value: string | null) => setExpiresIn((value as ExpiresIn) ?? "never")}>
+                <Select items={EXPIRY_ITEMS} value={expiresIn} onValueChange={(value: string | null) => setExpiresIn((value as ExpiresIn) ?? "never")}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select expiration" />
                   </SelectTrigger>
@@ -174,19 +183,12 @@ export function AccessTokensPage() {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
                     <PermissionTooltip required="api_token:manager">
-                      <Button variant="outline" size="sm" onClick={() => handleRevoke(token.documentId, token.name)}>
+                      <Button variant="outline" size="sm" onClick={() => setRevokeTarget(token)}>
                         Revoke
                       </Button>
                     </PermissionTooltip>
                     <PermissionTooltip required="api_token:manager">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => {
-                          if (confirm(`Delete token "${token.name}"?`)) {
-                            deleteToken.mutate(token.documentId);
-                          }
-                        }}>
+                      <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(token)}>
                         Delete
                       </Button>
                     </PermissionTooltip>
@@ -203,6 +205,31 @@ export function AccessTokensPage() {
       </p>
 
       <TokenRevealDialog open={revealedToken !== null} onOpenChange={(open) => !open && setRevealedToken(null)} token={revealedToken} />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete token"
+        description={deleteTarget && `Delete token "${deleteTarget.name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleteToken.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteToken.mutate(deleteTarget.documentId, { onSuccess: () => setDeleteTarget(null) });
+        }}
+      />
+
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        onOpenChange={(open) => !open && setRevokeTarget(null)}
+        title="Revoke token"
+        description={revokeTarget && `Revoke and rotate the secret for "${revokeTarget.name}"? The current token will stop working immediately.`}
+        confirmLabel="Revoke"
+        variant="destructive"
+        loading={revokeToken.isPending}
+        onConfirm={handleRevoke}
+      />
     </div>
   );
 }

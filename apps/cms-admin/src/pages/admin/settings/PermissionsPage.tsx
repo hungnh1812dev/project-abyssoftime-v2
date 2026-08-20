@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { PermissionTooltip } from "@/components/permissions/PermissionTooltip";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,6 +100,7 @@ export function PermissionsPage() {
   const [editingPermission, setEditingPermission] = useState<PermissionItem | null>(null);
   const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<PermissionItem | null>(null);
 
   function openCreate() {
     setEditingPermission(null);
@@ -178,14 +180,7 @@ export function PermissionsPage() {
                           </Button>
                         </PermissionTooltip>
                         <PermissionTooltip required="permission:manager">
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              if (confirm(`Delete permission "${permission.slug}"?`)) {
-                                handleDelete(permission);
-                              }
-                            }}>
+                          <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(permission)}>
                             Delete
                           </Button>
                         </PermissionTooltip>
@@ -207,6 +202,21 @@ export function PermissionsPage() {
       )}
 
       <PermissionDialog key={editingPermission?.documentId ?? "create"} open={dialogOpen} onOpenChange={setDialogOpen} permission={editingPermission} />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete permission"
+        description={deleteTarget && `Delete permission "${deleteTarget.slug}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deletePermission.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          handleDelete(deleteTarget);
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }
