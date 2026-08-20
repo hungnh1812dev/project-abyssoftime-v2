@@ -4,7 +4,7 @@ Full detail in `tasks/plan.md`. Prior phase archived at `tasks/archive.md`.
 
 ### Phase 1: Foundation
 - [x] 1. Create `DialogPanel` (`src/components/ui/dialog-panel.tsx` + test)
-- [ ] 2. Migrate `ConfirmDialog` onto `DialogPanel`
+- [x] 2. Migrate `ConfirmDialog` onto `DialogPanel`
 - [ ] **Checkpoint** — lint/build/test clean; browser-check one `ConfirmDialog` call site; human review of `DialogPanel`'s API
 
 ### Phase 2: Migrate direct-primitive call sites (independent, parallelizable after checkpoint above)

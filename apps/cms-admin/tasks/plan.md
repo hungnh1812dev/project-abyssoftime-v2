@@ -105,16 +105,19 @@ becomes `children` inside a `DialogFooter`. Public `ConfirmDialogProps` API is u
 an internal refactor only.
 
 **Acceptance criteria:**
-- [ ] `ConfirmDialog`'s external prop API is unchanged (no caller elsewhere needs edits).
-- [ ] `ConfirmDialog` no longer imports `DialogNote`, `DialogHeader`, `DialogTitle`, or
+- [x] `ConfirmDialog`'s external prop API is unchanged (no caller elsewhere needs edits).
+- [x] `ConfirmDialog` no longer imports `DialogNote`, `DialogHeader`, `DialogTitle`, or
       `DialogDescription` directly.
-- [ ] Rendered DOM/aria output is unchanged (note still described-by-linked when present).
+- [x] Rendered DOM/aria output is unchanged (note still described-by-linked when present).
 
 **Verification:**
-- [ ] Build succeeds: `bun run build`
+- [x] Build succeeds: `bun run build`
+- [x] Tests pass: `bun run test confirm-dialog` — 8 characterization tests written against the
+      pre-refactor implementation first (2 needed fixing for base-ui's actual event-callback
+      signature, not a behavior change), then confirmed green again after the refactor.
 - [ ] Manual check: open any one `ConfirmDialog` call site (e.g. Roles page → delete role) in the
       browser; confirm title/description/note/buttons render identically to before, no console
-      errors, `aria-describedby` still resolves.
+      errors, `aria-describedby` still resolves. (Deferred to the Foundation checkpoint below.)
 
 **Dependencies:** Task 1.
 
