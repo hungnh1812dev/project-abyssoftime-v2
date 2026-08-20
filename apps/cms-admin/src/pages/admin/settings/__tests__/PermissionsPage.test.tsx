@@ -162,29 +162,31 @@ describe("PermissionsPage", () => {
   it("shows an inline error with role/token counts when deleting a referenced permission is blocked (409)", async () => {
     mock.onDelete("/permissions/p1").reply(409, { message: "Permission is still referenced", roleCount: 2, accessTokenCount: 0 });
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderWithProviders(<PermissionsPage />);
     await waitFor(() => screen.getByText("document:read"));
 
     const row = screen.getByText("document:read").closest("tr") as HTMLElement;
     await user.click(within(row).getByText("Delete"));
 
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
     await waitFor(() => expect(screen.getByText(/2 role\(s\) and 0 access token\(s\)/i)).toBeInTheDocument());
-    confirmSpy.mockRestore();
   });
 
   it("deletes an unreferenced permission without error", async () => {
     mock.onDelete("/permissions/p2").reply(204);
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderWithProviders(<PermissionsPage />);
     await waitFor(() => screen.getByText("media:manager"));
 
     const row = screen.getByText("media:manager").closest("tr") as HTMLElement;
     await user.click(within(row).getByText("Delete"));
 
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
     await waitFor(() => expect(mock.history.delete).toHaveLength(1));
-    confirmSpy.mockRestore();
   });
 });
 

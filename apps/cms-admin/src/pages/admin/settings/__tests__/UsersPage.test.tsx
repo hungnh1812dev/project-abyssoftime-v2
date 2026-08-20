@@ -1,5 +1,5 @@
 import { UsersPage } from "../UsersPage";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -168,6 +168,9 @@ describe("UsersPage — dynamic role hierarchy (canManage gating)", () => {
     await user.click(bobRow.querySelector("[role='combobox']")!);
     const guestOption = await screen.findByRole("option", { name: "Guest" });
     await user.click(guestOption);
+
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Change role" }));
 
     await waitFor(() => expect(capturedBody).toEqual({ roleId: "r3" }));
   });

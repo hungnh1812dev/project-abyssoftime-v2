@@ -1,5 +1,5 @@
 import { AccessTokensPage } from "../AccessTokensPage";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -137,28 +137,30 @@ describe("AccessTokensPage — token list", () => {
       token: "rotated-plaintext-token",
     });
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderWithProviders(<AccessTokensPage />);
 
     await waitFor(() => screen.getByText("Existing"));
     await user.click(screen.getByRole("button", { name: /revoke/i }));
 
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /revoke/i }));
+
     await waitFor(() => expect(screen.getByText("rotated-plaintext-token")).toBeInTheDocument());
-    confirmSpy.mockRestore();
   });
 
   it("deletes a token on Delete", async () => {
     mock.onGet("/access-tokens").reply(200, [{ documentId: "t1", name: "Existing", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null }]);
     mock.onDelete("/access-tokens/t1").reply(204);
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderWithProviders(<AccessTokensPage />);
 
     await waitFor(() => screen.getByText("Existing"));
     await user.click(screen.getByRole("button", { name: /delete/i }));
 
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /delete/i }));
+
     await waitFor(() => expect(mock.history.delete).toHaveLength(1));
-    confirmSpy.mockRestore();
   });
 });
 
