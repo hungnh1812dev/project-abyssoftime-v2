@@ -121,6 +121,7 @@ export function usePublishCollectionDocument() {
     onSuccess: (_, { contentTypeSlug, id }) => {
       queryClient.invalidateQueries({ queryKey: KEYS.detail(contentTypeSlug, id) });
       queryClient.invalidateQueries({ queryKey: KEYS.list(contentTypeSlug) });
+      toast.success("Published");
     },
     onError: onMutationError,
   });
@@ -134,6 +135,7 @@ export function useUnpublishCollectionDocument() {
     onSuccess: (_, { contentTypeSlug, id }) => {
       queryClient.invalidateQueries({ queryKey: KEYS.detail(contentTypeSlug, id) });
       queryClient.invalidateQueries({ queryKey: KEYS.list(contentTypeSlug) });
+      toast.success("Unpublished");
     },
     onError: onMutationError,
   });

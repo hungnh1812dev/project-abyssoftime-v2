@@ -20,15 +20,19 @@ const JsonInput = lazy(() =>
   })),
 );
 
-function primitiveInput(field: FieldDefinition): React.ReactElement<Record<string, unknown>> {
+function primitiveInput(field: FieldDefinition, id: string): React.ReactElement<Record<string, unknown>> {
   switch (field.type) {
     case "number":
-      return <NumberInput aria-label={field.name} />;
+      return <NumberInput id={id} aria-label={field.name} />;
     case "boolean":
-      return <BooleanInput aria-label={field.name} />;
+      return <BooleanInput id={id} aria-label={field.name} />;
     default:
-      return <TextInput aria-label={field.name} placeholder={field.name} />;
+      return <TextInput id={id} aria-label={field.name} placeholder={field.name} />;
   }
+}
+
+function toFieldId(fieldName: string): string {
+  return fieldName.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
 function widthToColSpan(width: string | undefined): string {
@@ -139,7 +143,7 @@ function renderField(field: FieldDefinition, prefix: string, keyPrefix: string, 
       <div key={fieldKey} className={colSpan}>
         <label className="mb-1 block text-sm font-medium">{field.name}</label>
         <Suspense fallback={<div className="bg-muted h-48 animate-pulse rounded-md" />}>
-          <JsonInput name={fieldName} />
+          <JsonInput name={fieldName} aria-label={field.name} />
         </Suspense>
       </div>
     );
@@ -161,15 +165,18 @@ function renderField(field: FieldDefinition, prefix: string, keyPrefix: string, 
       <div key={fieldKey} className={colSpan}>
         <label className="mb-1 block text-sm font-medium">{field.name}</label>
         {/* No per-field extension allowlist — the API accepts PNG/JPEG only, enforced server-side on upload */}
-        <MediaInput name={fieldName} />
+        <MediaInput name={fieldName} aria-label={field.name} />
       </div>
     );
   }
 
+  const fieldId = toFieldId(fieldName);
   return (
     <div key={fieldKey} className={colSpan}>
-      <label className="mb-1 block text-sm font-medium">{field.name}</label>
-      <FormField name={fieldName}>{primitiveInput(field)}</FormField>
+      <label htmlFor={fieldId} className="mb-1 block text-sm font-medium">
+        {field.name}
+      </label>
+      <FormField name={fieldName}>{primitiveInput(field, fieldId)}</FormField>
     </div>
   );
 }
