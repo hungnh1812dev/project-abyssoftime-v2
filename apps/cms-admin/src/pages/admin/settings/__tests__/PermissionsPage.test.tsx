@@ -30,6 +30,18 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe("PermissionsPage — DataTable styling", () => {
+  it("gives the header row a bg-muted background", async () => {
+    renderWithProviders(<PermissionsPage />);
+    await waitFor(() => expect(screen.getByText("document:read")).toBeInTheDocument());
+    const headerRow = screen.getByText("Slug", { selector: "th" }).closest("tr")!;
+    // Exact-token check: ui/table.tsx's base TableRow classes already contain the literal
+    // substring "bg-muted" (inside "data-[state=selected]:bg-muted"), so a plain .toContain
+    // would false-positive even without DataTable's header styling applied.
+    expect(headerRow.className.split(/\s+/)).toContain("bg-muted");
+  });
+});
+
 describe("PermissionsPage", () => {
   it("renders the permission catalog with slug, name, and description", async () => {
     renderWithProviders(<PermissionsPage />);

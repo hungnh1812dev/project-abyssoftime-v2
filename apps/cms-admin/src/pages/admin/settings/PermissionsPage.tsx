@@ -4,11 +4,11 @@ import { useState } from "react";
 import { PermissionTooltip } from "@/components/permissions/PermissionTooltip";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { DialogFooter } from "@/components/ui/dialog";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type PermissionItem, useCreatePermission, useDeletePermission, usePermissions, useUpdatePermission } from "@/hooks/usePermissions";
 import { apiErrorMessage } from "@/lib/errors";
 
@@ -121,9 +121,38 @@ export function PermissionsPage() {
 
   const sorted = [...(permissions ?? [])].sort((a, b) => a.slug.localeCompare(b.slug));
   const query = search.trim().toLowerCase();
-  const filtered = query
-    ? sorted.filter((permission) => `${permission.slug} ${permission.name} ${permission.description}`.toLowerCase().includes(query))
-    : sorted;
+  const filtered = query ? sorted.filter((permission) => `${permission.slug} ${permission.name} ${permission.description}`.toLowerCase().includes(query)) : sorted;
+
+  // DataTableColumn.className applies to both the header and body cell — the font-mono/
+  // text-muted-foreground styling below is body-only in the original markup, so it's applied
+  // inside `cell` instead of via `className`, to avoid bleeding onto the header text.
+  const columns: DataTableColumn<PermissionItem>[] = [
+    { key: "slug", header: "Slug", cell: (permission) => <span className="font-mono text-sm">{permission.slug}</span> },
+    { key: "name", header: "Name", accessorKey: "name" },
+    { key: "description", header: "Description", cell: (permission) => <span className="text-muted-foreground text-sm">{permission.description}</span> },
+    {
+      key: "actions",
+      header: "Actions",
+      className: "text-right",
+      cell: (permission) => (
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex justify-end gap-2">
+            <PermissionTooltip required="permission:manager">
+              <Button variant="outline" size="sm" onClick={() => openEdit(permission)}>
+                Edit
+              </Button>
+            </PermissionTooltip>
+            <PermissionTooltip required="permission:manager">
+              <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(permission)}>
+                Delete
+              </Button>
+            </PermissionTooltip>
+          </div>
+          {deleteErrors[permission.slug] && <p className="text-destructive text-xs">{deleteErrors[permission.slug]}</p>}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6 p-6">
@@ -154,47 +183,10 @@ export function PermissionsPage() {
             aria-label="Search permissions"
             className="max-w-sm"
           />
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Slug</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((permission) => (
-                <TableRow key={permission.documentId}>
-                  <TableCell className="font-mono text-sm">{permission.slug}</TableCell>
-                  <TableCell>{permission.name}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{permission.description}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="flex justify-end gap-2">
-                        <PermissionTooltip required="permission:manager">
-                          <Button variant="outline" size="sm" onClick={() => openEdit(permission)}>
-                            Edit
-                          </Button>
-                        </PermissionTooltip>
-                        <PermissionTooltip required="permission:manager">
-                          <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(permission)}>
-                            Delete
-                          </Button>
-                        </PermissionTooltip>
-                      </div>
-                      {deleteErrors[permission.slug] && <p className="text-destructive text-xs">{deleteErrors[permission.slug]}</p>}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable columns={columns} data={filtered} getRowKey={(permission) => permission.documentId} />
 
           <p className="text-muted-foreground text-sm">
-            {filtered.length === sorted.length
-              ? `${sorted.length} permission${sorted.length !== 1 ? "s" : ""}`
-              : `${filtered.length} of ${sorted.length} permissions`}
+            {filtered.length === sorted.length ? `${sorted.length} permission${sorted.length !== 1 ? "s" : ""}` : `${filtered.length} of ${sorted.length} permissions`}
           </p>
         </>
       )}
