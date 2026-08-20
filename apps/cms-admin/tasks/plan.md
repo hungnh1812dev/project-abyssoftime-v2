@@ -244,13 +244,17 @@ have no `DialogFooter` — their action button stays inline in `children`, right
 #### Task 7: Migrate `InternationalizePage`'s add/edit locale dialog
 
 **Acceptance criteria:**
-- [ ] Renders via `DialogPanel`.
-- [ ] No more direct header primitive imports in `InternationalizePage.tsx` (it doesn't use
+- [x] Renders via `DialogPanel`.
+- [x] No more direct header primitive imports in `InternationalizePage.tsx` (it doesn't use
       `DialogNote` today, so nothing to drop there).
 
 **Verification:**
-- [ ] Build succeeds: `bun run build`
-- [ ] Manual check: add a locale and edit an existing one.
+- [x] Build succeeds: `bun run build`
+- [x] Tests pass: `bun run test InternationalizePage` — no test file existed for this page before;
+      added one from scratch (5 tests: table render, dialog title/description + single-id
+      `aria-describedby`, Cancel closes, Create submit payload, Edit pre-fill with code locked),
+      green against the pre-refactor implementation first, still green after the swap.
+- [ ] Manual check: add a locale and edit an existing one. (Deferred to the Phase 2 checkpoint.)
 
 **Dependencies:** Task 1.
 
