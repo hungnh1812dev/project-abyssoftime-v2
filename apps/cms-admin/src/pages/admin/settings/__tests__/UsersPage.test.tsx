@@ -43,6 +43,25 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe("UsersPage — DataTable styling", () => {
+  it("gives the header row a bg-muted background", async () => {
+    renderWithProviders(<UsersPage />);
+    await waitFor(() => expect(screen.getByText("Display Name")).toBeInTheDocument());
+    const headerRow = screen.getByText("Display Name").closest("tr")!;
+    // Exact-token check: the base TableRow classes already contain "bg-muted" as a
+    // substring (inside "data-[state=selected]:bg-muted"), so a plain .toContain would
+    // false-positive even without DataTable's header styling applied.
+    expect(headerRow.className.split(/\s+/)).toContain("bg-muted");
+  });
+
+  it("keeps the bg-accent/30 tint on the caller's own row", async () => {
+    renderWithProviders(<UsersPage />);
+    await waitFor(() => expect(screen.getByText("Alice Admin")).toBeInTheDocument());
+    const aliceRow = screen.getByText("Alice Admin").closest("tr")!;
+    expect(aliceRow.className).toContain("bg-accent/30");
+  });
+});
+
 describe("UsersPage — Display Name column", () => {
   it("renders a Display Name column header", async () => {
     renderWithProviders(<UsersPage />);

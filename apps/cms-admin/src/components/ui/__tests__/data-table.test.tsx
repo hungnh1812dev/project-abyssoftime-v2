@@ -31,7 +31,10 @@ describe("DataTable", () => {
   it("gives the header row a bg-muted background", () => {
     render(<DataTable columns={columns} data={data} getRowKey={(row) => row.id} />);
     const headerRow = screen.getAllByRole("row")[0];
-    expect(headerRow.className).toContain("bg-muted");
+    // Exact-token check: the base TableRow classes already contain "bg-muted" as a
+    // substring (inside "data-[state=selected]:bg-muted"), so a plain .toContain would
+    // false-positive even without this component adding its own "bg-muted" class.
+    expect(headerRow.className.split(/\s+/)).toContain("bg-muted");
   });
 
   it("stripes even-indexed body rows with bg-muted/40 and leaves odd rows transparent", () => {
