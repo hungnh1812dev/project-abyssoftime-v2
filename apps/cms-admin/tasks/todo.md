@@ -25,5 +25,8 @@ Full detail in `tasks/plan.md`. Prior phase archived at `tasks/archive.md`.
 
 ## Final
 - [ ] Five-axis review (correctness, readability, architecture, security, performance).
-- [ ] Update `docs/documents/*` if any reference the old contract (grep came up empty at plan time — re-check).
+- [x] Update `docs/documents/*` if any reference the old contract — re-checked post-implementation,
+      still no matches; nothing to update.
+- [ ] Browser walkthrough of the migrated dialogs (deferred across every task since Task 2's
+      checkpoint) — still outstanding.
 - [ ] Archive this plan/todo to `tasks/archive.md` once shipped.
