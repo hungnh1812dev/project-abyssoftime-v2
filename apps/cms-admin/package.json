@@ -24,6 +24,8 @@
     "ckeditor5": "^48.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.14",
+    "html-react-parser": "^6.1.7",
     "lucide-react": "^1.18.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

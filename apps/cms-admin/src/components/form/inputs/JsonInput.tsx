@@ -1,11 +1,12 @@
 import { json } from "@codemirror/lang-json";
-import CodeMirror from "@uiw/react-codemirror";
+import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { useState } from "react";
 import { type Control, Controller } from "react-hook-form";
 
 interface JsonInputProps {
   name?: string;
   control?: Control;
+  "aria-label"?: string;
 }
 
 function serialize(value: unknown): string {
@@ -13,7 +14,13 @@ function serialize(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function InnerJsonInput({ field }: { field: { value: unknown; onChange: (value: unknown) => void } }) {
+function InnerJsonInput({
+  field,
+  ariaLabel,
+}: {
+  field: { value: unknown; onChange: (value: unknown) => void };
+  ariaLabel?: string;
+}) {
   const [rawValue, setRawValue] = useState(serialize(field.value));
   const [syntaxError, setSyntaxError] = useState<string | null>(null);
   const [editCount, setEditCount] = useState(0);
@@ -35,7 +42,7 @@ function InnerJsonInput({ field }: { field: { value: unknown; onChange: (value: 
       <div data-testid="json-editor-wrapper" className="border-input min-h-[15em] max-h-112.5 overflow-auto rounded-md border">
         <CodeMirror
           value={rawValue}
-          extensions={[json()]}
+          extensions={ariaLabel ? [json(), EditorView.contentAttributes.of({ "aria-label": ariaLabel })] : [json()]}
           minHeight="15em"
           maxHeight="450px"
           onChange={(val) => {
@@ -62,7 +69,7 @@ function InnerJsonInput({ field }: { field: { value: unknown; onChange: (value: 
   );
 }
 
-export function JsonInput({ name, control }: JsonInputProps) {
+export function JsonInput({ name, control, "aria-label": ariaLabel }: JsonInputProps) {
   return (
     <Controller
       name={name ?? ""}
@@ -71,7 +78,7 @@ export function JsonInput({ name, control }: JsonInputProps) {
       rules={{
         validate: (value) => value !== undefined || "Invalid JSON",
       }}
-      render={({ field }) => <InnerJsonInput field={field} />}
+      render={({ field }) => <InnerJsonInput field={field} ariaLabel={ariaLabel} />}
     />
   );
 }

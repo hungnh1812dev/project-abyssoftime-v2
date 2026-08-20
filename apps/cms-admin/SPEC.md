@@ -1,4 +1,4 @@
-# Spec: AbyssOfTime CMS — Admin Frontend
+# Spec: AbyssOfTime CMS — Admin Frontend -
 
 See `/docs/ENTRYPOINT.md` for the full doc index. This file only orients — module details live in `docs/documents/*` and must be removed from here once fully captured there (per repo root `docs/workflow.md`'s Root docs rule).
 

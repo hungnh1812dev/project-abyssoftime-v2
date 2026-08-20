@@ -30,6 +30,15 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe("PermissionsPage — DataTable styling", () => {
+  it("gives the header row a dark sky-blue background", async () => {
+    renderWithProviders(<PermissionsPage />);
+    await waitFor(() => expect(screen.getByText("document:read")).toBeInTheDocument());
+    const headerRow = screen.getByText("Slug", { selector: "th" }).closest("tr")!;
+    expect(headerRow.className.split(/\s+/)).toContain("bg-sky-700");
+  });
+});
+
 describe("PermissionsPage", () => {
   it("renders the permission catalog with slug, name, and description", async () => {
     renderWithProviders(<PermissionsPage />);
@@ -92,6 +101,31 @@ describe("PermissionsPage", () => {
     expect(JSON.parse(mock.history.post[0].data)).toEqual({ slug: "reports:generate", name: "Generate Reports", description: "" });
   });
 
+  it("shows the create-only disclaimer note, wired into aria-describedby, when creating", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PermissionsPage />);
+    await waitFor(() => screen.getByText("Create Permission"));
+    await user.click(screen.getByText("Create Permission"));
+
+    await waitFor(() => screen.getByText(/does not grant any new capability by itself/i));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-describedby")?.split(" ")).toHaveLength(2);
+  });
+
+  it("omits the create-only disclaimer note when editing", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PermissionsPage />);
+    await waitFor(() => screen.getByText("document:read"));
+
+    const row = screen.getByText("document:read").closest("tr") as HTMLElement;
+    await user.click(within(row).getByText("Edit"));
+
+    await waitFor(() => expect(screen.getByDisplayValue("document:read")).toBeInTheDocument());
+    expect(screen.queryByText(/does not grant any new capability by itself/i)).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-describedby")?.split(" ")).toHaveLength(1);
+  });
+
   it("opens the edit dialog pre-filled with the slug locked", async () => {
     const user = userEvent.setup();
     renderWithProviders(<PermissionsPage />);
@@ -128,29 +162,31 @@ describe("PermissionsPage", () => {
   it("shows an inline error with role/token counts when deleting a referenced permission is blocked (409)", async () => {
     mock.onDelete("/permissions/p1").reply(409, { message: "Permission is still referenced", roleCount: 2, accessTokenCount: 0 });
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderWithProviders(<PermissionsPage />);
     await waitFor(() => screen.getByText("document:read"));
 
     const row = screen.getByText("document:read").closest("tr") as HTMLElement;
     await user.click(within(row).getByText("Delete"));
 
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
     await waitFor(() => expect(screen.getByText(/2 role\(s\) and 0 access token\(s\)/i)).toBeInTheDocument());
-    confirmSpy.mockRestore();
   });
 
   it("deletes an unreferenced permission without error", async () => {
     mock.onDelete("/permissions/p2").reply(204);
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderWithProviders(<PermissionsPage />);
     await waitFor(() => screen.getByText("media:manager"));
 
     const row = screen.getByText("media:manager").closest("tr") as HTMLElement;
     await user.click(within(row).getByText("Delete"));
 
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
     await waitFor(() => expect(mock.history.delete).toHaveLength(1));
-    confirmSpy.mockRestore();
   });
 });
 

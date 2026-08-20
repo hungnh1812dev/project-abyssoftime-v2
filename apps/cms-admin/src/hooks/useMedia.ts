@@ -31,6 +31,7 @@ export function useUploadMedia() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Uploaded");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Upload failed"));
@@ -44,6 +45,7 @@ export function useDeleteMedia() {
     mutationFn: (id: string) => api.delete(`/media/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Deleted");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Delete failed"));

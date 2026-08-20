@@ -8,12 +8,6 @@ function HealthDisplay() {
   return <span data-testid="health">{status}</span>;
 }
 
-function flushPromises() {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, 0);
-  });
-}
-
 async function flushAll() {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);

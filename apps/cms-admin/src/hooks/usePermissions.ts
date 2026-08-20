@@ -28,6 +28,7 @@ export function useCreatePermission() {
     mutationFn: (data: { slug: string; name: string; description?: string }) => api.post<PermissionItem>("/permissions", data).then((response) => response.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Permission created");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Failed to create permission"));
@@ -42,6 +43,7 @@ export function useUpdatePermission() {
       api.put<PermissionItem>(`/permissions/${documentId}`, data).then((response) => response.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Permission updated");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Failed to update permission"));
@@ -55,6 +57,7 @@ export function useDeletePermission() {
     mutationFn: (documentId: string) => api.delete(`/permissions/${documentId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Permission deleted");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Failed to delete permission"));

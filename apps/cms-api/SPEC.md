@@ -1,4 +1,4 @@
-# Spec
+# Spec -
 
 No active spec. See `docs/documents/auth.md` (Domain port section), `docs/documents/auth-email-techstack.md`,
 and `docs/documents/auth-email-providers-techstack.md` for the completed Additional Email Providers

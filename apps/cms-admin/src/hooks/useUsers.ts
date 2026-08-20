@@ -34,6 +34,7 @@ export function useUpdateUserRole() {
     mutationFn: ({ id, roleId }: { id: string; roleId: string }) => api.patch<UserItem>(`/users/${id}/role`, { roleId }).then((response) => response.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Role updated");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Failed to update role"));
@@ -47,6 +48,7 @@ export function useDeleteUser() {
     mutationFn: (id: string) => api.delete(`/users/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("User deleted");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Failed to delete user"));

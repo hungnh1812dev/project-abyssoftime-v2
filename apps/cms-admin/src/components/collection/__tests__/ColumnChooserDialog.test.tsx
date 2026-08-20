@@ -38,6 +38,16 @@ function renderDialog(props: Partial<React.ComponentProps<typeof ColumnChooserDi
 }
 
 describe("ColumnChooserDialog", () => {
+  it("renders an accessible title and description, wired into aria-describedby", async () => {
+    renderDialog();
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Configure columns" })).toBeInTheDocument();
+      expect(screen.getByText("Choose which columns to display in the list view.")).toBeInTheDocument();
+    });
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-describedby")?.split(" ")).toHaveLength(1);
+  });
+
   it("renders content fields excluding component types", async () => {
     renderDialog();
     await waitFor(() => {
