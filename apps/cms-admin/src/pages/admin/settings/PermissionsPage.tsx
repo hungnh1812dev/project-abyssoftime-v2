@@ -123,9 +123,8 @@ export function PermissionsPage() {
   const query = search.trim().toLowerCase();
   const filtered = query ? sorted.filter((permission) => `${permission.slug} ${permission.name} ${permission.description}`.toLowerCase().includes(query)) : sorted;
 
-  // DataTableColumn.className applies to both the header and body cell — the font-mono/
-  // text-muted-foreground styling below is body-only in the original markup, so it's applied
-  // inside `cell` instead of via `className`, to avoid bleeding onto the header text.
+  // Slug/Description styling is body-only, so it's applied inside `cell` rather than via
+  // `className` (see DataTableColumn.className's doc comment).
   const columns: DataTableColumn<PermissionItem>[] = [
     { key: "slug", header: "Slug", cell: (permission) => <span className="font-mono text-sm">{permission.slug}</span> },
     { key: "name", header: "Name", accessorKey: "name" },

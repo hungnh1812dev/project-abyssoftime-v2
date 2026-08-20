@@ -142,9 +142,8 @@ export function RolesPage() {
 
   const isLoading = rolesLoading || permissionsLoading;
 
-  // DataTableColumn.className applies to both the header and body cell — the
-  // font-medium/text-muted-foreground styling below is body-only in the original markup, so it's
-  // applied inside `cell` instead of via `className`, to avoid bleeding onto the header text.
+  // Slug/Level styling is body-only, so it's applied inside `cell` rather than via
+  // `className` (see DataTableColumn.className's doc comment).
   const columns: DataTableColumn<RoleItem>[] = [
     // Badge already sets its own font-medium, so the original TableCell's font-medium class was a
     // no-op — no wrapper needed to reproduce it here.

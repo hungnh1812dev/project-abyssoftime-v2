@@ -8,6 +8,10 @@ interface DataTableColumn<T> {
   header: React.ReactNode;
   accessorKey?: keyof T;
   cell?: (row: T) => React.ReactNode;
+  // Applied to both this column's TableHead and every TableCell in the column — safe for
+  // symmetric styling (e.g. "text-right"), but styling that should be body-only (font/color/size
+  // on the value itself) belongs inside `cell`'s returned node instead, or it bleeds onto the
+  // header text too.
   className?: string;
 }
 

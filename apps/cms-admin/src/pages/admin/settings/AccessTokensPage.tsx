@@ -68,9 +68,8 @@ export function AccessTokensPage() {
 
   const permissionNameBySlug = new Map(permissions.map((permission) => [permission.slug, permission.name]));
 
-  // DataTableColumn.className applies to both the header cell and the body cell — the
-  // font-medium/text-muted-foreground styling below is body-only in the original markup, so it's
-  // applied inside `cell` instead of via `className`, to avoid bleeding onto the header text.
+  // Name/Expires styling is body-only, so it's applied inside `cell` rather than via
+  // `className` (see DataTableColumn.className's doc comment).
   const columns: DataTableColumn<AccessTokenItem>[] = [
     { key: "name", header: "Name", cell: (token) => <span className="font-medium">{token.name}</span> },
     {
