@@ -268,13 +268,19 @@ have no `DialogFooter` — their action button stays inline in `children`, right
 #### Task 8: Migrate `ColumnChooserDialog`
 
 **Acceptance criteria:**
-- [ ] Renders via `DialogPanel`; the `open && <ColumnChooserContent .../>` lazy-mount pattern is
-      preserved (it resets local selection state on reopen).
+- [x] Renders via `DialogPanel`; the lazy-mount-on-open pattern is preserved (it resets local
+      selection state on reopen) — restructured as `ColumnChooserDialog` returning `null` when
+      `!open` (rather than the old `<Dialog>{open && <Content/>}</Dialog>`, since `DialogPanel`
+      owns its own `Dialog` root and there's no outer shell left to wrap), functionally identical:
+      `ColumnChooserContent` only exists in the tree while `open` is true either way.
 
 **Verification:**
-- [ ] Build succeeds: `bun run build`
+- [x] Build succeeds: `bun run build`
+- [x] Tests pass: `bun run test ColumnChooserDialog` — extended the existing 6-test suite with 1
+      new characterization test (title/description + single-id `aria-describedby`), all 7 green
+      before and after the refactor, including the pre-existing reset-on-reopen coverage.
 - [ ] Manual check: open column chooser, toggle a few fields, close without saving, reopen —
-      selection should reset to the persisted list fields.
+      selection should reset to the persisted list fields. (Deferred to the Phase 2 checkpoint.)
 
 **Dependencies:** Task 1.
 
@@ -285,9 +291,13 @@ have no `DialogFooter` — their action button stays inline in `children`, right
 
 ### Checkpoint: All call sites migrated
 
-- [ ] `grep -rn "DialogNote\|DialogDescribedByContext" src/` returns only `ui/dialog.tsx` itself.
-- [ ] `bun run lint` && `bun run build` && `bun run test` all clean.
+- [x] `grep -rn "DialogNote\|DialogDescribedByContext" src/` returns only `ui/dialog.tsx` itself.
+- [x] `bun run lint` && `bun run build` && `bun run test` all clean (same 5 pre-existing, unrelated
+      failures confirmed present on clean `develop` before any of this work started — see Task 1's
+      note).
 - [ ] Human review before touching the shared primitive file.
+- [ ] Browser walkthrough of the migrated dialogs (deferred across Tasks 2-8) — still outstanding
+      before Task 9 reverts `ui/dialog.tsx`.
 
 ### Phase 3: Revert the primitive
 
