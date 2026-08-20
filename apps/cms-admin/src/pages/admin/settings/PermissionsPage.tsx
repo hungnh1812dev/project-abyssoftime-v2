@@ -4,7 +4,8 @@ import { useState } from "react";
 import { PermissionTooltip } from "@/components/permissions/PermissionTooltip";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogNote, DialogTitle } from "@/components/ui/dialog";
+import { DialogFooter } from "@/components/ui/dialog";
+import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -54,40 +55,39 @@ function PermissionDialog({ open, onOpenChange, permission }: PermissionDialogPr
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{isEdit ? `Edit Permission: ${permission.slug}` : "Create Permission"}</DialogTitle>
-          <DialogDescription>{isEdit ? "Update this permission's name and description." : "Define a new permission slug in the format resource:action."}</DialogDescription>
-        </DialogHeader>
-        {!isEdit && (
-          <DialogNote>Creating a permission here does not grant any new capability by itself — a developer must add a matching check in the backend code before this permission has any effect.</DialogNote>
-        )}
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <Label htmlFor="permission-slug">Slug</Label>
-            <Input id="permission-slug" value={slug} onChange={(event) => setSlug(event.target.value)} disabled={isEdit} placeholder="e.g. reports:generate" />
-            {!slugValid && <p className="text-destructive text-xs">Slug must match resource:action format (lowercase, e.g. "document:read")</p>}
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="permission-name">Name</Label>
-            <Input id="permission-name" value={name} onChange={(event) => setName(event.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="permission-description">Description</Label>
-            <Input id="permission-description" value={description} onChange={(event) => setDescription(event.target.value)} />
-          </div>
+    <DialogPanel
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEdit ? `Edit Permission: ${permission.slug}` : "Create Permission"}
+      description={isEdit ? "Update this permission's name and description." : "Define a new permission slug in the format resource:action."}
+      note={
+        !isEdit &&
+        "Creating a permission here does not grant any new capability by itself — a developer must add a matching check in the backend code before this permission has any effect."
+      }>
+      <div className="space-y-4">
+        <div className="space-y-1">
+          <Label htmlFor="permission-slug">Slug</Label>
+          <Input id="permission-slug" value={slug} onChange={(event) => setSlug(event.target.value)} disabled={isEdit} placeholder="e.g. reports:generate" />
+          {!slugValid && <p className="text-destructive text-xs">Slug must match resource:action format (lowercase, e.g. "document:read")</p>}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={saving || !name || (!isEdit && (!slug || !slugValid))}>
-            {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Permission"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="space-y-1">
+          <Label htmlFor="permission-name">Name</Label>
+          <Input id="permission-name" value={name} onChange={(event) => setName(event.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="permission-description">Description</Label>
+          <Input id="permission-description" value={description} onChange={(event) => setDescription(event.target.value)} />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
+        <Button onClick={handleSave} disabled={saving || !name || (!isEdit && (!slug || !slugValid))}>
+          {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Permission"}
+        </Button>
+      </DialogFooter>
+    </DialogPanel>
   );
 }
 

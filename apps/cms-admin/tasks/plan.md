@@ -198,12 +198,16 @@ have no `DialogFooter` — their action button stays inline in `children`, right
 #### Task 5: Migrate `PermissionsPage`'s `PermissionDialog`
 
 **Acceptance criteria:**
-- [ ] Renders via `DialogPanel`; conditional note (create-only disclaimer) still conditional.
-- [ ] No more direct header/note primitive imports in `PermissionsPage.tsx`.
+- [x] Renders via `DialogPanel`; conditional note (create-only disclaimer) still conditional.
+- [x] No more direct header/note primitive imports in `PermissionsPage.tsx`.
 
 **Verification:**
-- [ ] Build succeeds: `bun run build`
+- [x] Build succeeds: `bun run build`
+- [x] Tests pass: `bun run test PermissionsPage` — extended the existing suite with 2 new
+      characterization tests (note + `aria-describedby` present when creating, absent when
+      editing), both green before and after the refactor.
 - [ ] Manual check: open Create Permission (note visible) and Edit Permission (note absent).
+      (Deferred to the Phase 2 checkpoint.)
 
 **Dependencies:** Task 1.
 

@@ -10,7 +10,7 @@ Full detail in `tasks/plan.md`. Prior phase archived at `tasks/archive.md`.
 ### Phase 2: Migrate direct-primitive call sites (independent, parallelizable after checkpoint above)
 - [x] 3. Migrate `DeleteConfirmDialog`
 - [x] 4. Migrate `AccessTokensPage` (`TokenRevealDialog` + create-token dialog)
-- [ ] 5. Migrate `PermissionsPage`'s `PermissionDialog`
+- [x] 5. Migrate `PermissionsPage`'s `PermissionDialog`
 - [ ] 6. Migrate `RolesPage`'s `RoleDialog`
 - [ ] 7. Migrate `InternationalizePage`'s add/edit locale dialog
 - [ ] 8. Migrate `ColumnChooserDialog`
