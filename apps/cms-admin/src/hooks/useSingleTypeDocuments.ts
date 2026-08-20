@@ -55,6 +55,7 @@ export function usePublishSingleType() {
       api.post<{ status: string }>(`/documents/single-type/${contentTypeSlug}/publish`).then((response) => response.data),
     onSuccess: (_, { contentTypeSlug }) => {
       queryClient.invalidateQueries({ queryKey: KEYS.document(contentTypeSlug) });
+      toast.success("Published");
     },
     onError: onMutationError,
   });
@@ -67,6 +68,7 @@ export function useUnpublishSingleType() {
       api.post<{ status: string }>(`/documents/single-type/${contentTypeSlug}/unpublish`).then((response) => response.data),
     onSuccess: (_, { contentTypeSlug }) => {
       queryClient.invalidateQueries({ queryKey: KEYS.document(contentTypeSlug) });
+      toast.success("Unpublished");
     },
     onError: onMutationError,
   });

@@ -1,0 +1,53 @@
+import * as React from "react";
+
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+
+interface DataTableColumn<T> {
+  key?: string;
+  header: React.ReactNode;
+  accessorKey?: keyof T;
+  cell?: (row: T) => React.ReactNode;
+  // Applied to both this column's TableHead and every TableCell in the column — safe for
+  // symmetric styling (e.g. "text-right"), but styling that should be body-only (font/color/size
+  // on the value itself) belongs inside `cell`'s returned node instead, or it bleeds onto the
+  // header text too.
+  className?: string;
+}
+
+interface DataTableProps<T> {
+  columns: DataTableColumn<T>[];
+  data: T[];
+  getRowKey: (row: T) => string;
+  rowClassName?: (row: T) => string | undefined;
+}
+
+function DataTable<T>({ columns, data, getRowKey, rowClassName }: DataTableProps<T>) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow className="bg-sky-700 dark:bg-sky-900 hover:bg-sky-700 dark:hover:bg-sky-900">
+          {columns.map((column) => (
+            <TableHead key={column.key ?? String(column.accessorKey)} className={cn("text-white", column.className)}>
+              {column.header}
+            </TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {data.map((row, index) => (
+          <TableRow key={getRowKey(row)} className={cn("hover:bg-gray-200 dark:hover:bg-gray-700", index % 2 === 1 && "bg-gray-100 dark:bg-gray-800", rowClassName?.(row))}>
+            {columns.map((column) => (
+              <TableCell key={column.key ?? String(column.accessorKey)} className={column.className}>
+                {column.cell ? column.cell(row) : column.accessorKey ? String(row[column.accessorKey]) : null}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+export { DataTable };
+export type { DataTableColumn, DataTableProps };

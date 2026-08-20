@@ -40,6 +40,16 @@ async function openCreateDialog() {
   return user;
 }
 
+describe("AccessTokensPage — DataTable styling", () => {
+  it("gives the header row a dark sky-blue background", async () => {
+    mock.onGet("/access-tokens").reply(200, [{ documentId: "t1", name: "Existing", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null }]);
+    renderWithProviders(<AccessTokensPage />);
+    await waitFor(() => expect(screen.getByText("Existing")).toBeInTheDocument());
+    const headerRow = screen.getByText("Name", { selector: "th" }).closest("tr")!;
+    expect(headerRow.className.split(/\s+/)).toContain("bg-sky-700");
+  });
+});
+
 describe("AccessTokensPage — create dialog uses the shared permission catalog", () => {
   it("renders the permission tree grouped by resource, from the live catalog", async () => {
     await openCreateDialog();
@@ -51,7 +61,9 @@ describe("AccessTokensPage — create dialog uses the shared permission catalog"
   });
 
   it("allows creating a token with zero permissions selected", async () => {
-    mock.onPost("/access-tokens").reply(201, { documentId: "t1", name: "My Token", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null, token: "plaintext" });
+    mock
+      .onPost("/access-tokens")
+      .reply(201, { documentId: "t1", name: "My Token", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null, token: "plaintext" });
     const user = await openCreateDialog();
     await waitFor(() => screen.getByLabelText("Name"));
     await user.type(screen.getByLabelText("Name"), "My Token");
@@ -100,9 +112,9 @@ describe("AccessTokensPage — create dialog uses the shared permission catalog"
 
 describe("AccessTokensPage — token list", () => {
   it("renders permission badges using catalog names, not raw slugs", async () => {
-    mock.onGet("/access-tokens").reply(200, [
-      { documentId: "t1", name: "Existing", permissions: ["document:read", "media:read"], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null },
-    ]);
+    mock
+      .onGet("/access-tokens")
+      .reply(200, [{ documentId: "t1", name: "Existing", permissions: ["document:read", "media:read"], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null }]);
     renderWithProviders(<AccessTokensPage />);
 
     await waitFor(() => {
@@ -147,6 +159,32 @@ describe("AccessTokensPage — token list", () => {
 
     await waitFor(() => expect(mock.history.delete).toHaveLength(1));
     confirmSpy.mockRestore();
+  });
+});
+
+describe("AccessTokensPage — dialog accessibility", () => {
+  it("create-token dialog exposes an accessible title and description", async () => {
+    await openCreateDialog();
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Create Access Token" })).toBeInTheDocument();
+      expect(screen.getByText("Generate a scoped API token for external integrations.")).toBeInTheDocument();
+    });
+  });
+
+  it("reveal dialog shows the copy-now note, wired into aria-describedby, after creating a token", async () => {
+    mock
+      .onPost("/access-tokens")
+      .reply(201, { documentId: "t1", name: "My Token", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null, token: "plaintext-token" });
+
+    const user = await openCreateDialog();
+    await waitFor(() => screen.getByLabelText("Name"));
+    await user.type(screen.getByLabelText("Name"), "My Token");
+    await user.click(screen.getByRole("button", { name: /create token/i }));
+
+    await waitFor(() => expect(screen.getByText("plaintext-token")).toBeInTheDocument());
+    expect(screen.getByText("Copy this token now. It will not be shown again.")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-describedby")?.split(" ")).toHaveLength(2);
   });
 });
 

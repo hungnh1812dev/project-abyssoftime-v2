@@ -61,4 +61,4 @@ function SidebarProvider({ children }: { children: React.ReactNode }) {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-export { SidebarProvider, useSidebar };
+export { SidebarProvider, useSidebar, SidebarContext };

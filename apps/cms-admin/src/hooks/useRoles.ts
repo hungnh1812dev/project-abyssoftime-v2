@@ -43,6 +43,7 @@ export function useCreateRole() {
     mutationFn: (data: CreateRoleInput) => api.post<RoleItem>("/roles", data).then((response) => response.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Role created");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Failed to create role"));
@@ -56,6 +57,7 @@ export function useUpdateRole() {
     mutationFn: ({ documentId, data }: { documentId: string; data: UpdateRoleInput }) => api.put<RoleItem>(`/roles/${documentId}`, data).then((response) => response.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Role updated");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Failed to update role"));
@@ -69,6 +71,7 @@ export function useDeleteRole() {
     mutationFn: (documentId: string) => api.delete(`/roles/${documentId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Role deleted");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Failed to delete role"));

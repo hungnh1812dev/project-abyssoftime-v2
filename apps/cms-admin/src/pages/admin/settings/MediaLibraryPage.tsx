@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { PermissionTooltip } from "@/components/permissions/PermissionTooltip";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useDeleteMedia, useMediaList, useUploadMedia } from "@/hooks/useMedia";
 import { displayFileName } from "@/lib/media";
 import type { MediaAsset } from "@/types/cms";
@@ -112,32 +112,27 @@ export function MediaLibraryPage() {
         {items.length} asset{items.length !== 1 ? "s" : ""}
       </p>
 
-      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete media</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete <strong>{deleteTarget?.fileName}</strong>? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              loading={deleteMedia.isPending}
-              onClick={() => {
-                if (!deleteTarget) return;
-                deleteMedia.mutate(deleteTarget.documentId, {
-                  onSuccess: () => setDeleteTarget(null),
-                });
-              }}>
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete media"
+        description={
+          deleteTarget && (
+            <>
+              Are you sure you want to delete <strong>{deleteTarget.fileName}</strong>?
+            </>
+          )
+        }
+        note="This action cannot be undone."
+        confirmLabel="Delete"
+        loading={deleteMedia.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteMedia.mutate(deleteTarget.documentId, {
+            onSuccess: () => setDeleteTarget(null),
+          });
+        }}
+      />
     </div>
   );
 }

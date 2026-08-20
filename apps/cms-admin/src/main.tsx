@@ -3,9 +3,9 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { Toaster } from "sonner";
 
 import { BootOverlay } from "@/components/BootOverlay";
+import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import { HealthProvider } from "@/context/HealthContext";
 import { queryClient } from "@/lib/queryClient";

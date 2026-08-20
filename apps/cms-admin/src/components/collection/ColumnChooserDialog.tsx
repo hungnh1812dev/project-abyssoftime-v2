@@ -1,7 +1,8 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DialogFooter } from "@/components/ui/dialog";
+import { DialogPanel } from "@/components/ui/dialog-panel";
 import { type ContentType } from "@/types/cms";
 
 const SYSTEM_DISPLAY_FIELDS = [
@@ -32,11 +33,8 @@ function initialSelection(contentType: ContentType, currentListFields: string[])
 }
 
 export function ColumnChooserDialog({ open, onOpenChange, contentType, currentListFields, onSave, isSaving }: ColumnChooserDialogProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      {open && <ColumnChooserContent contentType={contentType} currentListFields={currentListFields} onOpenChange={onOpenChange} onSave={onSave} isSaving={isSaving} />}
-    </Dialog>
-  );
+  if (!open) return null;
+  return <ColumnChooserContent contentType={contentType} currentListFields={currentListFields} onOpenChange={onOpenChange} onSave={onSave} isSaving={isSaving} />;
 }
 
 function ColumnChooserContent({ contentType, currentListFields, onOpenChange, onSave, isSaving }: Omit<ColumnChooserDialogProps, "open">) {
@@ -63,12 +61,7 @@ function ColumnChooserContent({ contentType, currentListFields, onOpenChange, on
   }
 
   return (
-    <DialogContent className="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>Configure columns</DialogTitle>
-        <DialogDescription>Choose which columns to display in the list view.</DialogDescription>
-      </DialogHeader>
-
+    <DialogPanel open onOpenChange={onOpenChange} contentClassName="sm:max-w-md" title="Configure columns" description="Choose which columns to display in the list view.">
       <div className="max-h-80 space-y-4 overflow-y-auto">
         <div>
           <h4 className="mb-2 text-sm font-medium">Content fields</h4>
@@ -103,6 +96,6 @@ function ColumnChooserContent({ contentType, currentListFields, onOpenChange, on
           {isSaving ? "Saving..." : "Save"}
         </Button>
       </DialogFooter>
-    </DialogContent>
+    </DialogPanel>
   );
 }

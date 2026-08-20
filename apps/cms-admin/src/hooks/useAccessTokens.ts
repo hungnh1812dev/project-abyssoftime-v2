@@ -54,6 +54,7 @@ export function useRevokeAccessToken() {
       api.post<AccessTokenSecret>(`/access-tokens/${id}/revoke`, data ?? {}).then((response) => response.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Token revoked");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Failed to revoke token"));
@@ -67,6 +68,7 @@ export function useDeleteAccessToken() {
     mutationFn: (id: string) => api.delete(`/access-tokens/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.all });
+      toast.success("Token deleted");
     },
     onError: (error: unknown) => {
       toast.error(apiErrorMessage(error, "Failed to delete token"));

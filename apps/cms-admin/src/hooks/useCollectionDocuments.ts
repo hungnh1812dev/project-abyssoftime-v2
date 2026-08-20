@@ -68,7 +68,10 @@ export function useDeleteCollectionDocument() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ contentTypeSlug, id }: { contentTypeSlug: string; id: string }) => api.delete(`/documents/collection-type/${contentTypeSlug}/${id}`),
-    onSuccess: (_, { contentTypeSlug }) => queryClient.invalidateQueries({ queryKey: KEYS.list(contentTypeSlug) }),
+    onSuccess: (_, { contentTypeSlug }) => {
+      queryClient.invalidateQueries({ queryKey: KEYS.list(contentTypeSlug) });
+      toast.success("Deleted");
+    },
     onError: onMutationError,
   });
 }
@@ -108,7 +111,10 @@ export function useDuplicateCollectionDocument() {
   return useMutation({
     mutationFn: ({ contentTypeSlug, id }: { contentTypeSlug: string; id: string }) =>
       api.post<Document>(`/documents/collection-type/${contentTypeSlug}/${id}/duplicate`).then((response) => response.data),
-    onSuccess: (_, { contentTypeSlug }) => queryClient.invalidateQueries({ queryKey: KEYS.list(contentTypeSlug) }),
+    onSuccess: (_, { contentTypeSlug }) => {
+      queryClient.invalidateQueries({ queryKey: KEYS.list(contentTypeSlug) });
+      toast.success("Duplicated");
+    },
     onError: onMutationError,
   });
 }
@@ -121,6 +127,7 @@ export function usePublishCollectionDocument() {
     onSuccess: (_, { contentTypeSlug, id }) => {
       queryClient.invalidateQueries({ queryKey: KEYS.detail(contentTypeSlug, id) });
       queryClient.invalidateQueries({ queryKey: KEYS.list(contentTypeSlug) });
+      toast.success("Published");
     },
     onError: onMutationError,
   });
@@ -134,6 +141,7 @@ export function useUnpublishCollectionDocument() {
     onSuccess: (_, { contentTypeSlug, id }) => {
       queryClient.invalidateQueries({ queryKey: KEYS.detail(contentTypeSlug, id) });
       queryClient.invalidateQueries({ queryKey: KEYS.list(contentTypeSlug) });
+      toast.success("Unpublished");
     },
     onError: onMutationError,
   });
