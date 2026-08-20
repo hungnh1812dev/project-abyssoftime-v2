@@ -110,7 +110,7 @@ export function UsersPage() {
         open={deleteTarget !== null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="Delete user"
-        description={deleteTarget && `Are you sure you want to delete ${deleteTarget.email}?`}
+        description={deleteTarget && `Are you sure you want to delete <strong>${deleteTarget.email}</strong>?`}
         note="This action cannot be undone."
         confirmLabel="Delete"
         variant="destructive"
@@ -125,7 +125,7 @@ export function UsersPage() {
         open={roleChangeTarget !== null}
         onOpenChange={(open) => !open && setRoleChangeTarget(null)}
         title="Change role"
-        description={roleChangeTarget && `Change ${roleChangeTarget.user.email}'s role to "${roleChangeTarget.role.name}"?`}
+        description={roleChangeTarget && `Change <strong>${roleChangeTarget.user.email}</strong>'s role to "<strong>${roleChangeTarget.role.name}</strong>"?`}
         confirmLabel="Change role"
         variant="default"
         loading={updateRole.isPending}

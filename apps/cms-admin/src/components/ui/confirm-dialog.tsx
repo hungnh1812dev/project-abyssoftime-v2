@@ -18,7 +18,14 @@ interface ConfirmDialogProps {
 
 export function ConfirmDialog({ open, onOpenChange, title, description, note, confirmLabel = "Confirm", variant = "destructive", loading, onConfirm }: ConfirmDialogProps) {
   return (
-    <DialogPanel open={open} onOpenChange={onOpenChange} title={title} description={description} note={note} showCloseButton={false}>
+    <DialogPanel
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      description={description}
+      note={note}
+      variant={variant === "destructive" ? "destructive" : "primary"}
+      showCloseButton={false}>
       <DialogFooter>
         <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
         <Button variant={variant} loading={loading} onClick={onConfirm}>

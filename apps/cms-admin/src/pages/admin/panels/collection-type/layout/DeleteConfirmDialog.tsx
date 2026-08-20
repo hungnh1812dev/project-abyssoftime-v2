@@ -15,6 +15,7 @@ export function DeleteConfirmDialog({ open, bulkCount, onOpenChange, onConfirm }
     <DialogPanel
       open={open}
       onOpenChange={onOpenChange}
+      variant="destructive"
       showCloseButton={false}
       title={isBulk ? `Delete ${bulkCount} entries` : "Delete entry"}
       description={isBulk ? `Are you sure you want to delete ${bulkCount} selected entries?` : "Are you sure you want to delete this entry?"}
