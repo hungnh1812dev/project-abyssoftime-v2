@@ -98,6 +98,7 @@ export function PermissionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPermission, setEditingPermission] = useState<PermissionItem | null>(null);
   const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState("");
 
   function openCreate() {
     setEditingPermission(null);
@@ -119,6 +120,10 @@ export function PermissionsPage() {
   }
 
   const sorted = [...(permissions ?? [])].sort((a, b) => a.slug.localeCompare(b.slug));
+  const query = search.trim().toLowerCase();
+  const filtered = query
+    ? sorted.filter((permission) => `${permission.slug} ${permission.name} ${permission.description}`.toLowerCase().includes(query))
+    : sorted;
 
   return (
     <div className="space-y-6 p-6">
@@ -139,49 +144,66 @@ export function PermissionsPage() {
       ) : isError ? (
         <p className="text-destructive">Failed to load permissions.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Slug</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sorted.map((permission) => (
-              <TableRow key={permission.documentId}>
-                <TableCell className="font-mono text-sm">{permission.slug}</TableCell>
-                <TableCell>{permission.name}</TableCell>
-                <TableCell className="text-muted-foreground text-sm">{permission.description}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex flex-col items-end gap-1">
-                    <div className="flex justify-end gap-2">
-                      <PermissionTooltip required="permission:manager">
-                        <Button variant="outline" size="sm" onClick={() => openEdit(permission)}>
-                          Edit
-                        </Button>
-                      </PermissionTooltip>
-                      <PermissionTooltip required="permission:manager">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => {
-                            if (confirm(`Delete permission "${permission.slug}"?`)) {
-                              handleDelete(permission);
-                            }
-                          }}>
-                          Delete
-                        </Button>
-                      </PermissionTooltip>
-                    </div>
-                    {deleteErrors[permission.slug] && <p className="text-destructive text-xs">{deleteErrors[permission.slug]}</p>}
-                  </div>
-                </TableCell>
+        <>
+          <Input
+            id="permission-search"
+            name="permission-search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search by slug, name, or description…"
+            aria-label="Search permissions"
+            className="max-w-sm"
+          />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Slug</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((permission) => (
+                <TableRow key={permission.documentId}>
+                  <TableCell className="font-mono text-sm">{permission.slug}</TableCell>
+                  <TableCell>{permission.name}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">{permission.description}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex justify-end gap-2">
+                        <PermissionTooltip required="permission:manager">
+                          <Button variant="outline" size="sm" onClick={() => openEdit(permission)}>
+                            Edit
+                          </Button>
+                        </PermissionTooltip>
+                        <PermissionTooltip required="permission:manager">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => {
+                              if (confirm(`Delete permission "${permission.slug}"?`)) {
+                                handleDelete(permission);
+                              }
+                            }}>
+                            Delete
+                          </Button>
+                        </PermissionTooltip>
+                      </div>
+                      {deleteErrors[permission.slug] && <p className="text-destructive text-xs">{deleteErrors[permission.slug]}</p>}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <p className="text-muted-foreground text-sm">
+            {filtered.length === sorted.length
+              ? `${sorted.length} permission${sorted.length !== 1 ? "s" : ""}`
+              : `${filtered.length} of ${sorted.length} permissions`}
+          </p>
+        </>
       )}
 
       <PermissionDialog key={editingPermission?.documentId ?? "create"} open={dialogOpen} onOpenChange={setDialogOpen} permission={editingPermission} />
