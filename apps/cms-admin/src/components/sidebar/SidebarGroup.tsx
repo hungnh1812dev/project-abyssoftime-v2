@@ -42,9 +42,16 @@ export function SidebarGroup({ icon: Icon, label, storageKey, defaultOpen = true
   // items would otherwise be unreachable. Surface them in a flyout instead.
   const [flyoutOpen, setFlyoutOpen] = useState(false);
 
-  useEffect(() => {
+  // Close the flyout on navigation. Adjusted during render (not via a
+  // useEffect) per https://react.dev/learn/you-might-not-need-an-effect —
+  // an effect-based reset commits the stale flyout open for one extra frame
+  // and then schedules a second render, whereas this resolves within the
+  // same render as the pathname change.
+  const [prevPathname, setPrevPathname] = useState(location.pathname);
+  if (location.pathname !== prevPathname) {
+    setPrevPathname(location.pathname);
     setFlyoutOpen(false);
-  }, [location.pathname]);
+  }
 
   if (collapsed) {
     return (
