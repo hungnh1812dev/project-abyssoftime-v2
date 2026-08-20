@@ -143,13 +143,16 @@ becomes `children`, unchanged.
 #### Task 3: Migrate `DeleteConfirmDialog`
 
 **Acceptance criteria:**
-- [ ] Renders via `DialogPanel`; no more direct `DialogHeader`/`DialogTitle`/`DialogDescription`/`DialogNote` imports.
-- [ ] Bulk vs. single-entry title/description text unchanged.
+- [x] Renders via `DialogPanel`; no more direct `DialogHeader`/`DialogTitle`/`DialogDescription`/`DialogNote` imports.
+- [x] Bulk vs. single-entry title/description text unchanged.
 
 **Verification:**
-- [ ] Build succeeds: `bun run build`
+- [x] Build succeeds: `bun run build`
+- [x] Tests pass: `bun run test DeleteConfirmDialog` — 6 characterization tests (bulk vs. single
+      copy, note + aria-describedby, confirm/cancel behavior, no built-in close button), written
+      and green against the pre-refactor implementation first, still green after the swap.
 - [ ] Manual check: delete a single entry and a bulk selection in a collection-type list; confirm
-      dialog text and Cancel/Delete buttons unchanged.
+      dialog text and Cancel/Delete buttons unchanged. (Deferred to the Phase 2 checkpoint.)
 
 **Dependencies:** Task 1 (does not depend on Task 2).
 

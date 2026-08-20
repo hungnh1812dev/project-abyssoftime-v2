@@ -8,7 +8,7 @@ Full detail in `tasks/plan.md`. Prior phase archived at `tasks/archive.md`.
 - [ ] **Checkpoint** — lint/build/test clean; browser-check one `ConfirmDialog` call site; human review of `DialogPanel`'s API
 
 ### Phase 2: Migrate direct-primitive call sites (independent, parallelizable after checkpoint above)
-- [ ] 3. Migrate `DeleteConfirmDialog`
+- [x] 3. Migrate `DeleteConfirmDialog`
 - [ ] 4. Migrate `AccessTokensPage` (`TokenRevealDialog` + create-token dialog)
 - [ ] 5. Migrate `PermissionsPage`'s `PermissionDialog`
 - [ ] 6. Migrate `RolesPage`'s `RoleDialog`
