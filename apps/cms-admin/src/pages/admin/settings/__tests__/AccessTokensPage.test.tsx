@@ -40,6 +40,19 @@ async function openCreateDialog() {
   return user;
 }
 
+describe("AccessTokensPage — DataTable styling", () => {
+  it("gives the header row a bg-muted background", async () => {
+    mock.onGet("/access-tokens").reply(200, [{ documentId: "t1", name: "Existing", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null }]);
+    renderWithProviders(<AccessTokensPage />);
+    await waitFor(() => expect(screen.getByText("Existing")).toBeInTheDocument());
+    const headerRow = screen.getByText("Name", { selector: "th" }).closest("tr")!;
+    // Exact-token check: ui/table.tsx's base TableRow classes already contain the literal
+    // substring "bg-muted" (inside "data-[state=selected]:bg-muted"), so a plain .toContain
+    // would false-positive even without DataTable's header styling applied.
+    expect(headerRow.className.split(/\s+/)).toContain("bg-muted");
+  });
+});
+
 describe("AccessTokensPage — create dialog uses the shared permission catalog", () => {
   it("renders the permission tree grouped by resource, from the live catalog", async () => {
     await openCreateDialog();
@@ -51,7 +64,9 @@ describe("AccessTokensPage — create dialog uses the shared permission catalog"
   });
 
   it("allows creating a token with zero permissions selected", async () => {
-    mock.onPost("/access-tokens").reply(201, { documentId: "t1", name: "My Token", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null, token: "plaintext" });
+    mock
+      .onPost("/access-tokens")
+      .reply(201, { documentId: "t1", name: "My Token", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null, token: "plaintext" });
     const user = await openCreateDialog();
     await waitFor(() => screen.getByLabelText("Name"));
     await user.type(screen.getByLabelText("Name"), "My Token");
@@ -100,9 +115,9 @@ describe("AccessTokensPage — create dialog uses the shared permission catalog"
 
 describe("AccessTokensPage — token list", () => {
   it("renders permission badges using catalog names, not raw slugs", async () => {
-    mock.onGet("/access-tokens").reply(200, [
-      { documentId: "t1", name: "Existing", permissions: ["document:read", "media:read"], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null },
-    ]);
+    mock
+      .onGet("/access-tokens")
+      .reply(200, [{ documentId: "t1", name: "Existing", permissions: ["document:read", "media:read"], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null }]);
     renderWithProviders(<AccessTokensPage />);
 
     await waitFor(() => {

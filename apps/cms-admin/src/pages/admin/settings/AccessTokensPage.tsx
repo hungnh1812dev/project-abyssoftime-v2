@@ -5,11 +5,11 @@ import { PermissionTree } from "@/components/permissions/PermissionTree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type AccessTokenItem, type ExpiresIn, useAccessTokenList, useCreateAccessToken, useDeleteAccessToken, useRevokeAccessToken } from "@/hooks/useAccessTokens";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -33,7 +33,12 @@ function TokenRevealDialog({ open, onOpenChange, token }: { open: boolean; onOpe
   }
 
   return (
-    <DialogPanel open={open} onOpenChange={onOpenChange} title="Token" description="Your new access token has been generated." note="Copy this token now. It will not be shown again.">
+    <DialogPanel
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Token"
+      description="Your new access token has been generated."
+      note="Copy this token now. It will not be shown again.">
       <div className="space-y-3">
         <div className="bg-muted rounded-md border p-3">
           <code className="text-xs break-all">{token}</code>
@@ -62,6 +67,53 @@ export function AccessTokensPage() {
   const deleteToken = useDeleteAccessToken();
 
   const permissionNameBySlug = new Map(permissions.map((permission) => [permission.slug, permission.name]));
+
+  // DataTableColumn.className applies to both the header cell and the body cell — the
+  // font-medium/text-muted-foreground styling below is body-only in the original markup, so it's
+  // applied inside `cell` instead of via `className`, to avoid bleeding onto the header text.
+  const columns: DataTableColumn<AccessTokenItem>[] = [
+    { key: "name", header: "Name", cell: (token) => <span className="font-medium">{token.name}</span> },
+    {
+      key: "permissions",
+      header: "Permissions",
+      cell: (token) =>
+        token.permissions.length === 0 ? (
+          <span className="text-muted-foreground text-xs">No permissions</span>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {token.permissions.map((slug) => (
+              <Badge key={slug} variant="secondary" className="text-xs">
+                {permissionNameBySlug.get(slug) ?? slug}
+              </Badge>
+            ))}
+          </div>
+        ),
+    },
+    {
+      key: "expires",
+      header: "Expires",
+      cell: (token) => <span className="text-muted-foreground text-sm">{token.expiresAt ? new Date(token.expiresAt).toLocaleDateString() : "Never"}</span>,
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      className: "text-right",
+      cell: (token) => (
+        <div className="flex justify-end gap-2">
+          <PermissionTooltip required="api_token:manager">
+            <Button variant="outline" size="sm" onClick={() => setRevokeTarget(token)}>
+              Revoke
+            </Button>
+          </PermissionTooltip>
+          <PermissionTooltip required="api_token:manager">
+            <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(token)}>
+              Delete
+            </Button>
+          </PermissionTooltip>
+        </div>
+      ),
+    },
+  ];
 
   function resetCreateForm() {
     setTokenName("");
@@ -144,55 +196,7 @@ export function AccessTokensPage() {
         </DialogPanel>
       </div>
 
-      {isLoading ? (
-        <p className="text-muted-foreground">Loading…</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Permissions</TableHead>
-              <TableHead>Expires</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tokens.map((token) => (
-              <TableRow key={token.documentId}>
-                <TableCell className="font-medium">{token.name}</TableCell>
-                <TableCell>
-                  {token.permissions.length === 0 ? (
-                    <span className="text-muted-foreground text-xs">No permissions</span>
-                  ) : (
-                    <div className="flex flex-wrap gap-1">
-                      {token.permissions.map((slug) => (
-                        <Badge key={slug} variant="secondary" className="text-xs">
-                          {permissionNameBySlug.get(slug) ?? slug}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">{token.expiresAt ? new Date(token.expiresAt).toLocaleDateString() : "Never"}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <PermissionTooltip required="api_token:manager">
-                      <Button variant="outline" size="sm" onClick={() => setRevokeTarget(token)}>
-                        Revoke
-                      </Button>
-                    </PermissionTooltip>
-                    <PermissionTooltip required="api_token:manager">
-                      <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(token)}>
-                        Delete
-                      </Button>
-                    </PermissionTooltip>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+      {isLoading ? <p className="text-muted-foreground">Loading…</p> : <DataTable columns={columns} data={tokens} getRowKey={(token) => token.documentId} />}
 
       <p className="text-muted-foreground text-sm">
         {tokens.length} token{tokens.length !== 1 ? "s" : ""}
