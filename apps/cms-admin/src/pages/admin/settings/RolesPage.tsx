@@ -6,11 +6,11 @@ import { PermissionTree } from "@/components/permissions/PermissionTree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { DialogFooter } from "@/components/ui/dialog";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type PermissionItem, usePermissions } from "@/hooks/usePermissions";
 import { type RoleItem, useCreateRole, useDeleteRole, useRoleList, useUpdateRole } from "@/hooks/useRoles";
 
@@ -142,6 +142,39 @@ export function RolesPage() {
 
   const isLoading = rolesLoading || permissionsLoading;
 
+  // DataTableColumn.className applies to both the header and body cell — the
+  // font-medium/text-muted-foreground styling below is body-only in the original markup, so it's
+  // applied inside `cell` instead of via `className`, to avoid bleeding onto the header text.
+  const columns: DataTableColumn<RoleItem>[] = [
+    // Badge already sets its own font-medium, so the original TableCell's font-medium class was a
+    // no-op — no wrapper needed to reproduce it here.
+    { key: "name", header: "Name", cell: (role) => <Badge variant="secondary">{role.name}</Badge> },
+    { key: "slug", header: "Slug", cell: (role) => <span className="text-muted-foreground text-sm">{role.slug}</span> },
+    { key: "level", header: "Level", cell: (role) => <span className="text-muted-foreground text-sm">{role.level}</span> },
+    { key: "permissions", header: "Permissions", cell: (role) => <PermissionSubTree slugs={role.permissions} permissions={permissions ?? []} /> },
+    {
+      key: "actions",
+      header: "Actions",
+      className: "text-right",
+      cell: (role) => (
+        <div className="flex justify-end gap-2">
+          <PermissionTooltip required="role:manager">
+            <Button variant="outline" size="sm" onClick={() => openEdit(role)}>
+              Edit
+            </Button>
+          </PermissionTooltip>
+          {!role.isDefault && (
+            <PermissionTooltip required="role:manager">
+              <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(role)}>
+                Delete
+              </Button>
+            </PermissionTooltip>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -161,47 +194,7 @@ export function RolesPage() {
       ) : rolesError ? (
         <p className="text-destructive">Failed to load roles.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>Level</TableHead>
-              <TableHead>Permissions</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(roles ?? []).map((role) => (
-              <TableRow key={role.documentId}>
-                <TableCell className="font-medium">
-                  <Badge variant="secondary">{role.name}</Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">{role.slug}</TableCell>
-                <TableCell className="text-muted-foreground text-sm">{role.level}</TableCell>
-                <TableCell>
-                  <PermissionSubTree slugs={role.permissions} permissions={permissions ?? []} />
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <PermissionTooltip required="role:manager">
-                      <Button variant="outline" size="sm" onClick={() => openEdit(role)}>
-                        Edit
-                      </Button>
-                    </PermissionTooltip>
-                    {!role.isDefault && (
-                      <PermissionTooltip required="role:manager">
-                        <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(role)}>
-                          Delete
-                        </Button>
-                      </PermissionTooltip>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataTable columns={columns} data={roles ?? []} getRowKey={(role) => role.documentId} />
       )}
 
       <RoleDialog key={editingRole?.documentId ?? "create"} open={dialogOpen} onOpenChange={setDialogOpen} role={editingRole} permissions={permissions ?? []} />
