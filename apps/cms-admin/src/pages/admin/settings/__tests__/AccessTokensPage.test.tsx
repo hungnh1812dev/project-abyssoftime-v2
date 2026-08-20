@@ -41,15 +41,12 @@ async function openCreateDialog() {
 }
 
 describe("AccessTokensPage — DataTable styling", () => {
-  it("gives the header row a bg-muted background", async () => {
+  it("gives the header row a dark sky-blue background", async () => {
     mock.onGet("/access-tokens").reply(200, [{ documentId: "t1", name: "Existing", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null }]);
     renderWithProviders(<AccessTokensPage />);
     await waitFor(() => expect(screen.getByText("Existing")).toBeInTheDocument());
     const headerRow = screen.getByText("Name", { selector: "th" }).closest("tr")!;
-    // Exact-token check: ui/table.tsx's base TableRow classes already contain the literal
-    // substring "bg-muted" (inside "data-[state=selected]:bg-muted"), so a plain .toContain
-    // would false-positive even without DataTable's header styling applied.
-    expect(headerRow.className.split(/\s+/)).toContain("bg-muted");
+    expect(headerRow.className.split(/\s+/)).toContain("bg-sky-700");
   });
 });
 

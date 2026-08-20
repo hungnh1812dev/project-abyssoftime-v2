@@ -26,9 +26,9 @@ function DataTable<T>({ columns, data, getRowKey, rowClassName }: DataTableProps
   return (
     <Table>
       <TableHeader>
-        <TableRow className="bg-muted">
+        <TableRow className="bg-sky-700 dark:bg-sky-900 hover:bg-sky-700 dark:hover:bg-sky-900">
           {columns.map((column) => (
-            <TableHead key={column.key ?? String(column.accessorKey)} className={column.className}>
+            <TableHead key={column.key ?? String(column.accessorKey)} className={cn("text-white", column.className)}>
               {column.header}
             </TableHead>
           ))}
@@ -36,7 +36,7 @@ function DataTable<T>({ columns, data, getRowKey, rowClassName }: DataTableProps
       </TableHeader>
       <TableBody>
         {data.map((row, index) => (
-          <TableRow key={getRowKey(row)} className={cn(index % 2 === 1 && "bg-muted/40", rowClassName?.(row))}>
+          <TableRow key={getRowKey(row)} className={cn("hover:bg-gray-200 dark:hover:bg-gray-700", index % 2 === 1 && "bg-gray-100 dark:bg-gray-800", rowClassName?.(row))}>
             {columns.map((column) => (
               <TableCell key={column.key ?? String(column.accessorKey)} className={column.className}>
                 {column.cell ? column.cell(row) : column.accessorKey ? String(row[column.accessorKey]) : null}

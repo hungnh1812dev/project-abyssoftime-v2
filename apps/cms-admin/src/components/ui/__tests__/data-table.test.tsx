@@ -28,29 +28,37 @@ describe("DataTable", () => {
     expect(screen.getByText("30 yrs")).toBeInTheDocument();
   });
 
-  it("gives the header row a bg-muted background", () => {
+  it("gives the header row a dark sky-blue background with white text", () => {
     render(<DataTable columns={columns} data={data} getRowKey={(row) => row.id} />);
     const headerRow = screen.getAllByRole("row")[0];
-    // Exact-token check: the base TableRow classes already contain "bg-muted" as a
-    // substring (inside "data-[state=selected]:bg-muted"), so a plain .toContain would
-    // false-positive even without this component adding its own "bg-muted" class.
-    expect(headerRow.className.split(/\s+/)).toContain("bg-muted");
+    expect(headerRow.className.split(/\s+/)).toContain("bg-sky-700");
+    expect(headerRow.className.split(/\s+/)).toContain("dark:bg-sky-900");
+    const headerCell = screen.getByRole("columnheader", { name: "Name" });
+    expect(headerCell.className.split(/\s+/)).toContain("text-white");
   });
 
-  it("stripes even-indexed body rows with bg-muted/40 and leaves odd rows transparent", () => {
+  it("stripes even-indexed body rows with light gray and leaves odd rows transparent", () => {
     render(<DataTable columns={columns} data={data} getRowKey={(row) => row.id} />);
     const rows = screen.getAllByRole("row");
     const [, aliceRow, bobRow, carolRow] = rows;
-    expect(aliceRow.className).not.toContain("bg-muted/40");
-    expect(bobRow.className).toContain("bg-muted/40");
-    expect(carolRow.className).not.toContain("bg-muted/40");
+    expect(aliceRow.className).not.toContain("bg-gray-100");
+    expect(bobRow.className).toContain("bg-gray-100");
+    expect(carolRow.className).not.toContain("bg-gray-100");
+  });
+
+  it("gives every body row a hover highlight", () => {
+    render(<DataTable columns={columns} data={data} getRowKey={(row) => row.id} />);
+    const rows = screen.getAllByRole("row");
+    const [, aliceRow, bobRow] = rows;
+    expect(aliceRow.className).toContain("hover:bg-gray-200");
+    expect(bobRow.className).toContain("hover:bg-gray-200");
   });
 
   it("composes rowClassName alongside the stripe class instead of replacing it", () => {
     render(<DataTable columns={columns} data={data} getRowKey={(row) => row.id} rowClassName={(row) => (row.id === "2" ? "ring-2" : undefined)} />);
     const rows = screen.getAllByRole("row");
     const bobRow = rows[2];
-    expect(bobRow.className).toContain("bg-muted/40");
+    expect(bobRow.className).toContain("bg-gray-100");
     expect(bobRow.className).toContain("ring-2");
   });
 });
