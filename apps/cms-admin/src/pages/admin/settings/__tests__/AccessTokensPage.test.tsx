@@ -150,6 +150,32 @@ describe("AccessTokensPage — token list", () => {
   });
 });
 
+describe("AccessTokensPage — dialog accessibility", () => {
+  it("create-token dialog exposes an accessible title and description", async () => {
+    await openCreateDialog();
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Create Access Token" })).toBeInTheDocument();
+      expect(screen.getByText("Generate a scoped API token for external integrations.")).toBeInTheDocument();
+    });
+  });
+
+  it("reveal dialog shows the copy-now note, wired into aria-describedby, after creating a token", async () => {
+    mock
+      .onPost("/access-tokens")
+      .reply(201, { documentId: "t1", name: "My Token", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null, token: "plaintext-token" });
+
+    const user = await openCreateDialog();
+    await waitFor(() => screen.getByLabelText("Name"));
+    await user.type(screen.getByLabelText("Name"), "My Token");
+    await user.click(screen.getByRole("button", { name: /create token/i }));
+
+    await waitFor(() => expect(screen.getByText("plaintext-token")).toBeInTheDocument());
+    expect(screen.getByText("Copy this token now. It will not be shown again.")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-describedby")?.split(" ")).toHaveLength(2);
+  });
+});
+
 describe("AccessTokensPage — permission gating", () => {
   it("enables Revoke and Delete when the caller holds api_token:manager", async () => {
     mock.onGet("/access-tokens").reply(200, [{ documentId: "t1", name: "Existing", permissions: [], expiresAt: null, createdAt: "", updatedAt: "", updatedBy: null }]);

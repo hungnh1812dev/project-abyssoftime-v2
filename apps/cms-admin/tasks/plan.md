@@ -169,13 +169,22 @@ becomes `children`, unchanged.
 have no `DialogFooter` — their action button stays inline in `children`, right where it is now.
 
 **Acceptance criteria:**
-- [ ] Both dialogs render via `DialogPanel`.
-- [ ] `AccessTokensPage.tsx` no longer imports `DialogHeader`/`DialogTitle`/`DialogDescription`/`DialogNote`.
+- [x] Both dialogs render via `DialogPanel`.
+- [x] `AccessTokensPage.tsx` no longer imports `DialogHeader`/`DialogTitle`/`DialogDescription`/`DialogNote`.
+- [x] (Unplanned but necessary) `DialogTrigger` usage removed too — `DialogPanel` owns its own
+      `Dialog` root, so it can't host a sibling trigger; the create-token button became a plain
+      `onClick={() => setCreateOpen(true)}`, matching how every other dialog in this same file is
+      already opened (fully controlled state, no declarative trigger anywhere else in the app).
 
 **Verification:**
-- [ ] Build succeeds: `bun run build`
+- [x] Build succeeds: `bun run build`
+- [x] Tests pass: `bun run test AccessTokensPage` — extended the existing suite with 2 new
+      characterization tests (create-dialog title/description, reveal-dialog note +
+      `aria-describedby`), both green before and after the refactor; existing suite's heavy
+      indirect coverage of the create flow (permission tree, submit payload, plaintext reveal)
+      stayed green throughout.
 - [ ] Manual check: create a token (form renders, permissions tree works), reveal flow shows the
-      note + copy button unchanged.
+      note + copy button unchanged. (Deferred to the Phase 2 checkpoint.)
 
 **Dependencies:** Task 1.
 

@@ -5,7 +5,7 @@ import { PermissionTree } from "@/components/permissions/PermissionTree";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogNote, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -33,23 +33,16 @@ function TokenRevealDialog({ open, onOpenChange, token }: { open: boolean; onOpe
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Token</DialogTitle>
-          <DialogDescription>Your new access token has been generated.</DialogDescription>
-        </DialogHeader>
-        <DialogNote>Copy this token now. It will not be shown again.</DialogNote>
-        <div className="space-y-3">
-          <div className="bg-muted rounded-md border p-3">
-            <code className="text-xs break-all">{token}</code>
-          </div>
-          <Button size="sm" onClick={copyToken} className="w-full">
-            Copy Token
-          </Button>
+    <DialogPanel open={open} onOpenChange={onOpenChange} title="Token" description="Your new access token has been generated." note="Copy this token now. It will not be shown again.">
+      <div className="space-y-3">
+        <div className="bg-muted rounded-md border p-3">
+          <code className="text-xs break-all">{token}</code>
         </div>
-      </DialogContent>
-    </Dialog>
+        <Button size="sm" onClick={copyToken} className="w-full">
+          Copy Token
+        </Button>
+      </div>
+    </DialogPanel>
   );
 }
 
@@ -107,49 +100,48 @@ export function AccessTokensPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Access Tokens</h1>
-        <Dialog
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          Create new token
+        </Button>
+        <DialogPanel
           open={createOpen}
           onOpenChange={(open: boolean) => {
             setCreateOpen(open);
             if (!open) resetCreateForm();
-          }}>
-          <DialogTrigger render={<Button size="sm" />}>Create new token</DialogTrigger>
-          <DialogContent className="max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create Access Token</DialogTitle>
-              <DialogDescription>Generate a scoped API token for external integrations.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <Label htmlFor="token-name">Name</Label>
-                <Input id="token-name" value={tokenName} onChange={(event) => setTokenName(event.target.value)} placeholder="e.g. Frontend production" />
-              </div>
-              <div className="space-y-1">
-                <Label>Permissions</Label>
-                <p className="text-muted-foreground text-xs">Leave empty for a token with no scoped permissions.</p>
-                <PermissionTree permissions={permissions} selected={selectedPermissions} onChange={setSelectedPermissions} />
-              </div>
-              <div className="space-y-1">
-                <Label>Expiration</Label>
-                <Select items={EXPIRY_ITEMS} value={expiresIn} onValueChange={(value: string | null) => setExpiresIn((value as ExpiresIn) ?? "never")}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select expiration" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EXPIRY_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button className="w-full" onClick={handleCreate} disabled={createToken.isPending || !tokenName}>
-                {createToken.isPending ? "Creating…" : "Create Token"}
-              </Button>
+          }}
+          contentClassName="max-h-[85vh] overflow-y-auto"
+          title="Create Access Token"
+          description="Generate a scoped API token for external integrations.">
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <Label htmlFor="token-name">Name</Label>
+              <Input id="token-name" value={tokenName} onChange={(event) => setTokenName(event.target.value)} placeholder="e.g. Frontend production" />
             </div>
-          </DialogContent>
-        </Dialog>
+            <div className="space-y-1">
+              <Label>Permissions</Label>
+              <p className="text-muted-foreground text-xs">Leave empty for a token with no scoped permissions.</p>
+              <PermissionTree permissions={permissions} selected={selectedPermissions} onChange={setSelectedPermissions} />
+            </div>
+            <div className="space-y-1">
+              <Label>Expiration</Label>
+              <Select items={EXPIRY_ITEMS} value={expiresIn} onValueChange={(value: string | null) => setExpiresIn((value as ExpiresIn) ?? "never")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select expiration" />
+                </SelectTrigger>
+                <SelectContent>
+                  {EXPIRY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button className="w-full" onClick={handleCreate} disabled={createToken.isPending || !tokenName}>
+              {createToken.isPending ? "Creating…" : "Create Token"}
+            </Button>
+          </div>
+        </DialogPanel>
       </div>
 
       {isLoading ? (
