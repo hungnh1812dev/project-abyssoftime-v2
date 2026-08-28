@@ -196,8 +196,11 @@ and `cvPageNew`, selecting the nested `projects` inside `roles`. Service mirrors
 
 **Acceptance criteria**
 - `role.projects` is typed as an array and marked optional, so a role with none type-checks.
-- The list query selects `company`, and the list item type calls the field `company` — not
-  `companyName`. This is the cv-elegant defect the spec says not to inherit.
+- The list query selects the document-root `name` field (renamed from `company` per T1, change 4),
+  and the list item type calls the field `name` — not `companyName`. This is the cv-elegant defect
+  the spec says not to inherit (`GET_CV_ELEGANT_LIST` selects `company`, `CvElegantListItemType`
+  calls it `companyName`, so the dropdown label is blank).
+- `experience.company` (the per-job employer) keeps its own name unchanged throughout.
 - Nothing imports from `@/views/cv-elegant`.
 
 **Verification**: `bun run build` from `apps/frontend` type-checks the new files.

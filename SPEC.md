@@ -236,7 +236,9 @@ document root, plus `period` on the experience entry.
 
 One known defect is **not** inherited: `CvElegantCompanyDropdown` reads `item.companyName` while
 `GET_CV_ELEGANT_LIST` selects `company`, so its labels are blank. `CvNewCompanyDropdown` uses
-`company` on both sides. The existing cv-elegant bug is out of scope and stays as it is.
+`name` on both sides — the document-root field the dropdown labels its entries with (see Scope A,
+change 4: renamed from `company` to `name`, since it labels the CV entry itself, not an employer).
+The existing cv-elegant bug is out of scope and stays as it is.
 
 ---
 

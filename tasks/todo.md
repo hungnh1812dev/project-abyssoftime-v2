@@ -1,7 +1,7 @@
 # Todo: `/cv-3` — CV page with role-nested projects
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS** — 1 done, 2 skipped / 15 tasks
+Status: **IN PROGRESS** — 4 done, 2 skipped / 15 tasks
 
 Checkbox updates ship in the same commit as that phase's code.
 
@@ -16,9 +16,9 @@ Checkbox updates ship in the same commit as that phase's code.
 
 ## Phase 1 — Data layer and first render
 
-- [ ] **T4** Add `cv-new.types.ts`, `cv-new.queries.ts`, `cv-new.service.ts`, using `company` on both sides of the list query
-- [ ] **T5** Add `src/mocks/cv-page-new.ts`, `cv-new-main.ts`, `cv-new-list.ts` and register `"cv-new-main"` / `"cv-new-list"` in `mock-all.ts` — at least one role holding no projects, one holding two
-- [ ] **T6** Add the `/cv-3` route, the frame, the header, and the About Me section
+- [x] **T4** Add `cv-new.types.ts`, `cv-new.queries.ts`, `cv-new.service.ts`, using `name` (renamed from `company` per T1) on both sides of the list query
+- [x] **T5** Add `src/mocks/cv-page-new.ts`, `cv-new-main.ts`, `cv-new-list.ts` and register `"cv-new-main"` / `"cv-new-list"` in `mock-all.ts` — at least one role holding no projects, one holding two
+- [x] **T6** Add the `/cv-3` route, the frame, the header, and the About Me section — build/lint/tests pass; full browser screenshot blocked by the site-wide health gate (cms-api `/health` returns 403 against the user's local instance), confirmed via server logs to fail identically on the pre-existing `/cv-2` (no CV content in the DB yet — expected until T14), not a regression
 
 > **CHECKPOINT B** — first render at `/en/cv-3`.
 > **Commit 2** — `feat(frontend): scaffold /cv-3 page with cv-page-new data layer`
