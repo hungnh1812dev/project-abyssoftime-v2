@@ -1,7 +1,7 @@
 # Todo: `/cv-3` — CV page with role-nested projects
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS** — 4 done, 2 skipped / 15 tasks
+Status: **IN PROGRESS** — 6 done, 2 skipped / 15 tasks
 
 Checkbox updates ship in the same commit as that phase's code.
 
@@ -25,8 +25,8 @@ Checkbox updates ship in the same commit as that phase's code.
 
 ## Phase 2 — Experience section
 
-- [ ] **T7** Build the company strip and role blocks from `new.html`, on theme tokens rather than hex values
-- [ ] **T8** Nest the project cards under their roles, rendering nothing at all for a role with no projects
+- [x] **T7** Build the company strip and role blocks from `new.html`, on theme tokens rather than hex values — verified in-browser (light + dark) via a throwaway local stub GraphQL/health server, since the real cms-api has no `cv-page-new` content yet (T14); no app code touched to force this, stub was deleted after
+- [x] **T8** Nest the project cards under their roles, rendering nothing at all for a role with no projects — verified in-browser (light + dark) with the same throwaway stub as T7; confirmed via DOM inspection that the empty-projects role emits exactly its 4 base children (period, position, responsibilities, tech chips), no empty wrapper
 
 > **CHECKPOINT C** — the core feature.
 > **Commit 3** — `feat(frontend): render role-nested project cards on /cv-3`
