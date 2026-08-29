@@ -1,9 +1,13 @@
 .cvContainer {
-  /* Orange/cream palette for /cv-3, matched from Frontend-Developer-CV_Lan-Nguyen-Phuong.pdf */
+  /* Orange/cream palette for /cv-3, matched from Frontend-Developer-CV_Lan-Nguyen-Phuong.pdf.
+     The card always renders on this light palette — like a physical document — regardless of
+     the site's dark mode, so --background must be forced too or dark mode's near-black
+     background pairs with our forced-black --foreground and the text disappears. */
   --primary: 36 81% 50%;
   --muted: 37 79% 92%;
   --border: 36 79% 87%;
   --foreground: 0 0% 0%;
+  --background: 0 0% 100%;
 }
 
 @media print {
@@ -60,10 +64,4 @@
     padding: 0 !important;
   } */
 
-  /* Section headings use a fixed dark:text-white/80 for the dark theme — not a CSS variable —
-     so it survives the light-mode override above and must be forced back explicitly. */
-  /* .content :global(h3) {
-    color: #4a4a4a !important;
-    border-color: rgba(74, 74, 74, 0.2) !important;
-  } */
 }
