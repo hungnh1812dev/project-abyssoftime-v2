@@ -1,6 +1,6 @@
 # Spec: `/cv-3` — CV page with role-nested projects
 
-Status: **DRAFT** — awaiting approval
+Status: **SHIPPED** — 2026-08-29
 Date: 2026-08-28
 Target apps: `apps/cms-api` (new content type), `apps/frontend` (new route + view)
 Reference design: `new.html` (repo root, untracked scratch file)
@@ -354,17 +354,20 @@ exercised on every local run rather than only when someone remembers to test it.
 
 ## Risks
 
-| Risk | Impact | Mitigation |
+| Risk | Impact | Resolution |
 | --- | --- | --- |
-| Three-level component nesting has never been exercised. `docs/adding-a-content-type.md` states components nest arbitrarily deep, but notes the real seeds only go two levels. | Blocks the whole approach | Verify first, before any frontend work. Boot cms-api with the new JSON and inspect the tables. If the sync engine or cms-admin's form renderer cannot handle depth 3, stop and re-decide. |
-| cms-admin's form UI may not render a repeatable component inside a repeatable component. cms-admin lives in a sibling repository outside this project, so I cannot inspect it. | Content cannot be entered by hand | Manual check in the running admin, immediately after the sync verification above. |
-| The new content type starts empty, so `/cv-3` shows nothing against a live API until content is entered. | Cosmetic, local only | Mock data carries local dev; content entry is a tracked manual step. |
-| `cvPageNews` as a list query name. | Readability only | Renameable at zero cost before content exists. |
+| Three-level component nesting has never been exercised. `docs/adding-a-content-type.md` states components nest arbitrarily deep, but notes the real seeds only go two levels. | Blocks the whole approach | **Resolved, lower than scoped.** The planning pass (`tasks/plan.md`) read the sync/write/read/GraphQL-schema code first and found every layer already recurses with no depth limit — table naming, `schema-differ.ts`, `component-io.service.ts`, `schema-builder.service.ts`. T2 (2026-08-29) confirmed this at runtime: all 8 tables created, `CvPageNewRole.projects: [CvPageNewProject!]!` exposed, a nested round-trip through the live API preserved the full company → role → project chain. The only genuinely unverified piece was cms-admin's form renderer (see next row). |
+| cms-admin's form UI may not render a repeatable component inside a repeatable component. cms-admin lives in a sibling repository outside this project, so I cannot inspect it. | Content cannot be entered by hand | **Resolved.** T3 (2026-08-29, browser automation against the running admin) confirmed the "Add entry" control nests correctly three levels deep, every field validated (catching along the way that `techStack` needs valid JSON array syntax, not comma-separated text), and a saved nested document reloaded with its structure intact. Checkpoint A went GO. |
+| The new content type starts empty, so `/cv-3` shows nothing against a live API until content is entered. | Cosmetic, local only | **Resolved.** T14 (2026-08-29) entered the real CV content (restructured from `new.html`) via cms-admin and published it as the `isMain: true` entry; `/en/cv-3` now renders live data. A second non-main entry was also entered so the company dropdown has a real target. |
+| `cvPageNews` as a list query name. | Readability only | **Kept as-is** — see Open question below, now resolved. |
+| *(found during T14, not scoped up front)* `graphqlApi.fetch`'s dev mock-fallback never engaged for a legitimate empty GraphQL result, only for hard errors, and assumed an envelope shape most CV mocks don't have. | `/cv-3` (and `/cv-2`) crashed instead of falling back to mocks against an empty dev DB | Fixed in `apps/frontend/src/api/graphqlApi.ts`, with a new test. |
+| *(found during T14)* `cvPageNews(where: { isMain: { ne: true } })` silently excludes rows where `isMain` is `NULL` (standard SQL three-valued logic on the raw `<>` the `$ne` operator compiles to) — a `cv-page-new` document whose `isMain` switch was never touched defaults to `NULL`, not `false`, so it can never appear in the "other companies" list. | A newly created non-main CV entry never shows up in the dropdown until someone notices and explicitly sets it to `false` | **Not fixed at the SQL layer** — `apps/cms-api/docs/documents/document.md:106` documents the NULL-excluding behavior as intentional API contract (no `$null`/`IS NULL` operator exists "in this version"), so changing it would be an unscoped, cross-cutting behavior change outside this spec. Worked around within the existing contract: cms-admin content authors must explicitly toggle a document's `isMain` switch (even to leave it off) rather than leaving it untouched, if that document needs to be filterable by `ne: true`. Worth a follow-up spec of its own if this bites again elsewhere. |
 
 ---
 
 ## Open question
 
-The slug `cv-page-new` follows the name you used. If you would rather have `cv-page-v2` and the query
-name `cvPageV2s`, say so before implementation starts — after content is entered, changing it means
-deleting and recreating the type.
+**Resolved 2026-08-29, kept `cv-page-new` / `cvPageNews`.** The slug question was never revisited before
+content was entered against it in T14, and per this spec's own terms ("after content is entered, changing
+it means deleting and recreating the type") a rename is no longer free. `cvPageNews` stays an awkward
+plural; it costs nothing beyond that.
