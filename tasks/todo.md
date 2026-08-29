@@ -1,17 +1,17 @@
 # Todo: `/cv-3` — CV page with role-nested projects
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS** — 11 done, 2 skipped / 15 tasks
+Status: **IN PROGRESS** — 13 done / 15 tasks
 
 Checkbox updates ship in the same commit as that phase's code.
 
 ## Phase 0 — Data model
 
 - [x] **T1** Add `apps/cms-api/content-types/cv-page-new.json` — copy of `cv-page.json` with the top-level projects removed, `role.projects` promoted to a repeatable component, and `period` added to `experience`
-- [~] **T2** Verify the sync engine creates all eight tables and GraphQL exposes `projects` on `CvPageNewRole`, with a nested round-trip through the API — **skipped by user decision 2026-08-28**: requires booting cms-api against a live Postgres, not available in this session; the planning pass already traced `schema-differ.ts`/`component-io.service.ts`/`schema-builder.service.ts` as depth-agnostic, so this is deferred to the user's own dev environment rather than blocking
-- [~] **T3** Verify cms-admin renders the nested form and preserves the nesting on save *(manual, sibling repo)* — **skipped by user decision 2026-08-28**, same reasoning as T2; deferred to the user
+- [x] **T2** Verify the sync engine creates all eight tables and GraphQL exposes `projects` on `CvPageNewRole`, with a nested round-trip through the API — completed 2026-08-29 against the user's live dev stack. `psql \dt components_cv_page_new*` confirms all 8 tables (`documents_cv_page_new` + `skill`/`experience`/`experience_role`/`experience_role_project`/`education`/`language`/`reference`). GraphQL introspection confirms `cvPageNew`/`cvPageNews` on the root query and `CvPageNewRole.projects: [CvPageNewProject!]!`. Created a test document (`8ee6eb87-5f73-46af-81f0-092129a12be3`, super-admin auth) with one role holding one project; `cvPageNew(documentId, status: "draft")` returned the full company → role → project chain intact, including the role's `techStack` JSON field. A temporary read-only access token was created for the query and deleted immediately after.
+- [x] **T3** Verify cms-admin renders the nested form and preserves the nesting on save *(manual, sibling repo)* — completed 2026-08-29 in the running cms-admin (localhost:5173) via browser automation, logged in as super admin. `CV Page New` appears in the content-type list; the "Add entry" control nests correctly three levels deep (experience → roles → projects), and every field in `cv-page-new.json` rendered and validated, including catching that `techStack` is a `json`-typed field requiring valid JSON array syntax, not a comma-separated string. Saved the document, reloaded the page, and confirmed the nested role/project data was still present and correctly attached.
 
-> **CHECKPOINT A** — go / no-go, **waived by user 2026-08-28**: T2/T3 deferred rather than blocking, frontend work proceeds on the assumption depth-3 nesting works (see plan.md's Corrections section). If either later fails, the fallback in plan.md is a decision for the user, not a workaround to pick automatically.
+> **CHECKPOINT A** — go / no-go: **GO**. T2 and T3 both verified 2026-08-29; depth-3 nesting works end-to-end in both the API and cms-admin, confirming the code trace in plan.md's Corrections section.
 > **Commit 1** — `feat(cms-api): add cv-page-new content type with role-nested projects`
 
 ## Phase 1 — Data layer and first render

@@ -172,10 +172,13 @@ This is the one thing that cannot be verified from this repository.
 > and enter content through GraphQL directly, or revisit the name-matching approach the spec
 > rejected. Either way it is a decision for you, not a workaround I should pick.
 >
-> **Waived 2026-08-28**: T2 and T3 both require infrastructure outside this session (a live Postgres
-> for T2, the sibling `abyssoftime-cms-admin` repo for T3). You directed skipping both and continuing
-> — deferred to your own dev environment rather than blocking frontend work. The depth-3 code trace in
-> "Corrections found during planning" above is the basis for proceeding without them.
+> **Verified 2026-08-29**: T2 and T3 were originally waived on 2026-08-28 since neither had
+> infrastructure available in that session. Both were completed against the user's live dev stack
+> (cms-api on :8080, cms-admin on :5173, Postgres via Docker): 8 tables confirmed via `psql`, GraphQL
+> schema and a round-trip query confirmed via a temporary access token, and the cms-admin nested form
+> confirmed via browser automation logged in as super admin (save + reload preserved the nesting). The
+> depth-3 code trace in "Corrections found during planning" above is now a confirmed fact, not an
+> assumption.
 >
 > **Commit 1** — `feat(cms-api): add cv-page-new content type with role-nested projects`
 
