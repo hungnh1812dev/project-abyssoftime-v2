@@ -1,3 +1,4 @@
+import Script from "next/script";
 import React from "react";
 
 import HtmlLocale from "@/components/html-locale/HtmlLocale";
@@ -21,7 +22,8 @@ const LayoutRoot: React.FC<LayoutRootProps> = ({ className, params, children }) 
   return (
     <HtmlLocale lang={params.locale || defaultLocale}>
       <body className={className}>
-        <script dangerouslySetInnerHTML={{ __html: FOUC_SCRIPT }} />
+        {/* eslint-disable-next-line @next/next/no-before-interactive-script-outside-document -- LayoutRoot renders <body> for app/layout.tsx (the root layout); the rule only recognizes the literal file, not this one level of indirection. */}
+        <Script id="fouc-theme-script" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: FOUC_SCRIPT }} />
         <ThemeProvider>
           {children}
           <ToasterProvider />
