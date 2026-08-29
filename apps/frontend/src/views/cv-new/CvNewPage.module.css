@@ -1,11 +1,13 @@
 .cvContainer {
-  /* Orange/cream palette for /cv-3, matched from Frontend-Developer-CV_Lan-Nguyen-Phuong.pdf.
+  /* Minimalist palette for /cv-3: white background, near-black body text, and a single
+     navy accent (headers, hyperlinks, borders) — matches the senior-developer minimalist
+     brief instead of a multi-color theme.
      The card always renders on this light palette — like a physical document — regardless of
      the site's dark mode, so --background must be forced too or dark mode's near-black
      background pairs with our forced-black --foreground and the text disappears. */
-  --primary: 36 81% 50%;
-  --muted: 37 79% 92%;
-  --border: 36 79% 87%;
+  --primary: 207 50% 23%;
+  --muted: 210 40% 96%;
+  --border: 214 32% 91%;
   --foreground: 0 0% 0%;
   --background: 0 0% 100%;
 }
@@ -24,12 +26,12 @@
     /* Force light-mode CSS variables so Tailwind color utilities render correctly on white paper */
     --foreground: 0 0% 0%;
     --background: 0 0% 100%;
-    --border: 36 79% 87%;
-    --muted: 37 79% 92%;
+    --border: 214 32% 91%;
+    --muted: 210 40% 96%;
     --muted-foreground: 25 5.3% 44.7%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 0%;
-    --primary: 36 81% 50%;
+    --primary: 207 50% 23%;
     --secondary: 60 4.8% 95.9%;
     --secondary-foreground: 24 9.8% 10%;
 

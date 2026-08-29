@@ -26,7 +26,7 @@ export const CvNewHeader = ({ contact, position }: CvNewHeaderProps) => {
           <h1 className="m-0 text-2xl font-bold tracking-tight text-primary sm:text-3xl">{contact.name}</h1>
           <h2 className="m-0 mt-1 text-sm font-normal uppercase tracking-[0.2em] text-foreground/80 sm:text-base">{position}</h2>
           <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-1.5 text-sm text-foreground/80 sm:grid-cols-2">
-            <a href={`tel:${contact.phone}`} className="flex items-center gap-2 hover:text-primary">
+            <a href={`tel:${contact.phone}`} className="flex items-center gap-2 text-primary hover:underline">
               <Phone className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
               {contact.phone}
             </a>
@@ -34,17 +34,17 @@ export const CvNewHeader = ({ contact, position }: CvNewHeaderProps) => {
               <MapPin className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
               {contact.address}
             </span>
-            <a href={`mailto:${contact.email}`} className="flex items-center gap-2 hover:text-primary">
+            <a href={`mailto:${contact.email}`} className="flex items-center gap-2 text-primary hover:underline">
               <Mail className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
               {contact.email}
             </a>
             {contact.github && (
-              <a href={contact.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-primary">
+              <a href={contact.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-primary hover:underline">
                 <Github className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
                 {contact.github}
               </a>
             )}
-            <a href={contact.linkedin} target="_blank" rel="noopener noreferrer " className="flex items-center gap-2 hover:text-primary sm:col-span-2">
+            <a href={contact.linkedin} target="_blank" rel="noopener noreferrer " className="flex items-center gap-2 text-primary hover:underline sm:col-span-2">
               <Linkedin className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
               {contact.linkedin}
             </a>

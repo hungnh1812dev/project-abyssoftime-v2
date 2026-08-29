@@ -21,7 +21,7 @@ export const CvNewReferences = ({ references, commonText }: CvNewReferencesProps
             {ref.phone && (
               <div className="text-xs font-semibold">
                 {commonText.text["phone"] ?? "Phone"}:{" "}
-                <a href={`tel:${ref.phone}`} className="text-xs text-foreground/55 hover:text-foreground hover:underline">
+                <a href={`tel:${ref.phone}`} className="text-xs text-primary hover:underline">
                   {ref.phone}
                 </a>
               </div>
