@@ -1,7 +1,7 @@
 # Todo: `/cv-3` — CV page with role-nested projects
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS** — 6 done, 2 skipped / 15 tasks
+Status: **IN PROGRESS** — 10 done, 2 skipped / 15 tasks
 
 Checkbox updates ship in the same commit as that phase's code.
 
@@ -33,13 +33,13 @@ Checkbox updates ship in the same commit as that phase's code.
 
 ## Phase 3 — Remaining sections and frame
 
-- [ ] **T9** Fork the skills, education, languages, and references sections; lock the final section order
-- [ ] **T10** Add the anchor nav and the action bar with the company dropdown
-- [ ] **T11** Add the `/cv-3/[documentId]` per-company route with a 404 on an unknown id
+- [x] **T9** Fork the skills, education, languages, and references sections; lock the final section order — verified in-browser (light + dark) with the same throwaway stub; section id order confirmed via DOM query: `about-me, experience, skills, education, languages, references`. Added an empty-array `return null` guard to Skills/Education/Languages to match References (cv-elegant's versions don't guard those, but T9's acceptance criteria calls for it)
+- [x] **T10** Add the anchor nav and the action bar with the company dropdown — added `CvNewCompanyDropdown.tsx` (renders `null` when the list is empty, navigates to `/{locale}/cv-3/{documentId}`), reused `PrintButton`, and wired both into `CvNewPageContent` alongside a six-section anchor nav; verified in-browser (light + dark) with a throwaway local stub GraphQL/health server since the real cms-api has no `cv-page-new` content yet (T14) and local port 5000 is bound by macOS ControlCenter, not cms-api — every anchor scrolled to its section, the dropdown listed the mock company and 404'd on `/cv-3/{documentId}` as expected since T11 isn't built yet; stub deleted after, no app code touched to force it
+- [x] **T11** Add the `/cv-3/[documentId]` per-company route with a 404 on an unknown id — mirrors `/cv/[documentId]`; also `notFound()`s on a resolved-but-null result (`getCvNewById` returns `null` rather than throwing on a missing record, unlike `/cv`'s by-id fetch), and passes `cvList={[]}` to `CvNewPageContent` so the dropdown guard from T10 hides it. Verified in-browser with the same throwaway stub pattern as T10: a valid id rendered the full CV with no dropdown, an unknown id returned a real 404 (curl-confirmed status codes 200 and 404); stub deleted after
 
 ## Phase 4 — Print and tests
 
-- [ ] **T12** Write the print stylesheet: light-on-white in both themes, header background kept, no duplicated URLs
+- [x] **T12** Write the print stylesheet: light-on-white in both themes, header background kept, no duplicated URLs — added `CvNewPage.module.css` (adapted from `/cv`'s: `@page` margin, forced light-mode variable block, `font-size`/`line-height`, zeroed content padding since page margin already provides it); anchor nav/action bar already used Tailwind `print:hidden` from T10 and project/role cards already had `print:break-inside-avoid` from T7/T8, so no changes needed there; header's `print-color-adjust: exact` already existed from T7. Found and fixed a real bug during verification: section headings use a fixed `dark:text-white/80` (not a CSS variable), so they stayed white-on-white when printing from the dark app theme — added an explicit `.content :global(h3)` override forcing the light color back. No `attr(href)` duplication rule added, since `CvNewHeader` already prints links as visible URL text. Verified in-browser (both app themes) by extracting the actual `@media print` rules from the compiled stylesheet and applying them live, then screenshotting — confirmed light-on-white body, dark header retained, no nav/action bar, no duplicate URLs, headings legible in both cases
 - [ ] **T13** Add `e2e/cv-3-layout.test.ts` asserting section order, no Projects section, and the empty-projects case
 
 > **CHECKPOINT D** — feature complete against mocks. Full gate: lint, build, unit, e2e, both apps, clean `git status`.
