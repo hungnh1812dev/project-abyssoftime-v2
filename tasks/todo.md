@@ -1,7 +1,7 @@
 # Todo: `/cv-3` — CV page with role-nested projects
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS** — 10 done, 2 skipped / 15 tasks
+Status: **IN PROGRESS** — 11 done, 2 skipped / 15 tasks
 
 Checkbox updates ship in the same commit as that phase's code.
 
@@ -40,7 +40,7 @@ Checkbox updates ship in the same commit as that phase's code.
 ## Phase 4 — Print and tests
 
 - [x] **T12** Write the print stylesheet: light-on-white in both themes, header background kept, no duplicated URLs — added `CvNewPage.module.css` (adapted from `/cv`'s: `@page` margin, forced light-mode variable block, `font-size`/`line-height`, zeroed content padding since page margin already provides it); anchor nav/action bar already used Tailwind `print:hidden` from T10 and project/role cards already had `print:break-inside-avoid` from T7/T8, so no changes needed there; header's `print-color-adjust: exact` already existed from T7. Found and fixed a real bug during verification: section headings use a fixed `dark:text-white/80` (not a CSS variable), so they stayed white-on-white when printing from the dark app theme — added an explicit `.content :global(h3)` override forcing the light color back. No `attr(href)` duplication rule added, since `CvNewHeader` already prints links as visible URL text. Verified in-browser (both app themes) by extracting the actual `@media print` rules from the compiled stylesheet and applying them live, then screenshotting — confirmed light-on-white body, dark header retained, no nav/action bar, no duplicate URLs, headings legible in both cases
-- [ ] **T13** Add `e2e/cv-3-layout.test.ts` asserting section order, no Projects section, and the empty-projects case
+- [x] **T13** Add `e2e/cv-3-layout.test.ts` asserting section order, no Projects section, and the empty-projects case — scopes the order check to the CV's own `header:has(h1)` (the site-wide nav bar is also a `<header>`) followed by `section[id]` in document order; empty-projects role located via its unique position text ("Frontend Developer") since no test-id convention exists in this repo. Full Checkpoint D gate run: `bun run lint`, `bun run build`, `bun test src` (78 pass), `bunx playwright test e2e/cv-3-layout.test.ts` (1 pass, 7 screenshots in `e2e/screenshots/`), cms-api `bun run lint` + `bun run test` (1121 pass) — all green. Verified against a throwaway stub dev server on the real port 4000 (with the user's permission, since Next 16 refuses a second dev instance per project directory regardless of port — a "different port" alone doesn't work around it), torn down after
 
 > **CHECKPOINT D** — feature complete against mocks. Full gate: lint, build, unit, e2e, both apps, clean `git status`.
 > **Commit 4** — `feat(frontend): complete /cv-3 sections, print styles and layout test`
