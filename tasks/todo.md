@@ -1,24 +1,62 @@
-# Todo: Root-level task runner
+# Todo: `/cv-3` — CV page with role-nested projects
 
-Plan: `tasks/plan.md` · Spec: `SPEC.md` (§ "Spec: Root-level task runner")
+Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
+Status: **SHIPPED** — 15 done / 15 tasks
 
-## Phase 1: Add the root task runner
+Checkbox updates ship in the same commit as that phase's code.
 
-- [ ] Task 1: Create root `package.json` with the full script set
-  - Acceptance: `"private": true` + `"scripts"` only (no deps/devDeps/workspaces); all 16 scripts
-    from `SPEC.md`'s Commands section present with exact command bodies; `*:all` scripts chain
-    `cms-api → cms-admin → frontend` with `&&`.
-  - Verify: run `lint:*`/`test:*` per app from root and diff against running the app's own script
-    directly; `build:all` succeeds/fails identically to sequential per-app builds; `git status`
-    shows no root `node_modules`/lockfile and no diff inside `apps/*`; `git diff --
-    .github/workflows/ci.yml` empty.
-  - Files: `package.json` (new, root)
+## Phase 0 — Data model
 
-## Checkpoint: Root task runner complete
-- [ ] Task 1 verification steps all pass
-- [ ] `README.md` "Getting started" updated to mention the new root commands
-- [ ] Human review before shipping
+- [x] **T1** Add `apps/cms-api/content-types/cv-page-new.json` — copy of `cv-page.json` with the top-level projects removed, `role.projects` promoted to a repeatable component, and `period` added to `experience`
+- [x] **T2** Verify the sync engine creates all eight tables and GraphQL exposes `projects` on `CvPageNewRole`, with a nested round-trip through the API — completed 2026-08-29 against the user's live dev stack. `psql \dt components_cv_page_new*` confirms all 8 tables (`documents_cv_page_new` + `skill`/`experience`/`experience_role`/`experience_role_project`/`education`/`language`/`reference`). GraphQL introspection confirms `cvPageNew`/`cvPageNews` on the root query and `CvPageNewRole.projects: [CvPageNewProject!]!`. Created a test document (`8ee6eb87-5f73-46af-81f0-092129a12be3`, super-admin auth) with one role holding one project; `cvPageNew(documentId, status: "draft")` returned the full company → role → project chain intact, including the role's `techStack` JSON field. A temporary read-only access token was created for the query and deleted immediately after.
+- [x] **T3** Verify cms-admin renders the nested form and preserves the nesting on save *(manual, sibling repo)* — completed 2026-08-29 in the running cms-admin (localhost:5173) via browser automation, logged in as super admin. `CV Page New` appears in the content-type list; the "Add entry" control nests correctly three levels deep (experience → roles → projects), and every field in `cv-page-new.json` rendered and validated, including catching that `techStack` is a `json`-typed field requiring valid JSON array syntax, not a comma-separated string. Saved the document, reloaded the page, and confirmed the nested role/project data was still present and correctly attached.
 
-## Open Questions (defaults in effect unless corrected)
-- No `deploy:*` root scripts — deploy stays CI-only.
-- Future 4th app needs script lines hand-added to root `package.json` (no glob discovery).
+> **CHECKPOINT A** — go / no-go: **GO**. T2 and T3 both verified 2026-08-29; depth-3 nesting works end-to-end in both the API and cms-admin, confirming the code trace in plan.md's Corrections section.
+> **Commit 1** — `feat(cms-api): add cv-page-new content type with role-nested projects`
+
+## Phase 1 — Data layer and first render
+
+- [x] **T4** Add `cv-new.types.ts`, `cv-new.queries.ts`, `cv-new.service.ts`, using `name` (renamed from `company` per T1) on both sides of the list query
+- [x] **T5** Add `src/mocks/cv-page-new.ts`, `cv-new-main.ts`, `cv-new-list.ts` and register `"cv-new-main"` / `"cv-new-list"` in `mock-all.ts` — at least one role holding no projects, one holding two
+- [x] **T6** Add the `/cv-3` route, the frame, the header, and the About Me section — build/lint/tests pass; full browser screenshot blocked by the site-wide health gate (cms-api `/health` returns 403 against the user's local instance), confirmed via server logs to fail identically on the pre-existing `/cv-2` (no CV content in the DB yet — expected until T14), not a regression
+
+> **CHECKPOINT B** — first render at `/en/cv-3`.
+> **Commit 2** — `feat(frontend): scaffold /cv-3 page with cv-page-new data layer`
+
+## Phase 2 — Experience section
+
+- [x] **T7** Build the company strip and role blocks from `new.html`, on theme tokens rather than hex values — verified in-browser (light + dark) via a throwaway local stub GraphQL/health server, since the real cms-api has no `cv-page-new` content yet (T14); no app code touched to force this, stub was deleted after
+- [x] **T8** Nest the project cards under their roles, rendering nothing at all for a role with no projects — verified in-browser (light + dark) with the same throwaway stub as T7; confirmed via DOM inspection that the empty-projects role emits exactly its 4 base children (period, position, responsibilities, tech chips), no empty wrapper
+
+> **CHECKPOINT C** — the core feature.
+> **Commit 3** — `feat(frontend): render role-nested project cards on /cv-3`
+
+## Phase 3 — Remaining sections and frame
+
+- [x] **T9** Fork the skills, education, languages, and references sections; lock the final section order — verified in-browser (light + dark) with the same throwaway stub; section id order confirmed via DOM query: `about-me, experience, skills, education, languages, references`. Added an empty-array `return null` guard to Skills/Education/Languages to match References (cv-elegant's versions don't guard those, but T9's acceptance criteria calls for it)
+- [x] **T10** Add the anchor nav and the action bar with the company dropdown — added `CvNewCompanyDropdown.tsx` (renders `null` when the list is empty, navigates to `/{locale}/cv-3/{documentId}`), reused `PrintButton`, and wired both into `CvNewPageContent` alongside a six-section anchor nav; verified in-browser (light + dark) with a throwaway local stub GraphQL/health server since the real cms-api has no `cv-page-new` content yet (T14) and local port 5000 is bound by macOS ControlCenter, not cms-api — every anchor scrolled to its section, the dropdown listed the mock company and 404'd on `/cv-3/{documentId}` as expected since T11 isn't built yet; stub deleted after, no app code touched to force it
+- [x] **T11** Add the `/cv-3/[documentId]` per-company route with a 404 on an unknown id — mirrors `/cv/[documentId]`; also `notFound()`s on a resolved-but-null result (`getCvNewById` returns `null` rather than throwing on a missing record, unlike `/cv`'s by-id fetch), and passes `cvList={[]}` to `CvNewPageContent` so the dropdown guard from T10 hides it. Verified in-browser with the same throwaway stub pattern as T10: a valid id rendered the full CV with no dropdown, an unknown id returned a real 404 (curl-confirmed status codes 200 and 404); stub deleted after
+
+## Phase 4 — Print and tests
+
+- [x] **T12** Write the print stylesheet: light-on-white in both themes, header background kept, no duplicated URLs — added `CvNewPage.module.css` (adapted from `/cv`'s: `@page` margin, forced light-mode variable block, `font-size`/`line-height`, zeroed content padding since page margin already provides it); anchor nav/action bar already used Tailwind `print:hidden` from T10 and project/role cards already had `print:break-inside-avoid` from T7/T8, so no changes needed there; header's `print-color-adjust: exact` already existed from T7. Found and fixed a real bug during verification: section headings use a fixed `dark:text-white/80` (not a CSS variable), so they stayed white-on-white when printing from the dark app theme — added an explicit `.content :global(h3)` override forcing the light color back. No `attr(href)` duplication rule added, since `CvNewHeader` already prints links as visible URL text. Verified in-browser (both app themes) by extracting the actual `@media print` rules from the compiled stylesheet and applying them live, then screenshotting — confirmed light-on-white body, dark header retained, no nav/action bar, no duplicate URLs, headings legible in both cases
+- [x] **T13** Add `e2e/cv-3-layout.test.ts` asserting section order, no Projects section, and the empty-projects case — scopes the order check to the CV's own `header:has(h1)` (the site-wide nav bar is also a `<header>`) followed by `section[id]` in document order; empty-projects role located via its unique position text ("Frontend Developer") since no test-id convention exists in this repo. Full Checkpoint D gate run: `bun run lint`, `bun run build`, `bun test src` (78 pass), `bunx playwright test e2e/cv-3-layout.test.ts` (1 pass, 7 screenshots in `e2e/screenshots/`), cms-api `bun run lint` + `bun run test` (1121 pass) — all green. Verified against a throwaway stub dev server on the real port 4000 (with the user's permission, since Next 16 refuses a second dev instance per project directory regardless of port — a "different port" alone doesn't work around it), torn down after
+
+> **CHECKPOINT D** — feature complete against mocks. Full gate: lint, build, unit, e2e, both apps, clean `git status`.
+> **Commit 4** — `feat(frontend): complete /cv-3 sections, print styles and layout test`
+
+## Phase 5 — Live content and closeout
+
+- [x] **T14** Enter the real content in cms-admin and verify `/cv-3` against the live API *(manual)* — done 2026-08-29, all three acceptance criteria verified. Earlier attempt found and fixed a real bug: `graphqlApi.fetch`'s dev mock-fallback never actually engaged for a legitimate empty result (only for hard GraphQL errors), and even then assumed a `{ data: {...} }` envelope shape that most CV mocks don't have (they're bare pre-selected values) — see `apps/frontend/src/api/graphqlApi.ts` and its new test. Also closed a sibling gap: `/cv-3/[documentId]` (T11) had no per-id mock, so it 404'd in dev instead of demoing — added `cv-new-demo-new-001.ts`.
+  This session entered the real content: restructured `new.html`'s CV (Gameloft Company, 3 roles — Senior Frontend Developer with 3 projects, Frontend Developer with 1 project, Game Developer with 0 projects — skills, education, languages, references) into a `cv-page-new` document via cms-admin browser automation (CKEditor instances driven via `.ckeditorInstance.setData()`, `techStack` JSON fields via direct CodeMirror keystrokes — confirmed no auto-bracket-duplication), published with `isMain: true` (`documentId 5d24b8ef-2e11-4e10-9207-722029844f71`).
+  Diagnosed an initial mock-only render by minting a temporary read-only access token via the cms-admin UI and curling cms-api directly — confirmed the API was serving correct live data immediately, isolating the problem to the frontend's 300s fetch-data-cache (`revalidate: 300` on `cv-new.service.ts`), not cms-api/permissions; temp token deleted after use. Once the cache elapsed, `/en/cv-3` rendered the live data (not mock placeholders "University of Science (HCMUS)" / "A"/"B"), and the Game Developer role rendered cleanly with tech chips and no project cards.
+  Added a second non-main entry ("Gameloft Company — Focused CV", `documentId c399ad72-2b49-4a96-8030-555efb143b54`) for the company-dropdown criterion, but it initially never appeared: `isMain` defaults to `NULL` (not `false`) on a document whose isMain switch was never toggled, and `cvPageNews(where: { isMain: { ne: true } })` excludes NULL rows — confirmed directly against cms-api. Traced this to `where-builder.ts`'s `$ne` → raw SQL `<>`, standard three-valued logic (`NULL <> true` is unknown, not true). Almost "fixed" this as a global `IS DISTINCT FROM` change in `where-builder.ts`, but `apps/cms-api/docs/documents/document.md:106` documents the `<>`-only NULL-excluding behavior as *intentional* ("no `$null`/`IS NULL` operator... in this version") — changing it would be an unscoped, cross-cutting API behavior change well outside T14; reverted that edit. Fixed within the existing contract instead: explicitly toggled the second entry's `isMain` switch on then off in cms-admin (writing an explicit `false` instead of leaving it unset/`NULL`), saved, and republished (publish doesn't auto-follow a post-publish draft edit — had to re-click Publish). Verified: the dropdown now lists "Gameloft Company — Focused CV" instead of the mock's "Demo CV", and selecting it navigates to `/cv-3/{documentId}` and renders that entry's live data correctly.
+- [x] **T15** Closeout: SPEC to SHIPPED, correct its risk table, resolve the slug question, propose removing `new.html`, grep for stale references — done 2026-08-29. `SPEC.md` status moved to SHIPPED (2026-08-29); its Risk table now marks the depth-3-nesting and cms-admin-form risks Resolved (with the T2/T3 evidence) and adds the two bugs actually found during T14 (the `graphqlApi.fetch` mock-fallback gap, and the `isMain: NULL` vs `ne: true` SQL three-valued-logic gap — the latter deliberately *not* fixed at the SQL layer since `apps/cms-api/docs/documents/document.md:106` documents that NULL-exclusion as intentional API contract, worked around in content instead). The slug open question is resolved: kept `cv-page-new` / `cvPageNews` — content was already entered against it in T14, so a rename is no longer free per the spec's own terms. `grep -rn "cv-3\|cv-page-new\|CvPageNew" --exclude-dir=node_modules .` turns up nothing stale — every hit is either this todo/plan/spec accurately describing what shipped, or real code/test/mock files that match. `new.html` was proposed for deletion; approved and removed.
+
+> **Commit 5** — `docs: mark /cv-3 spec shipped`
+
+---
+
+## Open before T1
+
+- **Slug name.** `cv-page-new` gives the list query `cvPageNews`. `cv-page-v2` gives `cvPageV2s`. Free to change now, a delete-and-recreate once content exists. — **Resolved at T15 (2026-08-29): kept `cv-page-new` / `cvPageNews`.** Never revisited before T14 entered real content against it, so a rename is no longer free.

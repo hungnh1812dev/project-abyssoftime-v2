@@ -1,0 +1,67 @@
+.cvContainer {
+  /* Orange/cream palette for /cv-3, matched from Frontend-Developer-CV_Lan-Nguyen-Phuong.pdf.
+     The card always renders on this light palette — like a physical document — regardless of
+     the site's dark mode, so --background must be forced too or dark mode's near-black
+     background pairs with our forced-black --foreground and the text disappears. */
+  --primary: 36 81% 50%;
+  --muted: 37 79% 92%;
+  --border: 36 79% 87%;
+  --foreground: 0 0% 0%;
+  --background: 0 0% 100%;
+}
+
+@media print {
+  html,
+  body {
+    width: 100% !important;
+    min-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: white !important;
+  }
+
+  .cvContainer {
+    /* Force light-mode CSS variables so Tailwind color utilities render correctly on white paper */
+    --foreground: 0 0% 0%;
+    --background: 0 0% 100%;
+    --border: 36 79% 87%;
+    --muted: 37 79% 92%;
+    --muted-foreground: 25 5.3% 44.7%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
+    --primary: 36 81% 50%;
+    --secondary: 60 4.8% 95.9%;
+    --secondary-foreground: 24 9.8% 10%;
+
+    max-width: 100% !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: white !important;
+    color: black !important;
+    font-size: 12.5px !important;
+    line-height: 1.3 !important;
+  }
+
+  /* Backgrounds/borders default to "economy" printing (stripped) unless forced —
+     needed so the company/project card fills actually show up on paper. */
+  .cvContainer,
+  .cvContainer * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @page {
+    margin: 8mm 0;
+  }
+
+  @page :first {
+    margin-top: 0 !important;
+  }
+
+  /* .content {
+    padding: 0 !important;
+  } */
+
+}

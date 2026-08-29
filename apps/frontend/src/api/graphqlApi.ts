@@ -57,16 +57,26 @@ const graphqlFetch = async <T>(options: GraphQLOptions): Promise<T> => {
 
   if (json.data != null && !json.errors?.length) {
     const result = selectKey ? get(json.data, selectKey) : json.data;
-    return result as T;
+    // An empty array is a legitimate response (the content type exists but has no entries yet, e.g.
+    // in a fresh dev DB) — fall through to the mock below rather than handing pages a value they
+    // never guard against.
+    if (result != null && !(Array.isArray(result) && result.length === 0)) {
+      return result as T;
+    }
   }
 
-  // json.data succeeded at the HTTP layer but carries a GraphQL-level error (e.g. an auth-required
-  // resolver) — restfulApi's own mock fallback never sees this since the HTTP call itself was a 200.
+  // Either a GraphQL-level error (e.g. an auth-required resolver) or a legitimate-but-empty result —
+  // restfulApi's own mock fallback never sees either case since the HTTP call itself was a 200.
+  // Registered mocks come in two shapes: a raw response envelope (`{ data: { <field>: ... } }`, for
+  // services that still read `selectKey` off it) or the already-selected value directly (most CV
+  // mocks). Try the envelope shape first and fall back to the bare value.
   if (isDev && mock) {
-    const mocked = MockView[mock] as { data?: Record<string, unknown> } | undefined;
-    if (mocked?.data !== undefined) {
-      const result = selectKey ? get(mocked.data, selectKey) : mocked.data;
-      return result as T;
+    const mockValue = MockView[mock];
+    if (mockValue !== undefined) {
+      const envelope = (mockValue as { data?: Record<string, unknown> } | undefined)?.data;
+      const viaEnvelope = envelope && selectKey ? get(envelope, selectKey) : envelope;
+      if (viaEnvelope !== undefined) return viaEnvelope as T;
+      return mockValue as T;
     }
   }
 
