@@ -29,22 +29,24 @@ interface CvNewPageContentProps {
   cvList: CvNewListItemType[];
 }
 
-export const CvNewPageContent = ({ data, contact, commonText, cvList }: CvNewPageContentProps) => {
+export const CvNewPageContent = ({
+  data,
+  contact,
+  commonText,
+  cvList,
+}: CvNewPageContentProps) => {
   return (
-    <div className={`relative mx-auto max-w-[800px] bg-background text-foreground/90 ${styles.cvContainer}`}>
+    <div
+      className={`relative mx-auto max-w-[800px] overflow-hidden bg-background text-foreground/90 shadow-md sm:my-6 sm:rounded-lg ${styles.cvContainer}`}
+    >
       <CvNewHeader contact={contact} position={data.position} />
 
-      <div className={`px-5 py-6 sm:px-8 sm:py-8 ${styles.content}`}>
-        <nav className="mb-3 hidden justify-center gap-5 text-xs font-medium uppercase tracking-wider text-foreground/45 sm:flex print:hidden">
-          {ANCHOR_SECTIONS.map(({ id, label }) => (
-            <a key={id} href={`#${id}`} className="transition-colors hover:text-foreground hover:underline">
-              {label}
-            </a>
-          ))}
-        </nav>
-
+      <div className="px-5 py-2 sm:px-8">
         <CvNewSummary summary={data.summary} commonText={commonText} />
-        <CvNewExperience experiences={data.experiences} commonText={commonText} />
+        <CvNewExperience
+          experiences={data.experiences}
+          commonText={commonText}
+        />
         <CvNewSkills skills={data.skills} commonText={commonText} />
         <CvNewEducation educations={data.educations} commonText={commonText} />
         <CvNewLanguages languages={data.languages} commonText={commonText} />

@@ -22,22 +22,24 @@ export const CvNewExperience = ({ experiences, commonText }: CvNewExperienceProp
 
             <div className="mt-3 space-y-4">
               {group.roles.map((role, roleIdx) => (
-                <div key={roleIdx} className="print:break-inside-avoid">
-                  <p className="text-xs font-medium text-foreground/50">{role.period}</p>
-                  <p className="mt-0.5 text-sm font-bold uppercase text-foreground">{role.position}</p>
-                  <HTMLParser content={role.responsibilities} className="mt-1.5 text-sm text-foreground/75 [&>li]:pb-0.5 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:pt-0.5" />
-                  {role.techStack && role.techStack.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap items-start gap-x-2">
-                      <span className="text-xs font-semibold text-foreground/50">{commonText.text["technologies"] ?? "Technologies"}:</span>
-                      <div className="flex flex-1 flex-wrap gap-1">
-                        {role.techStack.map((tech) => (
-                          <span key={tech} className="rounded-full border border-border/60 bg-muted px-2 py-0.5 text-xs text-foreground/55">
-                            {tech}
-                          </span>
-                        ))}
+                <div key={roleIdx}>
+                  <div className="print:break-inside-avoid">
+                    <p className="text-xs font-medium text-foreground/50">{role.period}</p>
+                    <p className="mt-0.5 text-sm font-bold uppercase text-foreground">{role.position}</p>
+                    <HTMLParser content={role.responsibilities} className="mt-1.5 text-sm text-foreground/75 [&>li]:pb-0.5 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:pt-0.5" />
+                    {role.techStack && role.techStack.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap items-start gap-x-2">
+                        <span className="text-xs font-semibold text-foreground/50">{commonText.text["technologies"] ?? "Technologies"}:</span>
+                        <div className="flex flex-1 flex-wrap gap-1">
+                          {role.techStack.map((tech) => (
+                            <span key={tech} className="rounded-full border border-border/60 bg-muted px-2 py-0.5 text-xs text-foreground/55">
+                              {tech}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   {role.projects && role.projects.length > 0 && (
                     <div className="mt-3 space-y-3">
