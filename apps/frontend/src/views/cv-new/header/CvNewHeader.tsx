@@ -44,7 +44,7 @@ export const CvNewHeader = ({ contact, position }: CvNewHeaderProps) => {
                 {contact.github}
               </a>
             )}
-            <a href={contact.linkedin} target="_blank" rel="noopener noreferrer " className="col-span-2 flex items-center gap-2 hover:text-primary">
+            <a href={contact.linkedin} target="_blank" rel="noopener noreferrer " className="flex items-center gap-2 hover:text-primary sm:col-span-2">
               <Linkedin className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
               {contact.linkedin}
             </a>
