@@ -24,12 +24,14 @@ export const CvNewExperience = ({ experiences, commonText }: CvNewExperienceProp
               {group.roles.map((role, roleIdx) => (
                 <div key={roleIdx}>
                   <div className="print:break-inside-avoid">
-                    <p className="text-xs font-medium text-foreground/50">{role.period}</p>
-                    <p className="mt-0.5 text-sm font-bold uppercase text-foreground">{role.position}</p>
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                      <p className="text-sm font-bold uppercase text-foreground">{role.position}</p>
+                      <p className="text-xs font-medium text-foreground/50">{role.period}</p>
+                    </div>
                     <HTMLParser content={role.responsibilities} className="mt-1.5 text-sm text-foreground/75 [&>li]:pb-0.5 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:pt-0.5" />
                     {role.techStack && role.techStack.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap items-start gap-x-2">
-                        <span className="text-xs font-semibold text-foreground/50">{commonText.text["technologies"] ?? "Technologies"}:</span>
+                        <span className="text-sm font-semibold text-foreground/70">{commonText.text["technologies"] ?? "Technologies"}:</span>
                         <div className="flex flex-1 flex-wrap gap-1">
                           {role.techStack.map((tech) => (
                             <span key={tech} className="rounded-full border border-border/60 bg-muted px-2 py-0.5 text-xs text-foreground/55">
@@ -51,11 +53,19 @@ export const CvNewExperience = ({ experiences, commonText }: CvNewExperienceProp
                               <p className="text-xs italic text-foreground/55">{[project.role, project.teamSize > 1 ? `Team of ${project.teamSize}` : null].filter(Boolean).join(" · ")}</p>
                             )}
                           </div>
-                          <HTMLParser content={project.responsibilities} className="mt-1 text-sm text-foreground/75 [&>li]:pb-0.5 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:pt-0.5" />
+                          <p className="mt-1.5 text-sm font-semibold text-foreground/70">{commonText.text["achievements"] ?? "Achievements"}:</p>
+                          <HTMLParser content={project.responsibilities} className="mt-0.5 text-sm text-foreground/75 [&>li]:pb-0.5 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:pt-0.5" />
                           {project.techStack && project.techStack.length > 0 && (
-                            <p className="mt-1.5 text-xs font-semibold text-foreground/55">
-                              {commonText.text["technologies"] ?? "Tech"}: <span className="font-normal text-foreground/60">{project.techStack.join(", ")}</span>
-                            </p>
+                            <div className="mt-1.5 flex flex-wrap items-start gap-x-2">
+                              <span className="text-sm font-semibold text-foreground/70">{commonText.text["technologies"] ?? "Technologies"}:</span>
+                              <div className="flex flex-1 flex-wrap gap-1">
+                                {project.techStack.map((tech) => (
+                                  <span key={tech} className="rounded-full border border-border/60 bg-background px-2 py-0.5 text-xs text-foreground/55">
+                                    {tech}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
                           )}
                           {(project.liveLink || project.responsitoryLink) && (
                             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
