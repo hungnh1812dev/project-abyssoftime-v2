@@ -1,0 +1,95 @@
+{
+  "slug": "cv-page-new",
+  "name": "CV Page New",
+  "kind": "collection",
+  "draftToPublish": true,
+  "fields": [
+    { "name": "position", "type": "text", "width": "50%" },
+    { "name": "isMain", "type": "boolean", "width": "50%" },
+    { "name": "name", "type": "text" },
+    { "name": "summary", "type": "richtext" },
+    {
+      "name": "skills",
+      "type": "component",
+      "component": "skill",
+      "repeatable": true,
+      "fields": [
+        { "name": "level", "type": "text" },
+        { "name": "skill", "type": "text" }
+      ]
+    },
+    {
+      "name": "experiences",
+      "type": "component",
+      "component": "experience",
+      "repeatable": true,
+      "fields": [
+        { "name": "company", "type": "text", "width": "50%" },
+        { "name": "location", "type": "text", "width": "50%" },
+        { "name": "period", "type": "text", "width": "50%" },
+        {
+          "name": "roles",
+          "type": "component",
+          "component": "role",
+          "repeatable": true,
+          "fields": [
+            { "name": "position", "type": "text", "width": "50%" },
+            { "name": "period", "type": "text", "width": "50%" },
+            { "name": "teamSize", "type": "number", "width": "50%" },
+            {
+              "name": "projects",
+              "type": "component",
+              "component": "project",
+              "repeatable": true,
+              "fields": [
+                { "name": "name", "type": "text" },
+                { "name": "teamSize", "type": "number", "width": "50%" },
+                { "name": "role", "type": "text", "width": "50%" },
+                { "name": "liveLink", "type": "text", "width": "50%" },
+                { "name": "responsitoryLink", "type": "text", "width": "50%" },
+                { "name": "techStack", "type": "json" },
+                { "name": "responsibilities", "type": "richtext" }
+              ]
+            },
+            { "name": "techStack", "type": "json" },
+            { "name": "responsibilities", "type": "richtext" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "educations",
+      "type": "component",
+      "component": "education",
+      "repeatable": true,
+      "fields": [
+        { "name": "degree", "type": "text", "width": "50%" },
+        { "name": "institution", "type": "text", "width": "50%" },
+        { "name": "period", "type": "text", "width": "50%" },
+        { "name": "location", "type": "text", "width": "50%" },
+        { "name": "description", "type": "richtext" }
+      ]
+    },
+    {
+      "name": "languages",
+      "type": "component",
+      "component": "language",
+      "repeatable": true,
+      "fields": [
+        { "name": "language", "type": "text", "width": "50%" },
+        { "name": "level", "type": "text", "width": "50%" }
+      ]
+    },
+    {
+      "name": "references",
+      "type": "component",
+      "component": "reference",
+      "repeatable": true,
+      "fields": [
+        { "name": "name", "type": "text" },
+        { "name": "phone", "type": "text", "width": "50%" },
+        { "name": "role", "type": "text", "width": "50%" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+@media print {
+  .header {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    padding: 20px 24px;
+  }
+}
