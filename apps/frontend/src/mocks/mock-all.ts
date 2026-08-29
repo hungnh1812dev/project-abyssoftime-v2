@@ -7,6 +7,7 @@ import { CVElegantMain_MockData } from "./cv-elegant-main";
 import { CVFeLeadJp2026_MockData } from "./cv-fe-lead-jp2026";
 import { CVList_MockData } from "./cv-list";
 import { CVMain_MockData } from "./cv-main";
+import { CVNewDemoNew001_MockData } from "./cv-new-demo-new-001";
 import { CVNewList_MockData } from "./cv-new-list";
 import { CVNewMain_MockData } from "./cv-new-main";
 import { EnVocabWordGroups_MockData } from "./en-vocab-word-groups";
@@ -51,4 +52,5 @@ export const MockView: Record<string, unknown> = {
   // CV New
   "cv-new-main": CVNewMain_MockData,
   "cv-new-list": CVNewList_MockData,
+  "cv-new-demo-new-001": CVNewDemoNew001_MockData,
 };
