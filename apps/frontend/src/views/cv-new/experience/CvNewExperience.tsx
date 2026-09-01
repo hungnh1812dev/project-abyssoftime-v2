@@ -24,7 +24,7 @@ export const CvNewExperience = ({
         {experiences.map((group, groupIdx) => (
           <div key={groupIdx}>
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-r-md border-l-4 border-primary bg-muted px-3 py-2">
-              <h4 className="text-sm font-bold text-foreground">
+              <h4 className="text-sm font-bold text-primary">
                 {group.company}
               </h4>
               <span className="text-xs text-foreground/55">
@@ -37,7 +37,7 @@ export const CvNewExperience = ({
                 <div key={roleIdx}>
                   <div className="print:break-inside-avoid">
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                      <p className="text-sm font-bold uppercase text-foreground">
+                      <p className="text-sm font-semibold uppercase tracking-wide text-foreground/80">
                         {role.position}
                       </p>
                       <p className="text-xs font-medium text-foreground/50">
