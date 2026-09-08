@@ -22,6 +22,7 @@ export const CvNewHeader = ({ contact, position, hideAvatar }: CvNewHeaderProps)
             alt="Profile Avatar"
             width={110}
             height={110}
+            unoptimized={Boolean(contact.avatar.url)}
             className="block h-24 w-24 shrink-0 rounded-lg border-2 border-primary/50 object-cover sm:h-[110px] sm:w-[110px]"
           />
         )}
