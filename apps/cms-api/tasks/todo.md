@@ -108,7 +108,7 @@ untouched by this work.
 
 ## Phase 3 — Docs & spec
 
-- [ ] **T8 — Update `apps/cms-api/SPEC.md`.** Replace §3.3 with the actual implemented approach
+- [x] **T8 — Update `apps/cms-api/SPEC.md`.** Replace §3.3 with the actual implemented approach
   (postgres-only, no dynamic imports); simplify §3.1's `prod-deps` step (no manual pruning); correct
   §7's "Always" bullet (multi-driver support was removed, not preserved) and §2 to note the
   stub-schema finding.
@@ -116,7 +116,7 @@ untouched by this work.
   - Files: `apps/cms-api/SPEC.md`
   - Deps: T1–T7 complete. Size: S
 
-- [ ] **T9 — `docs/documents/dockerfile-techstack.md`.** Decision-rationale table per
+- [x] **T9 — `docs/documents/dockerfile-techstack.md`.** Decision-rationale table per
   `docs/rules/workflow.md`: base image (`oven/bun:1-alpine` vs `-slim`/`-debian`), postgres-only vs
   keep-multi-driver, separate `migrator` target vs baked-in migrate-on-boot — options vs. criteria
   (image size, complexity, maintenance cost, existing precedent) — reusing the analysis already done
@@ -124,19 +124,19 @@ untouched by this work.
   - Files: `apps/cms-api/docs/documents/dockerfile-techstack.md`
   - Deps: T8. Size: S
 
-- [ ] **T10 — `docs/documents/dockerfile.md`.** Module doc matching the `docs/documents/*.md`
+- [x] **T10 — `docs/documents/dockerfile.md`.** Module doc matching the `docs/documents/*.md`
   convention: the 5 stages and what each does, the required env-var contract (pointing at
   `.env.example`), how to build/run the `migrator` target, the non-root/no-`HEALTHCHECK`-by-design
   notes, the final measured image size.
   - Files: `apps/cms-api/docs/documents/dockerfile.md`
   - Deps: T9. Size: S
 
-- [ ] **T11 — `docs/ENTRYPOINT.md`.** Add one-line index entries for `dockerfile.md` and
+- [x] **T11 — `docs/ENTRYPOINT.md`.** Add one-line index entries for `dockerfile.md` and
   `dockerfile-techstack.md`, matching the existing entries' format.
   - Files: `apps/cms-api/docs/ENTRYPOINT.md`
   - Deps: T10. Size: XS
 
-- [ ] **T12 — Stale-wording sweep.** `docs/documents/media.md` (point 6, currently: "...matching
+- [x] **T12 — Stale-wording sweep.** `docs/documents/media.md` (point 6, currently: "...matching
   `DB_DRIVER` defaulting to `postgresql`...") and `docs/documents/content-type.md` (point 1,
   currently: "...this repo is Postgres-only (`DB_DRIVER` defaults to `postgresql`; the `mysql`/`sqlite`
   schema files stay stubs)...") — reword both past-tense: the stub files and `DB_DRIVER` no longer

@@ -26,12 +26,21 @@ written in this task — only documenting what the image expects.
 - `@prisma/client` (75MB), `prisma` CLI (42MB, pulls in `@prisma/studio-core` 42MB + `@prisma/dev` 18MB
   + `@prisma/engines` 24MB) are listed as regular `dependencies` today but are **build/migration-time
   tooling only** — confirmed no `"@prisma/client"` import anywhere in `src/`.
-- `src/prisma/application/prisma.service.ts` **statically** imports all three adapters
-  (`PrismaPg`/`PrismaMariaDb`/`PrismaBetterSqlite3`) at the top of the file and `switch`es on
-  `DB_DRIVER` at construction time. Static imports are eagerly resolved — so today all three adapter
-  packages (and `pg`/`mariadb`/`better-sqlite3`) must physically exist in `node_modules` regardless of
-  which one is used.
-- Local/default `DB_DRIVER` is `postgresql` (`.env.local`, and the default in `env.validation.ts` /
+- `src/prisma/application/prisma.service.ts` **statically** imported all three adapters
+  (`PrismaPg`/`PrismaMariaDb`/`PrismaBetterSqlite3`) at the top of the file and `switch`ed on
+  `DB_DRIVER` at construction time. Static imports are eagerly resolved — so all three adapter
+  packages (and `pg`/`mariadb`/`better-sqlite3`) had to physically exist in `node_modules` regardless of
+  which one was used. A constructor can't `await` a dynamic `import()` before calling `super()`
+  (`PrismaClient`'s parent needs the adapter object immediately), so making only the unused branches
+  lazy wasn't possible without a much bigger restructuring (e.g. an async NestJS factory provider) —
+  see §3.3 for the resolution.
+- `prisma/mysql/schema.prisma` and `prisma/sqlite/schema.prisma` were already **non-functional 8-line
+  stub files** (generator + datasource only, zero models — the real 141-line schema with all models
+  lived only under `prisma/postgresql/`). `docs/documents/media.md` and `docs/documents/content-type.md`
+  already stated in writing that this repo "is Postgres-only" and that the mysql/sqlite files "remain
+  stubs." The `mysql`/`sqlite` `DB_DRIVER` branches in `PrismaService` were therefore already broken in
+  practice (constructing a real adapter against a schema with no models) before this task.
+- Local/default `DB_DRIVER` was `postgresql` (`.env.local`, and the default in `env.validation.ts` /
   `scripts/prisma.ts`).
 - `main.ts` listens on `process.env.PORT ?? 3000` directly. **`SERVER_PORT` in `env.validation.ts`
   (default 8080) is validated but never read anywhere** — pre-existing dead config, not touched by this
@@ -45,67 +54,73 @@ written in this task — only documenting what the image expects.
 
 ### 3.1 Dockerfile stages (`apps/cms-api/Dockerfile`)
 
-Two build targets from one Dockerfile:
+Five stages, two build targets:
 
-1. `deps` — `FROM oven/bun:1-alpine`, `bun install --frozen-lockfile` (full install: needed for
-   `prisma generate` + `nest build` + typecheck).
-2. `build` — from `deps`, copy source, `bun run prisma:generate` (defaults to the `postgresql` schema —
-   `DB_DRIVER` unset at build time), then `bun run build` (`nest build`; `nest-cli.json` assets already
+1. `deps` — `FROM oven/bun:1-alpine`, `bun install --frozen-lockfile --ignore-scripts` (full install:
+   needed for `prisma generate` + `nest build` + typecheck; `--ignore-scripts` skips the `postinstall`
+   hook, since it needs `scripts/prisma.ts`, not copied in yet — the `build` stage runs
+   `prisma:generate` explicitly after `COPY . .`).
+2. `build` — from `deps`, copy source, `bun run prisma:generate` (Postgres-only — see §3.3), then
+   `bun run build` (`nest build && tsc-alias -p tsconfig.build.json`; `nest-cli.json` assets already
    copy the generated Prisma client + `.hbs` email templates into `dist/`).
-3. `prod-deps` — fresh `FROM oven/bun:1-alpine`, `bun install --frozen-lockfile --production` (drops all
-   `devDependencies` — see §3.2), then prune the two unused DB-driver adapter packages by path:
-   `rm -rf node_modules/@prisma/adapter-mariadb node_modules/@prisma/adapter-better-sqlite3
-   node_modules/mariadb node_modules/better-sqlite3` (documented inline with a comment explaining why —
-   this image is locked to `DB_DRIVER=postgresql`, see §3.3).
-4. `runner` (**default target**, `ENV NODE_ENV=production`) — non-root user, copy `node_modules` from
-   `prod-deps`, `dist/` and `content-types/` from `build`, `package.json`. `CMD ["bun", "dist/src/main"]`
-   (mirrors the existing `start:prod` script). No `HEALTHCHECK` instruction — k8s liveness/readiness
-   probes should target `GET /health` instead (documented in §5, not implemented here).
-5. `migrator` (separate target, **not** part of the size budget) — from `deps`, copy full source,
+3. `prod-deps` — fresh `FROM oven/bun:1-alpine`, `bun install --frozen-lockfile --production
+   --ignore-scripts` (drops all `devDependencies` — see §3.2). No manual pruning needed: since
+   `@prisma/adapter-mariadb`/`@prisma/adapter-better-sqlite3` are removed from `package.json` entirely
+   (§3.2/§3.3), not just path-pruned in this one stage, a plain `--production` install is already clean.
+4. `migrator` (from `deps`, **not** part of the size budget) — copy full source,
    `CMD ["bun", "run", "prisma:migrate:deploy"]`. Built/run as a one-off `docker build --target migrator`
    image (e.g. a k8s `Job` or CI step) — keeps the `prisma` CLI out of the always-on `runner` image
-   entirely, per your migrations-strategy choice.
+   entirely.
+5. `runner` (**default target — must be the last stage in the file**, `ENV NODE_ENV=production`) —
+   non-root `bun` user (built into `oven/bun:1-alpine`), copy `node_modules` from `prod-deps`, `dist/`
+   and `content-types/` from `build`, `package.json`. `CMD ["bun", "dist/src/main"]` (mirrors the
+   existing `start:prod` script). No `HEALTHCHECK` instruction — k8s liveness/readiness probes should
+   target `GET /health` instead (documented in §5).
 
-Single-arch `linux/amd64` build (per your choice). Note: since Prisma 7's client is WASM (not a native
-per-arch binary) and the only native addon (`better-sqlite3`) is pruned out of `runner`, an `arm64` build
-would be low-risk to add later if ever needed — no `binaryTargets` pinning required.
+Single-arch `linux/amd64`/`arm64` (whichever the build host targets) — Prisma 7's client is WASM, not a
+native per-arch binary, so no `binaryTargets` pinning is needed.
+
+**Docker gotcha**: with no `--target` flag, `docker build` uses the **last** stage in the file as the
+default target — `runner` must be defined last, not `migrator`, even though `migrator` is conceptually
+simpler/earlier in the dependency chain.
 
 ### 3.2 `package.json` changes
 
+- Remove `@prisma/adapter-mariadb` and `@prisma/adapter-better-sqlite3` from `dependencies` entirely
+  (their transitive `mariadb`/`better-sqlite3` drivers drop automatically) — not just pruned by path in
+  one Docker stage. See §3.3: the code no longer supports `mysql`/`sqlite` at all, so there's no reason
+  to keep them installed anywhere, including local dev.
 - Move `prisma` and `@prisma/client` from `dependencies` → `devDependencies`. Both are build/generate/
-  migrate-time only (§2). `@prisma/adapter-mariadb`/`@prisma/adapter-better-sqlite3` **stay** in
-  `dependencies` (real code still supports them — see §3.3); the `runner` stage prunes them by path
-  instead, so local dev / a future "multi-driver" image variant keeps working unmodified.
+  migrate-time only (§2) — confirmed no `"@prisma/client"` import anywhere in `src/`.
+- Added `tsc-alias` as a devDependency, and changed `"build"` to
+  `"nest build && tsc-alias -p tsconfig.build.json"` — see §3.3's "unplanned fix" note.
 - No other dependency changes. (`ioredis`, `better-sqlite3` as a *library choice* stay — packaging-only
-  per your answer; not a `bun:sqlite`/`Bun.redis` migration.)
+  per the original scope answer; not a `bun:sqlite`/`Bun.redis` migration.)
 
-### 3.3 Code change — `src/prisma/application/prisma.service.ts`
+### 3.3 Code change — `src/prisma/application/prisma.service.ts` (superseded design)
 
-Change the three top-level static imports:
+The original plan here was to convert the three top-level static adapter imports to dynamic `import()`
+inside each `switch` case, keeping `mysql`/`sqlite` support in the codebase and only Docker-image-scoped
+to Postgres. **This turned out to be impossible**: `PrismaService`'s constructor must call `super(...)`
+synchronously (`PrismaClient` needs the adapter object immediately), and a constructor can't `await` a
+dynamic `import()`'s Promise before calling `super()` — there's no way to make only the unused branches
+"lazy" without a much bigger change (e.g. an async NestJS factory provider).
 
-```ts
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaPg } from "@prisma/adapter-pg";
-```
+**What was actually built instead** (decision made with the user, see §2's stub-schema finding for why
+this was low-risk): `cms-api` became **postgres-only in the source**, not just in the Docker image.
+`PrismaService` now constructs `PrismaPg` directly — no `DB_DRIVER` read, no `switch`, one static import.
+`env.validation.ts` dropped `DB_DRIVER`/`SUPPORTED_DB_DRIVERS`/`DbDriver` entirely. `scripts/prisma.ts`
+and `prisma.config.ts` hardcode `prisma/postgresql/schema.prisma` / a `postgresql://` URL. The stub
+`prisma/mysql/` and `prisma/sqlite/` directories were deleted. Full rationale/comparison in
+`docs/documents/dockerfile-techstack.md`.
 
-to dynamic `import()` **inside each `switch` case**, e.g.:
-
-```ts
-case "postgresql": {
-  const { PrismaPg } = await import("@prisma/adapter-pg");
-  ...
-}
-```
-
-This requires restructuring the constructor (adapter construction currently happens synchronously,
-before `super()`) — the constructor will need to build the adapter synchronously still (Prisma requires
-the adapter instance at `super()` time), so **only the `postgresql` import can safely become
-non-dynamic/eager**; the `mysql`/`sqlite` branches' dynamic imports would only ever be reached if
-someone runs this code with a different `DB_DRIVER`, at which point Node/Bun's module resolution
-throwing "Cannot find module" is the correct, clear failure in the pruned `runner` image. Confirm the
-exact restructuring during `/build` (this is the one piece of business logic this task touches — keep
-the diff minimal, no behavior change for `DB_DRIVER=postgresql`).
+**Unplanned fix required during Docker boot-testing** (not part of the original scope, confirmed with
+the user before implementing): `nest build` (plain `tsc`) does not rewrite the project's `@/*` → `src/*`
+path aliases into relative paths in the emitted `dist/*.js` — Bun can't resolve the literal `"@/..."`
+specifier at runtime and crashes. This reproduced in a clean container even outside Docker concerns
+(confirmed by running `bun run build` fresh inside the `migrator` image), meaning `bun run start:prod`
+was already broken in any environment other than the original dev machine, never previously exercised.
+Fixed by adding `tsc-alias` as a devDependency and chaining it into the `build` script (§3.2).
 
 ### 3.4 ENV / secrets handling
 
@@ -118,8 +133,6 @@ the diff minimal, no behavior change for `DB_DRIVER=postgresql`).
   `JWT_REFRESH_SECRET`, `COOKIE_SECURE`, `COOKIE_SAMESITE`, `CORS_ORIGINS`, plus whichever
   `STORAGE_PROVIDER`/`EMAIL_PROVIDER` credentials are selected) map to k8s `Secret` keys;
   optional/defaulted vars map to `ConfigMap` keys. Full list already in `.env.example`.
-- `DB_DRIVER` is not set in the Dockerfile — defaults to `postgresql` (matches the pruned `runner`
-  image); set explicitly via the k8s `ConfigMap` anyway for clarity.
 - `PORT` (not `SERVER_PORT` — see §2's dead-config note) controls the listen port, default `3000`.
 
 ### 3.5 `.dockerignore`
@@ -137,21 +150,18 @@ New `apps/cms-api/.dockerignore`: `node_modules`, `dist`, `coverage`, `.git`, `.
 
 ## 5. Testing / verification strategy (acceptance criteria)
 
-1. `docker build` succeeds for both `runner` and `migrator` targets.
-2. `docker image inspect abyssoftime-cms-api:latest --format='{{.Size}}'` — record the actual size.
-   - If **≤ 500MB**: done.
-   - If **over**: run `docker history abyssoftime-cms-api:latest` (or `dive` if available) to break down
-     per-layer size, identify which stage/dependency is responsible, and record concrete further options
-     (e.g. drop `@getbrevo/brevo`/unused email providers, drop unused `EMAIL_PROVIDER` SDKs, re-check for
-     any transitively-reintroduced dev package) — do **not** just report the number.
-3. Boot smoke test: run the `runner` image against a real local Postgres (reuse existing e2e Postgres
-   setup if available) with `DB_DRIVER=postgresql` + the required env vars set, confirm `GET /health`
-   returns 200 and the app doesn't crash on the pruned adapters.
-4. Negative check: confirm setting `DB_DRIVER=mysql` (or `sqlite`) against the `runner` image fails
-   loudly at the `PrismaService` construction point (expected — documented boundary, not a regression).
-5. Confirm the container runs as a non-root user (`docker run ... whoami`).
-6. `bun run lint` / existing `jest`/`test:cov` suites still pass after the `prisma.service.ts` change —
-   update `src/prisma/application/prisma.service.spec.ts` for the new dynamic-import shape.
+All verified during `/build`:
+
+1. `docker build` succeeded for both `runner` (default) and `migrator` targets.
+2. `docker image inspect abyssoftime-cms-api:latest --format='{{.Size}}'` → **438.50MB**, under the
+   500MB budget — no further cuts needed.
+3. Boot smoke test: ran the `runner` image against a fresh local Postgres container (throwaway
+   credentials, not the dev `.env.local`) with the required env vars set — `GET /health` returned 200,
+   seed data logged, app started cleanly.
+4. `migrator` target verified end-to-end: applied all 7 pending migrations against the fresh database.
+5. Confirmed the container runs as the non-root `bun` user (`docker run ... whoami` → `bun`).
+6. `bun run lint` / `bun run test:cov` (152 suites / 1118 tests) / `bun run build` all green throughout
+   Phases 1 and 2, including after the `tsc-alias` fix (§3.3).
 
 ## 6. Code style
 
@@ -160,12 +170,14 @@ Follow the existing `apps/cms-admin/Dockerfile` conventions: `# syntax=docker/do
 
 ## 7. Boundaries
 
-- **Always**: keep the `postgresql`-only behavior change scoped to `prisma.service.ts`; don't touch
-  `env.validation.ts`'s `SUPPORTED_DB_DRIVERS` or the `mysql`/`sqlite` Prisma schema files — multi-driver
-  support stays in the codebase, only this image is postgres-locked.
-- **Ask first**: any change beyond `prisma.service.ts` + `package.json` + the new `Dockerfile`/
+- **Always**: multi-driver support was **removed**, not preserved — `cms-api` is now postgres-only in
+  the source (`PrismaService`, `env.validation.ts`, `scripts/prisma.ts`, `prisma.config.ts`), not just in
+  the Docker image. See §3.3 for why the original "keep multi-driver, Docker-scope only" plan didn't
+  work and was superseded with the user's sign-off.
+- **Ask first**: any change beyond the postgres-only refactor + `package.json` + the new `Dockerfile`/
   `.dockerignore` (e.g. if the size target isn't met even after the above and a deeper cut — like
-  dropping unused email-provider SDKs — is needed).
+  dropping unused email-provider SDKs — is needed). The `tsc-alias` build-script fix (§3.3) was one such
+  out-of-original-scope change, confirmed with the user before implementing.
 - **Never**: bake secrets/`.env*` files into the image; touch `apps/cms-admin` or `apps/frontend`; fix
   the pre-existing `SERVER_PORT` dead-config issue as part of this task (flagged, not fixed).
 
