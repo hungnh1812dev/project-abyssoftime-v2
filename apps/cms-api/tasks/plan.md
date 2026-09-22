@@ -1,177 +1,131 @@
-# Plan: Additional Email Providers (Resend, Brevo, SendGrid)
+# Plan: cms-api Production Dockerfile
 
-See `SPEC.md` for the full spec (objective, confirmed assumptions, boundaries, success criteria).
-This plan implements it as three near-identical vertical slices (one per provider) plus a docs phase.
+See `SPEC.md` for the full spec (objective, investigated facts, design, boundaries). See
+`tasks/todo.md` for the actionable checklist this plan expands into.
 
 ## Context
 
-`cms-api` sends OTP/password-reset email via `IEmailSender`, currently backed by Gmail API, SMTP
-(`nodemailer`), or a Console dev fallback, selected by `EMAIL_PROVIDER` (`resolve-email-sender.ts`).
-This plan adds three more interchangeable senders — Resend, Brevo, SendGrid — using each vendor's
-official Node SDK, with zero change to `IEmailSender`, the Handlebars template renderer, or any
-`application/services/*` caller (SPEC.md Assumptions 2–3).
+`apps/cms-api` needs a multi-stage production Dockerfile targeting ≤500MB, with all config/secrets
+injected at container runtime (k3s/k8s `Secret`/`ConfigMap`), matching the pattern `apps/cms-admin`
+already uses. The spec identified that ~190MB of the image would be `prisma`/`@prisma/client`/
+`@prisma/studio-core`/`@prisma/dev`/`@prisma/engines` — all build/migrate-time tooling, never imported
+by the generated (WASM-based, Prisma 7) client at runtime — and proposed moving `prisma`/`@prisma/client`
+to `devDependencies` plus a separate `migrator` build target for `prisma migrate deploy` jobs.
 
-Because all three providers are structurally identical (one SDK client, two send calls, same
-`IEmailSender` shape), the highest-risk unknown isn't architecture — it's whether the *exact* SDK
-call signature assumed for Brevo (`@getbrevo/brevo` v6.0.3) is correct. A pre-planning doc check
-confirmed SendGrid's `sgMail.setApiKey()` / `sgMail.send({to, from, subject, html})` pattern matches
-SPEC.md's assumption, but the Brevo v6 client shape returned by that check (`new BrevoClient({apiKey})`
-+ `brevo.transactionalEmails.sendTransacEmail(...)`) came from an AI-summarized README, not a
-first-hand read of the SDK's type definitions — **not trusted as fact**. T4 (Brevo) must verify the
-real shape against `node_modules/@getbrevo/brevo`'s types or official docs before writing code
-(`source-driven-development`), not copy the summary verbatim.
+## Correction found during planning (supersedes SPEC.md §3.3)
 
-## Corrections found during planning (supersede SPEC.md)
+SPEC.md §3.3 proposed converting `PrismaService`'s three static adapter imports
+(`PrismaPg`/`PrismaMariaDb`/`PrismaBetterSqlite3`) to dynamic `import()` per `switch` case, so a
+postgres-only image could exclude the unused mysql/sqlite adapter packages. **This doesn't work**:
+`PrismaService`'s constructor must call `super(...)` synchronously (its parent, `PrismaClient`, needs
+the adapter object immediately), and a JS/TS constructor cannot `await` a dynamic `import()`'s Promise
+before calling `super()`. There's no way to make only one of three branches "lazy" here without a much
+bigger change (e.g. an async NestJS factory provider building the adapter before construction).
 
-None. SPEC.md's assumptions all held up against the codebase read during spec-writing; no
-architectural surprises found while planning (unlike the token-blacklist feature's Prisma-schema
-correction — this feature touches no schema).
+Asked the user how to resolve this; they chose to **drop multi-driver support entirely** — `cms-api`
+becomes postgres-only in the source, not just in the Docker image.
 
-## Architecture Decisions
+This turns out to be low-risk, not just expedient: `prisma/mysql/schema.prisma` and
+`prisma/sqlite/schema.prisma` are already non-functional 8-line **stub files** (generator + datasource
+only, zero models — the real 141-line schema with all models lives only under `prisma/postgresql/`).
+`docs/documents/media.md` and `docs/documents/content-type.md` already state in writing that "this repo
+is Postgres-only" and that the mysql/sqlite files "remain stubs." The `mysql`/`sqlite` `DB_DRIVER`
+branches in `PrismaService` were therefore already broken in practice (constructing a real adapter
+against a schema with no models) — removing them removes dead, misleading code, not working
+functionality.
 
-- **Each sender is constructed lazily inside `resolveEmailSender`'s branches**, exactly like
-  `GmailApiEmailSender`/`SmtpEmailSender`/`ConsoleEmailSender` today — never instantiated unless its
-  `EMAIL_PROVIDER` value (or "auto" match) actually selects it. This is what keeps an unset
-  `RESEND_API_KEY`/`BREVO_API_KEY`/`SENDGRID_API_KEY` inert when a different provider is active
-  (SPEC.md's "Never do" boundary) — no code needs to special-case "key missing," construction simply
-  never happens.
-- **Send failures propagate uncaught**, matching `SmtpEmailSender`/`GmailApiEmailSender` today (no
-  try/catch swallowing in either). A thrown SDK error bubbles up through `IEmailSender` to the
-  calling service (`register`/`resend-otp`/`forgot-password`), which already handles/logs errors the
-  same way regardless of which sender threw.
-- **`EMAIL_FROM` is read once in each sender's constructor**, same pattern `SmtpEmailSender` uses for
-  `FRONTEND_URL` — no new "from" env var (SPEC.md Assumption 5).
-- **`"auto"` fallthrough is built up incrementally, one provider at a time**, so the chain is always
-  in a shippable, correctly-ordered state at every checkpoint: Phase 1 adds `resend` between the
-  existing `smtp` check and the `console` fallback; Phase 2 inserts `brevo` between `resend` and
-  `console`; Phase 3 inserts `sendgrid` between `brevo` and `console`. Final order (confirmed):
-  `gmail → smtp → resend → brevo → sendgrid → console`.
-- **Official SDKs, not raw `fetch`** — decision table already in `SPEC.md`'s Tech Stack section; not
-  repeated here. The comparison gets persisted to `docs/documents/auth-email-providers-techstack.md`
-  in Phase 4 (T7) per `docs/rules/workflow.md`'s decision-rationale rule.
+This also **simplifies** the Dockerfile from SPEC.md §3.1: since `@prisma/adapter-mariadb` and
+`@prisma/adapter-better-sqlite3` are removed from `package.json` entirely (not just "pruned by path" in
+one Docker stage), the `prod-deps` stage's `bun install --frozen-lockfile --production` alone is
+sufficient — no `rm -rf node_modules/...` pruning step needed.
 
-## Dependency Graph
+**Out of scope (explicitly confirmed with the user):** the email-provider set (`gmail`/`smtp`/`resend`/
+`brevo`/`sendgrid`/`console`) is untouched by this work — a mailer-reduction idea was raised and then
+withdrawn; do not touch `resolve-email-sender.ts` or any email-sender file as part of this plan.
+
+## Architecture decisions
+
+- `PrismaService` constructs `PrismaPg` directly — no `DB_DRIVER` read, no `switch`.
+- `env.validation.ts` drops `DB_DRIVER`/`SUPPORTED_DB_DRIVERS`/`DbDriver` entirely. `DB_HOST`/`DB_PORT`/
+  `DB_NAME`/`DB_USERNAME`/`DB_PASSWORD` stay unchanged (defaults already assume Postgres).
+- `scripts/prisma.ts` and `prisma.config.ts` hardcode `prisma/postgresql/schema.prisma` / a
+  `postgresql://` URL — no driver switch.
+- Delete `prisma/mysql/` and `prisma/sqlite/` (stub-only, no migrations under either).
+- `package.json`: remove `@prisma/adapter-mariadb`/`@prisma/adapter-better-sqlite3` from `dependencies`
+  (their transitive `mariadb`/`better-sqlite3` drivers drop automatically); move `prisma`/
+  `@prisma/client` from `dependencies` → `devDependencies` (SPEC.md's migration-strategy decision,
+  unaffected by this correction).
+- Dockerfile: `deps` → `build` → `prod-deps` → `runner` (default target) → `migrator` (separate target,
+  carries the `prisma` CLI for `prisma migrate deploy` jobs, not held to the 500MB budget) — same
+  5-stage shape as SPEC.md §3.1, minus the now-unneeded manual adapter pruning.
+- No code/behavior change to anything outside the Postgres-only boundary (`ioredis`, `better-sqlite3`-
+  as-a-library-choice for other purposes, email providers, storage adapters — all untouched, per the
+  spec's "packaging only" refactor-scope answer).
+
+## Dependency graph
 
 ```
-T1 Resend env vars + dependency
- └─→ T2 ResendEmailSender + resolve-email-sender wiring (auto: …→resend→console)
-        │
-T3 Brevo env vars + dependency (parallel with T1/T2)
-        │
-        └─→ T4 BrevoEmailSender + resolve-email-sender wiring (auto: …→resend→brevo→console)
-               — depends on T2 (same file, sequential edit) and T3
+Phase 1 — Postgres-only refactor (source + config, no Docker yet)
+  T1 PrismaService + spec: drop mariadb/sqlite branches, construct PrismaPg directly
+  T2 env.validation.ts + spec: remove DB_DRIVER/SUPPORTED_DB_DRIVERS/DbDriver
+  T3 scripts/prisma.ts + prisma.config.ts: hardcode postgresql; delete prisma/mysql/, prisma/sqlite/
+  T4 .env.example: remove DB_DRIVER
+     (T1–T4 touch disjoint files, independent of each other)
+        └─→ T5 package.json: remove unused adapter deps, move prisma/@prisma/client → devDependencies
+               — depends on T1 (code must stop importing them first)
+               └─→ Checkpoint A (build/lint/test green, bun install clean)
+                      │
+Phase 2 — Dockerfile                                                       │
+  T6 apps/cms-api/Dockerfile (5 stages) ◄─────────────────────────────────┘ (needs Phase 1's slimmed deps)
+  T7 apps/cms-api/.dockerignore
+        └─→ Checkpoint B (docker build both targets; measure size; boot smoke test; non-root check)
                │
-T5 SendGrid env vars + dependency (parallel with T1–T4)
-        │
-        └─→ T6 SendGridEmailSender + resolve-email-sender wiring (auto: final order)
-               — depends on T4 (same file, sequential edit) and T5
+Phase 3 — Docs & spec                                                      │
+  T8 Update SPEC.md (§3.3 correction, §3.1 simplification, §7 boundary correction) ◄┘
+  T9 New docs/documents/dockerfile-techstack.md (decision tables: base image, postgres-only vs
+     multi-driver, separate-migration vs baked-in)
+  T10 New docs/documents/dockerfile.md (module doc: stages, env-var contract, migrator usage)
+  T11 docs/ENTRYPOINT.md: add T9/T10 entries
+  T12 Stale-wording sweep: docs/documents/media.md, docs/documents/content-type.md
+     (both currently describe the now-deleted DB_DRIVER stub setup)
+        └─→ Checkpoint C (docs reviewed)
                │
-               └─→ T7 techstack docs → T8 auth.md + stale-wording sweep → T9 five-axis review → T10 cleanup
+Phase 4 — Review & cleanup                                                 │
+  T13 Five-axis review (correctness, readability, architecture, security, performance) ◄┘
+  T14 Reduce SPEC.md back to a minimal pointer (per this project's established convention)
+        └─→ Checkpoint D (final commit, user confirmation per commit rules)
 ```
 
-Env-var/dependency tasks (T1, T3, T5) are independent of each other and could run in parallel; the
-sender-implementation tasks (T2, T4, T6) are forced sequential because they all edit
-`resolve-email-sender.ts`. Each provider phase ships a fully working, independently-verifiable slice
-— Resend works end-to-end before Brevo is even started, matching the vertical-slicing goal and
-keeping the blast radius of any one provider's SDK surprises contained to its own phase.
+## Task list
 
-## Task List
+See `tasks/todo.md` for the full checklist (acceptance criteria, verify commands, files, deps/size per
+task). Phase summary:
 
-### Phase 1 — Resend (first vertical slice, establishes the pattern)
+### Phase 1 — Postgres-only refactor
+T1 `PrismaService` postgres-only · T2 drop `DB_DRIVER` from env validation · T3 hardcode
+`scripts/prisma.ts`/`prisma.config.ts`, delete stub schemas · T4 `.env.example` cleanup · T5
+`package.json` dependency cleanup · **Checkpoint A**
 
-- **T1** — Resend env vars + dependency. S
-- **T2** — `ResendEmailSender` + `resolve-email-sender.ts` wiring. M
+### Phase 2 — Dockerfile
+T6 `apps/cms-api/Dockerfile` (5 stages) · T7 `apps/cms-api/.dockerignore` · **Checkpoint B** (real
+`docker build` + measured size + boot smoke test — if over 500MB, a documented breakdown + next options
+is required, not just the number)
 
-**Checkpoint A** — `bun run build && bun run lint && bun run test:cov` green. `EMAIL_PROVIDER=smtp`
-(or unset) still behaves identically to today. Manual: set a real `RESEND_API_KEY` +
-`EMAIL_PROVIDER=resend` locally, confirm one OTP email and one password-reset email actually arrive.
-Commit.
+### Phase 3 — Docs & spec
+T8 Update `SPEC.md` · T9 `docs/documents/dockerfile-techstack.md` · T10 `docs/documents/dockerfile.md`
+· T11 `docs/ENTRYPOINT.md` index entries · T12 Stale-wording sweep (`media.md`, `content-type.md`) ·
+**Checkpoint C**
 
-### Phase 2 — Brevo
+### Phase 4 — Review & cleanup
+T13 Five-axis review · T14 Reduce `SPEC.md` to a minimal pointer · **Checkpoint D** (explicit commit
+confirmation)
 
-- **T3** — Brevo env vars + dependency. S
-- **T4** — `BrevoEmailSender` + `resolve-email-sender.ts` wiring. Verify the real `@getbrevo/brevo`
-  v6 client/method shape first (source-driven-development) — do not assume the shape from SPEC.md's
-  placeholder. M
+## Verification summary (end-to-end)
 
-**Checkpoint B** — same as Checkpoint A, for Brevo, plus regression: Resend path from Checkpoint A
-still passes unmodified. Commit.
-
-### Phase 3 — SendGrid
-
-- **T5** — SendGrid env vars + dependency. S
-- **T6** — `SendGridEmailSender` + `resolve-email-sender.ts` wiring (final `"auto"` order). M
-
-**Checkpoint C** — same as B, for SendGrid, plus regression: Resend and Brevo paths still pass. All
-three provider-specific `SPEC.md` success criteria now met. Commit.
-
-### Phase 4 — Docs, review, cleanup (`docs/rules/workflow.md` steps 4–8)
-
-- **T7** — `docs/documents/auth-email-providers-techstack.md` (new — SDK-vs-raw-fetch decision
-  table) + `docs/documents/auth-email-techstack.md` (add Resend/Brevo/SendGrid rows). S
-- **T8** — Update `docs/documents/auth.md` (email-sending section lists all 6 providers) + grep the
-  repo for any other place enumerating `gmail`/`smtp`/`console` as "the" provider list (e.g.
-  `.env.example` comments, `docs/api-reference.md` if it mentions `EMAIL_PROVIDER`) and update those
-  too — a fixed file list is exactly what went wrong in the JWT Bearer migration closeout. S–M
-- **T9** — Five-axis review (correctness, readability, architecture, security, performance) via
-  `agent-skills:code-reviewer`. Security axis must explicitly cover: no API key ever logged; a sender
-  for an unselected provider is never constructed/called; send failures aren't silently swallowed. S
-- **T10** — Cleanup: reduce `SPEC.md` back to a pointer at the new docs, per
-  `docs/rules/workflow.md`'s root-docs rule. XS
-
-**Checkpoint D (final)** — every success criterion in `SPEC.md` re-verified against shipped code
-(not against this checklist); `build`/`lint`/`test:cov` green; review findings resolved. Commit.
-
-## Risks and Mitigations
-
-| Risk | Impact | Mitigation |
-| --- | --- | --- |
-| Assumed Brevo SDK shape (from an AI-summarized README, not first-hand) is wrong | Med (wasted rewrite in T4) | T4 explicitly requires verifying the real `@getbrevo/brevo` v6 types/docs before writing code, not copying SPEC.md's placeholder |
-| A vendor SDK's client constructor eagerly validates/network-calls on an empty API key | Med (would break other providers when that key is unset) | Lazy construction inside `resolveEmailSender`'s branches (Architecture Decisions) — never constructed unless selected; Checkpoint A/B/C explicitly test the non-selected case |
-| Real vendor sends can't run in CI (need live API keys, cost money/quota) | Low | No e2e changes (SPEC.md); manual verification per provider at each checkpoint instead |
-| Trial/sandbox vendor accounts rate-limit or require sender-domain verification, making manual checks flaky | Low–Med | Use each vendor's test/sandbox mode where available; budget time for domain verification before Checkpoint A/B/C, not during |
-| `"auto"` order change is unreachable in practice (needs *no* `SMTP_HOST`/`GMAIL_CLIENT_ID` but a new key set) so gets under-tested | Low | Each checkpoint explicitly tests both the new-provider-selected path and the "nothing changed for existing deployments" regression |
-| Docs elsewhere still describe only 3 providers | Med (docs actively incomplete) | T8 is a repo-wide grep sweep, not a fixed file list — same lesson recorded from the token-blacklist closeout |
-
-## Notes found during implementation
-
-- **T2:** `resend`'s SDK (`resend.emails.send()`) does not throw on API failure — it resolves
-  `{ data: null, error: {...} }` instead, unlike `MailerService`/`GmailApiEmailSender` which throw.
-  SPEC.md's Code Style example didn't check the `error` field. `ResendEmailSender` now checks
-  `error` and throws explicitly, to preserve the "send failures propagate uncaught" architecture
-  decision. Worth checking whether Brevo/SendGrid's SDKs have the same resolve-not-throw shape when
-  T4/T6 verify their real client types.
-- **T6:** `@sendgrid/mail@8.1.6`'s `index.d.ts` confirms `export = mail` — the package exports a
-  module-level singleton `MailService` instance, not a constructor (unlike `Resend`/`BrevoClient`).
-  `SendGridEmailSender` calls `sgMail.setApiKey(...)` in its constructor instead of `new`-ing a
-  client. Verified `MailDataRequired`'s shape (`to`/`from`/`subject`/`html`) matches SPEC.md's
-  assumption. Traced `sgMail.send()` → `@sendgrid/client`'s `axios(...).catch(error => reject(...))`
-  — it rejects the returned promise on API failure, matching Brevo/SMTP/Gmail's
-  "propagate uncaught" contract, unlike Resend's `{data, error}` resolve-not-throw shape. No
-  explicit error-checking needed, same as `BrevoEmailSender`.
-- **T6 (test gotcha):** Because `@sendgrid/mail` exports a singleton object rather than a class,
-  mocking it by referencing an outer `const mockFn = jest.fn()` directly inside the `jest.mock(...)`
-  factory's returned object hits Jest's mock-hoisting TDZ (`jest.mock` calls are hoisted above
-  `const` declarations, so the factory runs before the outer `const` initializes) — this only
-  surfaces under real Jest (`bun run test`/`test:cov`), not Bun's own test runner (`bun test`), so
-  always verify with `bun run test`/`test:cov` per `tasks/todo.md`, not the faster `bun test`.
-  `Resend`/`BrevoClient`'s mocks dodge this by referencing the outer mock fn from inside a nested
-  `mockImplementation(() => (...))` closure (deferred until the constructor actually runs, well
-  after the outer `const` is initialized) — not available here since there's no constructor to mock.
-  Fixed by declaring the mocks inline inside the factory (no outer reference) and obtaining typed
-  handles afterward via `jest.mocked(sgMail.setApiKey)` / `jest.mocked(sgMail.send)`.
-
-## Open Questions
-
-1. Whether any of the three providers needs more config than a single API key (SPEC.md's one
-   remaining open item) — resolved per-provider at T2/T4/T6 against each SDK's actual minimal send
-   call, not guessed here.
-2. ~~Brevo's exact client/method shape (see Context) — resolved at T4, not before.~~ **Resolved at
-   T4**: `@getbrevo/brevo@6.0.3` ships a Fern-generated SDK. Verified against its shipped `.d.mts`
-   types (not the AI-summarized README): `new BrevoClient({ apiKey })` and
-   `client.transactionalEmails.sendTransacEmail({ sender: { email }, to: [{ email }], subject,
-   htmlContent })`, matching SPEC.md's original assumption. `sendTransacEmail` returns an
-   `HttpResponsePromise<T>` (a `Promise<T>` subclass — `await` resolves the parsed body directly, no
-   `.data` unwrap needed) and rejects with a `BrevoError`/`BrevoTimeoutError` on failure, so no
-   `{data, error}` conversion is needed — errors propagate uncaught exactly like
-   `SmtpEmailSender`/`GmailApiEmailSender`, unlike `ResendEmailSender`'s explicit throw.
+1. `bun run build && bun run lint && bun run test:cov` — no regressions from the Postgres-only refactor.
+2. `docker build apps/cms-api` (both targets) succeeds.
+3. Real measured image size via `docker image inspect`, with a documented breakdown if over 500MB (not
+   just a pass/fail number) — this is the user's explicit ask from the original request.
+4. Boot smoke test against a real local Postgres, `GET /health` → 200, confirmed non-root.
+5. Docs (`dockerfile.md`, `dockerfile-techstack.md`, `ENTRYPOINT.md`, stale-wording sweep) reviewed for
+   accuracy against what was actually built.

@@ -1,14 +1,8 @@
 import { plainToInstance, Transform } from "class-transformer";
 import { IsIn, IsInt, IsString, Min, MinLength, ValidateIf, validateSync } from "class-validator";
 
-export const SUPPORTED_DB_DRIVERS = ["postgresql", "mysql", "sqlite"] as const;
-export type DbDriver = (typeof SUPPORTED_DB_DRIVERS)[number];
-
 export class EnvironmentVariables {
   // DB Connection
-  @IsIn(SUPPORTED_DB_DRIVERS)
-  DB_DRIVER: DbDriver = "postgresql";
-
   @IsString()
   @MinLength(1)
   DB_HOST: string = "localhost";

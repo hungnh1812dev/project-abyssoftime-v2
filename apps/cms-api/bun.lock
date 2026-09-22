@@ -19,10 +19,7 @@
         "@nestjs/passport": "^11.0.5",
         "@nestjs/platform-express": "^11.1.28",
         "@nestjs/swagger": "^11.4.6",
-        "@prisma/adapter-better-sqlite3": "^7.9.0",
-        "@prisma/adapter-mariadb": "^7.9.0",
         "@prisma/adapter-pg": "^7.9.0",
-        "@prisma/client": "^7.9.0",
         "@prisma/client-runtime-utils": "^7.9.0",
         "@sendgrid/mail": "^8.1.6",
         "bcryptjs": "^3.0.3",
@@ -39,7 +36,6 @@
         "passport-http-bearer": "^1.0.1",
         "passport-jwt": "^4.0.1",
         "passport-local": "^1.0.0",
-        "prisma": "^7.9.0",
         "reflect-metadata": "^0.2.2",
         "resend": "^6.19.0",
         "rxjs": "^7.8.2",
@@ -50,6 +46,7 @@
         "@nestjs/cli": "^11.0.24",
         "@nestjs/schematics": "^11.1.0",
         "@nestjs/testing": "^11.1.28",
+        "@prisma/client": "^7.9.0",
         "@trivago/prettier-plugin-sort-imports": "^6.0.2",
         "@types/bcryptjs": "^3.0.0",
         "@types/bun": "latest",
@@ -70,6 +67,7 @@
         "plop": "^4.0.5",
         "pluralize": "^8.0.0",
         "prettier": "^3.9.6",
+        "prisma": "^7.9.0",
         "source-map-support": "^0.5.21",
         "supertest": "^7.2.2",
         "ts-jest": "^29.4.11",
@@ -455,10 +453,6 @@
     "@pkgjs/parseargs": ["@pkgjs/parseargs@0.11.0", "", {}, "sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg=="],
 
     "@pkgr/core": ["@pkgr/core@0.3.6", "", {}, "sha512-SEeaJLb3qBNF/OaXnaR1NmmBbFYk1zC0ZH/52fATcRPLFg/p791YrcyFFy44Bo9sLaGuSuLp5Q6axbb/O+v/RA=="],
-
-    "@prisma/adapter-better-sqlite3": ["@prisma/adapter-better-sqlite3@7.9.0", "", { "dependencies": { "@prisma/driver-adapter-utils": "7.9.0", "better-sqlite3": "^12.6.0" } }, "sha512-svUJDASC2X1MzFG1Wl2JQ5HcHVTxN8zZYj7quRIJ6P+Aa/+OXVkYooCu7WkypNceb91SoGbVeFiP8iMD3/3Ahg=="],
-
-    "@prisma/adapter-mariadb": ["@prisma/adapter-mariadb@7.9.0", "", { "dependencies": { "@prisma/driver-adapter-utils": "7.9.0", "mariadb": "3.4.5" } }, "sha512-KQ4pq3KDKHf4y+iYLwuJ72wabF3X+secWPP/1iEgLqnbH0WpLhVSeuKlbex3zDUzrcjKQHp8yXZC5VKpk6QFGw=="],
 
     "@prisma/adapter-pg": ["@prisma/adapter-pg@7.9.0", "", { "dependencies": { "@prisma/driver-adapter-utils": "7.9.0", "@types/pg": "^8.16.0", "pg": "^8.16.3", "postgres-array": "3.0.4" } }, "sha512-kPYuFvNTlqnaFf2UpXBBG3ycTT3PL76uSZtLFBEwDytjMMUW8ZHrsb9cSNIarzdPW5EXWmBOeOq9/MVjMtbWkA=="],
 
@@ -1712,8 +1706,6 @@
 
     "map-cache": ["map-cache@0.2.2", "", {}, "sha512-8y/eV9QQZCiyn1SprXSrCmqJN0yNRATe+PO8ztwqrvrbdRLA3eYJF0yaR0YayLWkMbsQSKWS9N2gPcGEc4UsZg=="],
 
-    "mariadb": ["mariadb@3.4.5", "", { "dependencies": { "@types/geojson": "^7946.0.16", "@types/node": "^24.0.13", "denque": "^2.1.0", "iconv-lite": "^0.6.3", "lru-cache": "^10.4.3" } }, "sha512-gThTYkhIS5rRqkVr+Y0cIdzr+GRqJ9sA2Q34e0yzmyhMCwyApf3OKAC1jnF23aSlIOqJuyaUFUcj7O1qZslmmQ=="],
-
     "math-intrinsics": ["math-intrinsics@1.1.0", "", {}, "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g=="],
 
     "mdn-data": ["mdn-data@2.0.28", "", {}, "sha512-aylIc7Z9y4yzHYAJNuESG3hfhC+0Ibp/MAMiaOZgNv4pmEdFyfZhhhny4MNiAfWdBQ1RQ2mfDWmM1x8SvGyp8g=="],
@@ -2623,10 +2615,6 @@
     "mailparser/iconv-lite": ["iconv-lite@0.7.2", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3.0.0" } }, "sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw=="],
 
     "mailparser/nodemailer": ["nodemailer@8.0.5", "", {}, "sha512-0PF8Yb1yZuQfQbq+5/pZJrtF6WQcjTd5/S4JOHs9PGFxuTqoB/icwuB44pOdURHJbRKX1PPoJZtY7R4VUoCC8w=="],
-
-    "mariadb/iconv-lite": ["iconv-lite@0.6.3", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3.0.0" } }, "sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw=="],
-
-    "mariadb/lru-cache": ["lru-cache@10.4.3", "", {}, "sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ=="],
 
     "micromatch/picomatch": ["picomatch@2.3.2", "", {}, "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA=="],
 
