@@ -58,14 +58,14 @@ untouched by this work.
   - Files: `package.json`, `bun.lock`
   - Deps: T1 (code must stop importing the adapters first). Size: S
 
-- [ ] **Checkpoint A** — `bun run build && bun run lint && bun run test:cov` all green, no regressions.
+- [x] **Checkpoint A** — `bun run build && bun run lint && bun run test:cov` all green, no regressions.
   Confirm no remaining `DB_DRIVER`/`SUPPORTED_DB_DRIVERS`/`adapter-mariadb`/`adapter-better-sqlite3`/
   `better-sqlite3` references anywhere in `src/`, `scripts/`, `prisma.config.ts`, `.env.example` (grep
   clean). Commit.
 
 ## Phase 2 — Dockerfile
 
-- [ ] **T6 — `apps/cms-api/Dockerfile`.** Multi-stage, `# syntax=docker/dockerfile:1`, stage-banner
+- [x] **T6 — `apps/cms-api/Dockerfile`.** Multi-stage, `# syntax=docker/dockerfile:1`, stage-banner
   comments matching `apps/cms-admin/Dockerfile`'s style:
   1. `deps` — `FROM oven/bun:1-alpine`, `bun install --frozen-lockfile`.
   2. `build` — from `deps`, copy source, `bun run prisma:generate`, `bun run build`.
@@ -80,7 +80,7 @@ untouched by this work.
   - Files: `apps/cms-api/Dockerfile`
   - Deps: T5 (needs the slimmed `package.json`). Size: M
 
-- [ ] **T7 — `apps/cms-api/.dockerignore`.** Exclude `node_modules`, `dist`, `coverage`, `.git`,
+- [x] **T7 — `apps/cms-api/.dockerignore`.** Exclude `node_modules`, `dist`, `coverage`, `.git`,
   `.gitignore`, `*.md`, `.env*`, `.vscode`, `test`, `docs`, `tasks`, `plop-templates`, `Dockerfile`,
   `.dockerignore`.
   - Acceptance: none of the above end up in the build context (spot-check via
@@ -89,11 +89,22 @@ untouched by this work.
   - Files: `apps/cms-api/.dockerignore`
   - Deps: none (pairs with T6). Size: XS
 
-- [ ] **Checkpoint B** — `docker image inspect abyssoftime-cms-api:latest --format='{{.Size}}'`
-  recorded. **If ≤500MB**: done. **If over**: run `docker history` (or `dive`) and write a concrete
-  per-layer breakdown + next options (not just the number) into `SPEC.md`/this file. Boot smoke test:
-  run `runner` against a local Postgres with required env vars set, confirm `GET /health` returns 200.
-  Confirm the container runs as non-root (`docker run ... whoami`). Commit.
+- [x] **Checkpoint B** — `docker image inspect abyssoftime-cms-api:latest --format='{{.Size}}'`
+  recorded: **438.50 MB**, under the 500MB budget. Boot smoke test: ran `runner` against a fresh local
+  Postgres container with required env vars set — `GET /health` returned 200, seed data logged, app
+  started cleanly. Confirmed non-root (`docker run ... whoami` → `bun`). `migrator` target verified
+  end-to-end (applied all 7 pending migrations against the fresh DB).
+
+  **Unplanned fix required to get here** — found and fixed a pre-existing bug, not part of the
+  original DB-driver refactor scope: `nest build` (plain `tsc`) does not rewrite the `@/*` → `src/*`
+  path aliases used throughout `src/` into relative paths in the emitted `dist/*.js`; at runtime Bun
+  can't resolve the literal `"@/..."` specifier and crashes (`Cannot find module '@/...'`). This
+  reproduced inside a clean container even outside Docker concerns (ran `bun run build` fresh in the
+  `migrator` image) — meaning `bun run start:prod` was already broken in any environment other than
+  the original dev machine, never previously exercised. Confirmed with the user before fixing (out of
+  the originally-scoped files). Fix: added `tsc-alias` as a devDependency, changed `"build"` to
+  `"nest build && tsc-alias -p tsconfig.build.json"` — verified zero `"@/` references remain in `dist/`
+  after a clean rebuild, full test suite/lint/build still green.
 
 ## Phase 3 — Docs & spec
 

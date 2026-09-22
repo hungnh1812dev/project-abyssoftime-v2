@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+.git
+.gitignore
+*.md
+.env*
+.vscode
+test
+docs
+tasks
+plop-templates
+Dockerfile
+.dockerignore
