@@ -400,6 +400,7 @@ jobs:
   cms-api-ghcr-publish:
     name: CMS API Deploy - GHCR
     runs-on: ubuntu-latest
+    environment: Production
     needs: [cms-api-build]
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     permissions:
