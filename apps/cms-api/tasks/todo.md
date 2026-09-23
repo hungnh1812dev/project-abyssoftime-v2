@@ -144,7 +144,13 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
 
 ## Phase 4: Docs, rules, wrap-up
 
-- [ ] **Task 7: Deployment doc**
+- [x] **Task 7: Deployment doc**. Done: `check-doc.sh` passes 33/33 (naming contract, all 7
+  variables, prerequisites, owner setup incl. placeholders and the app/-outside-bootstrap rule,
+  migration `helm uninstall` of both releases, day-2 ops, `run_number` and command/CMD caveats,
+  GHCR visibility, no helmfile commands). The old doc was deleted after your Yes. Correction
+  found while writing: a rollback must `flux suspend image update` first, because a plain revert
+  gets overwritten by the automation. The SPEC user story is fixed. Dangling links are left for
+  Task 8 (the techstack doc) and Task 9 (`ENTRYPOINT.md`).
   - Acceptance:
     - `docs/documents/cms-api-flux-deployment.md` replaces `cms-api-k3s-deployment.md`
       (the old file is deleted, ask first).
@@ -158,7 +164,13 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
     `docs/documents/cms-api-k3s-deployment.md` (delete)
   - Deps: Tasks 1–6 · Size: S
 
-- [ ] **Task 8: Techstack decision doc**
+- [x] **Task 8: Techstack decision doc**. Done: `check-techstack.py` passes (all required topics,
+  8 sections, each an options × criteria table with one `**Verdict**` row and exactly one
+  `**Chosen`). Covers delivery (Flux/helmfile/Argo CD/CI push), tag delivery (automation/manual
+  bump/`latest`), rendering (plain/HelmRelease), manifest home (separate repo/this repo), project
+  info (ConfigMap/Secret/Git), tag format, the `PORT` injection and the migrator suffix. The old
+  doc was deleted after your Yes, and its history is referenced as
+  `git show c1168e6:…` (verified to exist).
   - Acceptance:
     - `docs/documents/cms-api-flux-deployment-techstack.md` replaces
       `cms-api-k3s-deployment-techstack.md` (delete, ask first).
@@ -170,7 +182,14 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
   - Files: the 2 techstack docs
   - Deps: Task 7 · Size: S
 
-- [ ] **Task 9: Rule, index and cross-refs**
+- [x] **Task 9: Rule, index and cross-refs**. Done: `check-t9.sh` passes (no stale refs in the
+  rule, `ENTRYPOINT.md`, `dockerfile.md` or the memory file and index, apart from whitelisted history;
+  the index links both new docs with no dangling links; the rule covers the manual Secret/ConfigMap and
+  forbids cluster commands incl. `--dry-run=client`; `dockerfile.md` and the Dockerfile `CMD` comment
+  point at the Deployment `command`). Also fixed stale `dockerfile.md` text not in the plan: the
+  `APP_PORT` build-arg paragraph and build command (dead since `62438de`), and the migrator described
+  as a k8s `Job` (it's now the `init` container, `<tag>-init`). The repo sweep only finds
+  intentional historical mentions, and all 6 check scripts pass together.
   - Acceptance:
     - `docs/rules/k8s-secrets.md` describes the manual Secret and ConfigMap flow: agents never
       touch `k8s/.env*` other than `.env.example`, and never create cluster objects.
@@ -188,9 +207,9 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
   - Deps: Tasks 7–8 · Size: S
 
 ### Checkpoint: Complete
-- [ ] Every SPEC Success Criterion is ticked.
+- [x] Every SPEC Success Criterion is ticked.
 - [ ] Five-axis review (`/review`).
 - [ ] Reduce `apps/cms-api/SPEC.md` back to the minimal pointer (workflow step 7).
-- [ ] Commit (Yes/No confirmation).
+- [x] Commit (Yes/No confirmation). Phase 4 committed before `/review` at your request; review + SPEC reduction still open.
 - [ ] Owner, manual: create the namespace, Secret and ConfigMap, copy `k8s/flux/` to the GitOps
       repo, run the migration, then check that the first master push rolls the Deployment.

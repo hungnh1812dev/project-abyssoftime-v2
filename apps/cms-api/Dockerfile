@@ -51,4 +51,5 @@ COPY --chown=abyssdev:abyssdev package.json ./
 USER abyssdev
 
 # No HEALTHCHECK — k8s liveness/readiness probes target GET /health instead.
+# Repeated in k8s/flux/app/deployment.yaml's `command` (which sets PORT first) — change both together.
 CMD ["bun", "dist/src/main"]

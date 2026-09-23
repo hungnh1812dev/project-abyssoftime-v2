@@ -29,8 +29,9 @@ Five stages, two build targets — `runner` (default) and `migrator`:
    install is already clean.
 4. **`migrator`** (from `deps`, **not** part of the 500MB budget) — copies the full source,
    `CMD ["bun", "run", "prisma:migrate:deploy"]`. Carries the `prisma` CLI and its full dependency tree
-   deliberately — this target is built and run as a one-off job (a k8s `Job`, a CI step), never the
-   always-on production image, so its size doesn't matter the way `runner`'s does.
+   deliberately. This target runs to completion (in k3s, as the Deployment's `init` container, tag
+   `<tag>-init`) and is never the always-on production image, so its size doesn't matter the way
+   `runner`'s does.
 5. **`runner`** (**default target — must stay the last stage in the file**; see "Docker gotcha" below)
    — `ENV NODE_ENV=production`, creates a dedicated non-root `abyssdev` system user/group
    (`addgroup -S abyssdev && adduser -S -G abyssdev abyssdev`), copies `node_modules` from `prod-deps`,
@@ -68,17 +69,18 @@ required-vs-optional split maps directly to k8s `Secret` (required: `JWT_ACCESS_
 `JWT_REFRESH_SECRET`, `COOKIE_SECURE`, `COOKIE_SAMESITE`, `CORS_ORIGINS`, plus whichever
 `STORAGE_PROVIDER`/`EMAIL_PROVIDER` credentials are selected) vs. `ConfigMap` (everything with a
 default) keys. `PORT` (not `SERVER_PORT` — a pre-existing, unrelated dead-config issue, see
-`SPEC.md` §8) controls the listen port. The `runner` stage requires an `APP_PORT` build arg (no default,
-the build fails without it; same name as in the k8s env file), which sets both `EXPOSE` and the image's
-default `PORT`. Pass it from the environment with a bare `--build-arg APP_PORT`. CI passes the
-`CMS_API_APP_PORT` repo variable. `EXPOSE` is fixed at build time; a runtime `-e PORT=...` still
-changes the listen port but not the exposed-port metadata. The `migrator` target doesn't need it.
+`SPEC.md` §8) controls the listen port, defaulting to `3000` in `src/main.ts`. The image takes no
+build args and has no `EXPOSE`/`PORT`. In k3s, the Flux Deployment sets `PORT` from the ConfigMap's
+`APP_PORT`: it overrides the container `command` with
+`sh -c "PORT=${APP_PORT} exec bun dist/src/main"` (see
+[cms-api-flux-deployment.md](./cms-api-flux-deployment.md)). **That `command` repeats the runner
+`CMD`**, so a change to the `CMD` must also go into `k8s/flux/app/deployment.yaml`.
 
 ## Building and running
 
 ```sh
-# Production app image (default target = runner). APP_PORT is required, read from the shell env
-APP_PORT=3000 docker build --build-arg APP_PORT -t abyssoftime-cms-api:latest apps/cms-api
+# Production app image (default target = runner)
+docker build -t abyssoftime-cms-api:latest apps/cms-api
 
 # Migration job image
 docker build --target migrator -t abyssoftime-cms-api:migrator apps/cms-api
@@ -96,8 +98,9 @@ docker run --rm -p 3000:3000 \
   abyssoftime-cms-api:latest
 ```
 
-In k8s, apply `migrator` as a `Job` (or a CI/CD pipeline step) that runs to completion **before** the
-`Deployment` using `runner` rolls out — see
+In k3s, CI publishes `migrator` as `<repo>:<tag>-init` next to the runner's `<repo>:<tag>`, and the
+Flux Deployment runs it as the `init` container, so it completes **before** the app container starts
+on every pod start. See
 [dockerfile-techstack.md](./dockerfile-techstack.md#migrations-strategy-separate-migrator-target-chosen-vs-migrate-on-boot-in-runner)
 for why migrations are a separate target rather than baked into `runner`'s boot sequence.
 

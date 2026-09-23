@@ -23,7 +23,9 @@ Replace the manual helmfile deploy of cms-api to k3s with **GitOps via Flux**:
   tag, commits it to the GitOps repo, and rolls the Deployment. I run no deploy command.
 - **As the owner**, I create the namespace, Secret, and ConfigMap once with `kubectl`, and
   Flux does everything else.
-- **As the owner**, I roll back by reverting the tag commit in the GitOps repo.
+- **As the owner**, I roll back by suspending image automation
+  (`flux suspend image update <full-app-name>`), then reverting or pinning the tag commit in the
+  GitOps repo. A revert alone gets overwritten by the newest tag within 5 minutes.
 - **As a reader of this repo**, I find no app name, namespace, port, or image repo hardcoded in
   manifests or CI.
 
@@ -265,17 +267,17 @@ No unit tests. This is infra config. Verification:
 
 ## Success Criteria
 
-- [ ] `k8s/helmfile.yaml.gotmpl`, `k8s/values.yaml.gotmpl`, and `k8s/secrets-chart/` are gone,
+- [x] `k8s/helmfile.yaml.gotmpl`, `k8s/values.yaml.gotmpl`, and `k8s/secrets-chart/` are gone,
       and no doc mentions helmfile as the current deploy path.
-- [ ] `k8s/flux/` passes Testing steps 1–5.
-- [ ] CI publishes only `<run_number>-<sha7>` and `<run_number>-<sha7>-init`, with `-init`
+- [x] `k8s/flux/` passes Testing steps 1–5.
+- [x] CI publishes only `<run_number>-<sha7>` and `<run_number>-<sha7>-init`, with `-init`
       pushed first and the repo taken from `vars.CMS_API_IMAGE_REPO`.
-- [ ] `k8s/.env.example` has no `APP_*` keys, and `k8s/config.env.example` lists exactly the six
+- [x] `k8s/.env.example` has no `APP_*` keys, and `k8s/config.env.example` lists exactly the six
       ConfigMap keys.
-- [ ] Docs cover the naming contract, owner prerequisites, migration, rollback, and Secret-change
+- [x] Docs cover the naming contract, owner prerequisites, migration, rollback, and Secret-change
       restart. The techstack doc compares Flux vs helmfile, image automation vs a manual tag, and
       plain manifests vs the shared chart.
-- [ ] `apps/cms-api` lint, test, and build pass.
+- [x] `apps/cms-api` lint, test, and build pass.
 
 ## Open Questions
 
