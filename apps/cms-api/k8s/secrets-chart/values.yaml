@@ -1,0 +1,3 @@
+# Both are set by helmfile.yaml.gotmpl — never fill in real values here.
+secretName: ""
+env: {}

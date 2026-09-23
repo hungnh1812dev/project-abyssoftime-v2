@@ -9,10 +9,11 @@ each piece was chosen. For the image itself, see [dockerfile.md](./dockerfile.md
 
 | File | Role |
 | --- | --- |
-| `apps/cms-api/k8s/helmfile.yaml.gotmpl` | OCI repository entry (`ghcr.io/hungnh1812dev`) + one release using `helmfile-chart-template` with **no `version:`**. Reads the identity values (name, namespace, env, port) from required `APP_*` env vars and derives the release name and namespace from them |
+| `apps/cms-api/k8s/helmfile.yaml.gotmpl` | OCI repository entry (`ghcr.io/hungnh1812dev`) + two releases: `<name>-secrets` (local `secrets-chart`, the Secret built from `k8s/.env`) and `<name>` (`helmfile-chart-template`, **no `version:`**, `needs` the Secret release). Reads the identity values (name, namespace, env, port) from required `APP_*` env vars and derives the release names and namespace from them |
+| `apps/cms-api/k8s/secrets-chart/` | Tiny local chart: one `Secret` whose `stringData` is the `env` map helmfile parsed from `k8s/.env` |
 | `apps/cms-api/k8s/values.yaml` | The rest of cms-api's chart values: images, resources, secrets, init container, probes |
-| `apps/cms-api/k8s/secret.example.yaml` | Committed template for the Namespace + Secret (placeholders only) |
-| `apps/cms-api/k8s/secret.yaml` | Real values, gitignored, applied by hand. Agents never touch it (see `docs/rules/k8s-secrets.md`) |
+| `apps/cms-api/k8s/.env.example` | Committed template for `k8s/.env`: the `APP_*` block with prod values plus every runtime key |
+| `apps/cms-api/k8s/.env` | Gitignored. The single source for both the `APP_*` identity vars and every runtime config/secret key. Agents never touch it (see `docs/rules/k8s-secrets.md`) |
 | `.github/workflows/ci.yml` → `cms-api-ghcr-publish` | Builds and pushes both images on every `master` push that changes cms-api |
 
 ## The chart: shared, external, unpinned
@@ -55,7 +56,8 @@ Resulting names with the cms-api prod values:
 | --- | --- |
 | Deployment, Service, helmfile release | `abyssoftime-cms-api-prod` |
 | Namespace | `abyssoftime-prod`. The chart **fails** the render unless the release namespace equals `<appNamespace>-<appEnv>` |
-| Secret (pre-existing, never created by the chart) | `abyssoftime-cms-api-secrets-prod`. Fixed by the chart; no override |
+| Secret (created by the `-secrets` release, referenced by the app chart) | `abyssoftime-cms-api-secrets-prod`. The app chart fixes the name; no override |
+| Secret release | `abyssoftime-cms-api-prod-secrets` |
 
 ## What the render contains
 
@@ -80,12 +82,27 @@ setting **does not apply to init containers**. Kubernetes defaults to `Always` o
 exactly `latest`, so `latest-migrate` would default to `IfNotPresent` and keep running stale
 migrations. `values.yaml` therefore sets `imagePullPolicy: Always` on the init container explicitly.
 
-### `appPort` vs. `PORT`
+## The Secret, from `k8s/.env`
 
-The app listens on `process.env.PORT`, which comes from the Secret. The chart's `appPort`
-(`containerPort`, probes, Service port) is a separate plain value, because Helm can't read a
-Secret's value at render time. **`APP_PORT` (`3000` for prod) must equal the Secret's `PORT`**. Nothing
-enforces it, so change them together.
+`helmfile.yaml.gotmpl` reads `k8s/.env` with `readFile` and parses it line by line into a map that
+becomes the Secret's `stringData`:
+
+- One `KEY=VALUE` per line. Blank lines and `#` comment lines are skipped, and a leading `export ` is
+  dropped. The value is everything after the first `=`, with one pair of surrounding `"` or `'`
+  stripped. No multi-line values, no inline `# comments`.
+- `APP_*` keys are left out (they're helmfile's identity vars, not app config).
+- Keys with an **empty** value are left out, so the app sees them as unset and falls back to its
+  defaults (e.g. no `SMTP_HOST` means the console email sender), exactly as with a blank `.env.example` entry.
+- `PORT` is always set from `APP_PORT`, overriding any `PORT` line. The app listens on
+  `process.env.PORT` while the chart's `appPort` drives `containerPort`, probes and the Service port,
+  so deriving one from the other keeps them from drifting apart.
+
+`k8s/.env.example` is the template; the keys the app accepts are documented in `apps/cms-api/.env.example`. `helmfile diff` shows Secret
+changes masked (helm-diff's default), not in plain text. The values are stored in-cluster in Helm's
+release Secret, same as any Helm-managed Secret.
+
+A Secret change alone doesn't restart pods (`envFrom` is only read at container start), so run a
+`rollout restart` after changing `.env`.
 
 ## Images (GHCR)
 
@@ -108,7 +125,7 @@ schema. Both images carry the `org.opencontainers.image.source` label, which lin
 to this repo.
 
 `apps/cms-api/.dockerignore` excludes `k8s/` (helmfile, values and secrets all live there), so a local `docker build` can't bake
-the operator's real `k8s/secret.yaml` into an image through `COPY . .`.
+the operator's real `k8s/.env` into an image through `COPY . .`.
 
 The branch decides where cms-api goes. Both paths require cms-api to have changed.
 
@@ -128,17 +145,25 @@ public, or add an `imagePullSecrets` registry credential. The chart has no value
 
 ## Operator flow
 
-First deploy:
+Deploy (first time or any later change to `.env`/values). Copy `k8s/.env.example` to `k8s/.env` and fill it
+in first. helmfile creates the namespace, then the
+Secret release, then the app release:
 
 ```
-# 1. Namespace + Secret (copy secret.example.yaml → secret.yaml, fill in the placeholders first)
-kubectl apply -f apps/cms-api/k8s/secret.yaml
-
-# 2. Release
 cd apps/cms-api/k8s
 set -a && . ./.env && set +a          # APP_NAME, APP_SERVICE_NAME, APP_NAMESPACE, APP_ENV, APP_PORT
 helmfile cache cleanup && helmfile diff
 helmfile cache cleanup && helmfile apply
+```
+
+**One-time switch from the old hand-applied Secret** (the removed `secret.yaml`): Helm refuses to take over a Secret it didn't
+create (`invalid ownership metadata`). Hand the existing one to the new release first. Pods keep
+running with no downtime:
+
+```
+kubectl -n abyssoftime-prod label secret abyssoftime-cms-api-secrets-prod app.kubernetes.io/managed-by=Helm
+kubectl -n abyssoftime-prod annotate secret abyssoftime-cms-api-secrets-prod \
+  meta.helm.sh/release-name=abyssoftime-cms-api-prod-secrets meta.helm.sh/release-namespace=abyssoftime-prod
 ```
 
 After CI pushes new images, the `latest` tags are unchanged, so `helmfile apply` renders identical
@@ -167,7 +192,10 @@ are not managed by helmfile. Remove them by hand once the new release is healthy
   renders everything above: names, namespace, init-container order, `envFrom` on both containers,
   `Always` on both images, `/health` probes with the listed timings, resources, and Service
   `3000`.
-- `secret.example.yaml` parses as a Namespace + Secret (20 keys) whose names match the render.
+- With a fake env file, the `-secrets` release renders `abyssoftime-cms-api-secrets-prod` with
+  comments, `APP_*` keys and empty values dropped, `export ` and quotes stripped, `=` inside a value
+  kept, and `PORT` taken from `APP_PORT`. `helmfile list` shows both releases, and the full
+  `helmfile template` renders the Secret release before the app, whose `envFrom` names the same Secret.
 - `ci.yml` parses. Compared with the Render-only workflow, the only changes are the new job and one
   `if` clause. The job itself only runs on a real `master` push with GHCR credentials.
 - Not verified here (manual, by the operator): an actual `helmfile apply` against the live cluster.
