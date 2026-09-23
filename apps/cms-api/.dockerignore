@@ -8,7 +8,7 @@ src/prisma/application/client
 .gitignore
 *.md
 .env*
-# k8s/secret.yaml holds real deployment secrets — never let `COPY . .` bake it into an image
+# k8s/.env holds real deployment secrets — never let `COPY . .` bake it into an image
 k8s
 .vscode
 test

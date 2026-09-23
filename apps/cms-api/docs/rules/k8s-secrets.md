@@ -1,13 +1,14 @@
 # k8s Secret File Rules
 
-`apps/cms-api/k8s/secret.yaml` holds real, private deployment secrets (DB credentials, JWT
-signing keys, third-party API keys) filled in by the user, never generated or filled in by an
-agent. It is gitignored — see `apps/cms-api/.gitignore`.
+cms-api's real, private deployment secrets (DB credentials, JWT signing keys, third-party API keys)
+live in `apps/cms-api/k8s/.env`, filled in by the user and never generated or filled in by an agent.
+`helmfile.yaml.gotmpl` renders the k8s Secret from it. It is gitignored — see `apps/cms-api/.gitignore`.
 
-- **Never read, edit, create, or delete `apps/cms-api/k8s/secret.yaml`.** Not even to check its
-  current values, verify a fix, or "just look." Treat it exactly like a `.env` file.
-- `apps/cms-api/k8s/secret.example.yaml` is the only file an agent should read or edit — it is
-  the committed template, placeholders only, no real values. Any change to what env vars the
-  Secret needs (new var, renamed var, changed default) belongs there, not in `secret.yaml`.
-- If a task seems to require touching `secret.yaml` (e.g. "fix my DB_HOST"), stop and tell the
-  user what needs to change and why — they update `secret.yaml` themselves.
+- **Never read, edit, create, or delete `apps/cms-api/k8s/.env`** (covered by the global `.env*`
+  rule too). Not even to check its current values, verify a fix, or "just look." To test the
+  helmfile parsing, render against a fake env file somewhere else.
+- `apps/cms-api/k8s/.env.example` is the committed template (placeholders only) and the only one an
+  agent should edit. Any change to what env vars the app needs (new var, renamed var, changed
+  default) goes in both it and `apps/cms-api/.env.example`.
+- If a task seems to require touching `k8s/.env` (e.g. "fix my DB_HOST"), stop and tell the user
+  what needs to change and why — they update it themselves.
