@@ -81,8 +81,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-api
-    needs: [change-detecter, cms-api-install]
-    if: needs.change-detecter.outputs.cms-api == 'true'
+    needs: [cms-api-install]
 
     steps:
       - name: Checkout
@@ -111,8 +110,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-api
-    needs: [change-detecter, cms-api-lint]
-    if: needs.change-detecter.outputs.cms-api == 'true'
+    needs: [cms-api-lint]
 
     steps:
       - name: Checkout
@@ -141,8 +139,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-api
-    needs: [change-detecter, cms-api-test]
-    if: needs.change-detecter.outputs.cms-api == 'true'
+    needs: [cms-api-test]
 
     steps:
       - name: Checkout
@@ -198,8 +195,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-admin
-    needs: [change-detecter, cms-admin-install]
-    if: needs.change-detecter.outputs.cms-admin == 'true'
+    needs: [cms-admin-install]
 
     steps:
       - name: Checkout
@@ -228,8 +224,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-admin
-    needs: [change-detecter, cms-admin-lint]
-    if: needs.change-detecter.outputs.cms-admin == 'true'
+    needs: [cms-admin-lint]
 
     steps:
       - name: Checkout
@@ -258,8 +253,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-admin
-    needs: [change-detecter, cms-admin-test]
-    if: needs.change-detecter.outputs.cms-admin == 'true'
+    needs: [cms-admin-test]
 
     steps:
       - name: Checkout
@@ -315,8 +309,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/frontend
-    needs: [change-detecter, frontend-install]
-    if: needs.change-detecter.outputs.frontend == 'true'
+    needs: [frontend-install]
 
     steps:
       - name: Checkout
@@ -345,8 +338,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/frontend
-    needs: [change-detecter, frontend-lint]
-    if: needs.change-detecter.outputs.frontend == 'true'
+    needs: [frontend-lint]
 
     steps:
       - name: Checkout
@@ -380,8 +372,7 @@ jobs:
       # data for every route that imports it (even dynamic, non-prerendered ones) — this job never
       # deploys the build, so the value just needs to be set, not match the real Vercel secret.
       AUTH_SECRET: ${{ secrets.AUTH_SECRET || 'ci-build-only-placeholder-not-used-at-runtime' }}
-    needs: [change-detecter, frontend-test]
-    if: needs.change-detecter.outputs.frontend == 'true'
+    needs: [frontend-test]
 
     steps:
       - name: Checkout
@@ -407,7 +398,7 @@ jobs:
   # master → GHCR images for the k3s deployment (staging keeps deploying to Render, see below). Only
   # pushes images — rolling them out to k3s stays manual (see apps/cms-api/k8s/helmfile.yaml.gotmpl).
   cms-api-ghcr-publish:
-    name: CMS API - Publish Images to GHCR
+    name: CMS API Deploy - GHCR
     runs-on: ubuntu-latest
     needs: [cms-api-build]
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
@@ -439,6 +430,8 @@ jobs:
           context: apps/cms-api
           target: runner
           push: false
+          # Required by the Dockerfile (EXPOSE + default PORT). Keep equal to APP_PORT in k8s/.env.
+          build-args: APP_PORT=${{ vars.CMS_API_APP_PORT }}
           labels: org.opencontainers.image.source=https://github.com/hungnh1812dev/project-abyssoftime-v2
           tags: |
             ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest
