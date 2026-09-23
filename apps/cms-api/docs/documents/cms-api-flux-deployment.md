@@ -99,7 +99,19 @@ away.
 
 - The job builds both targets first, then pushes `-init` **before** the app tag. Flux only follows
   the app tag, so it never sees one whose migrations aren't in the registry yet.
-- There are no `latest` tags. Every tag is immutable and names one commit.
+- There are no `latest` tags. Every tag is immutable and names one commit. Re-pushing `latest`
+  wouldn't save storage anyway: the old image stays in GHCR as an untagged version.
+- **Cleanup (opt-in):** when the repo variable **`CMS_API_GHCR_CLEANUP`** is `true`, the job ends
+  by running `actions/delete-package-versions@v5`. It keeps the newest **10 versions** (5 releases,
+  app + `-init`) and deletes everything older, tagged or not. The package name and owner are
+  derived from `CMS_API_IMAGE_REPO`.
+  - Turn it on only **after** the helmfile migration. The first run also deletes the old
+    `latest`/`latest-migrate` images that the Helm deploy pulls.
+  - Tags can't be protected: for containers, the action matches `ignore-versions` against the
+    digest, not the tag.
+  - It needs the package to grant this repo the **Admin** role (package settings → Manage Actions
+    access). Otherwise the step fails after the images are already pushed.
+  - Public packages are free on GHCR, so cleanup only bounds how much piles up.
 - **`run_number` caveat:** the counter belongs to the workflow file. If you rename `ci.yml`, it
   restarts at 1. Flux would then keep the old, higher tag and ignore every new one until the
   numbers pass it. If you rename the file, raise the numbers first, e.g. by prefixing the tag with
@@ -146,6 +158,8 @@ Prerequisites, all outside this repo:
    ImageUpdateAutomation needs to push.
 3. The `CMS_API_IMAGE_REPO` repo variable is set in this repo (Settings → Secrets and variables →
    Actions → Variables). `CMS_API_APP_PORT` is no longer used and can be deleted.
+   `CMS_API_GHCR_CLEANUP=true` is optional and should only be set after the migration (see Images).
+   It also needs this repo to have the Admin role on the package.
 4. The GHCR package is public (see Images).
 
 Then create the cluster inputs **before** pushing the manifests:
@@ -227,7 +241,8 @@ apply.
   # <run_number>-<sha7>) and push
   flux reconcile kustomization <full-app-name> --with-source
   ```
-  Once a fixed image is pushed, run `flux resume image update <full-app-name>`. The init container
+  Once a fixed image is pushed, run `flux resume image update <full-app-name>`. With cleanup on,
+  only the last 5 releases still exist in GHCR, so you can't pin anything older. The init container
   runs *forward* migrations only, so rolling back past a schema change needs a manual DB fix.
 - **Reach it** (there's no Ingress):
   `kubectl -n <full-namespace> port-forward svc/<full-app-name> <port>:<port>`.

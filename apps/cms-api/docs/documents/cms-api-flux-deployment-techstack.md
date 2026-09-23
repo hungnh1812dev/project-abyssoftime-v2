@@ -78,6 +78,20 @@ literal reference to start from, so the owner fills in `<full-app-name>` there w
 | Failure mode | Renaming `ci.yml` resets the counter, and Flux ignores new tags until the numbers pass the old ones | Clock skew between runners (negligible) | — | Someone has to bump versions |
 | **Verdict** | **Chosen (user decision)**: readable and maps to the CI run. The reset caveat is documented | Documented fallback if the workflow is ever renamed | Rejected: Flux can't order it | Rejected: no release process to drive it |
 
+## GHCR storage: unique tags + opt-in cleanup (chosen) vs. `latest` only vs. no cleanup
+
+The user is on a free GitHub account. According to GitHub's billing docs, GitHub Packages is free
+for public packages, and container image storage is "currently free". Private packages on other
+registries get 500MB on Free.
+
+| Criteria | `<run_number>-<sha7>` + `delete-package-versions` keeping 10 (chosen) | `latest` / `latest-init` only | Unique tags, no cleanup |
+| --- | --- | --- | --- |
+| Storage over time | Bounded: 10 versions | **Unbounded**: each re-push leaves the old image as an untagged version | Unbounded |
+| Flux image automation | Works | Breaks: the tag never changes, so there's nothing to detect | Works |
+| Rollback | The last 5 releases | None (only whatever is `latest`) | Any release |
+| Risk | The first run deletes the pre-Flux `latest` images, hence the opt-in `CMS_API_GHCR_CLEANUP` variable. Needs the Admin role on the package | Manual `rollout restart` per release | None |
+| **Verdict** | **Chosen (user decision, keep 5 releases)** | Rejected: doesn't reduce storage, and it breaks auto-deploy | Rejected: storage keeps growing |
+
 ## Setting `PORT`: shell wrapper in `command` (chosen) vs. `env` value vs. `PORT` in the Secret vs. fixed port
 
 Flux substitutes after kustomize has dropped quotes, then converts YAML to JSON

@@ -465,6 +465,31 @@ jobs:
           docker push "$IMAGE:$TAG-init"
           docker push "$IMAGE:$TAG"
 
+      # Keep GHCR storage bounded: keep the newest 10 versions (5 releases = app + -init each) and
+      # delete everything older, tagged or not. Opt-in via the CMS_API_GHCR_CLEANUP repo variable
+      # ('true'), because the first run also deletes the old `latest`/`latest-migrate` images the
+      # pre-Flux helm deploy pulls. Needs the package's "Manage Actions access" to give this repo the
+      # Admin role.
+      - name: Resolve package name
+        id: pkg
+        if: vars.CMS_API_GHCR_CLEANUP == 'true'
+        env:
+          IMAGE: ${{ vars.CMS_API_IMAGE_REPO }}
+        run: |
+          # ghcr.io/<owner>/<package...> → owner=<owner>, name=<package...>
+          path="${IMAGE#*/}"
+          echo "owner=${path%%/*}" >> "$GITHUB_OUTPUT"
+          echo "name=${path#*/}" >> "$GITHUB_OUTPUT"
+
+      - name: Delete old image versions
+        if: vars.CMS_API_GHCR_CLEANUP == 'true'
+        uses: actions/delete-package-versions@v5
+        with:
+          owner: ${{ steps.pkg.outputs.owner }}
+          package-name: ${{ steps.pkg.outputs.name }}
+          package-type: container
+          min-versions-to-keep: 10
+
   deploy-cms-api:
     name: Deploy CMS API
     runs-on: ubuntu-latest

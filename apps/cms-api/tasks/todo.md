@@ -219,6 +219,16 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
     memory. `check-yaml-templates.py` passes 21/21, and all 6 checks are green.
   - `SPEC.md` still describes the env-file flow and is reduced at cleanup.
 
+- [x] **Task 11 (follow-up request): GHCR storage**. You asked for `latest` to save storage. Kept
+  the unique tags instead, because re-pushing `latest` leaves every old image as an untagged version
+  and breaks Flux image automation. GitHub's billing docs also say public packages are free.
+  - Added opt-in cleanup to `cms-api-ghcr-publish` using `actions/delete-package-versions@v5`: keep
+    10 versions (5 releases), package and owner derived from `CMS_API_IMAGE_REPO`, gated by
+    `vars.CMS_API_GHCR_CLEANUP == 'true'`. The first run deletes the pre-Flux `latest` images, and
+    `ignore-versions` can't protect tags because it matches digests (checked in the action source).
+  - `check-ci.py` passes, including a test of the package-name derivation.
+  - Updated the deployment doc and the techstack table.
+
 ### Checkpoint: Complete
 - [x] Every SPEC Success Criterion is ticked.
 - [ ] Five-axis review (`/review`).
