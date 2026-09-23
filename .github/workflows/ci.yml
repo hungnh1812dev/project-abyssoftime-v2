@@ -18,6 +18,7 @@ jobs:
       cms-api: ${{ steps.changed.outputs.cms-api }}
       cms-admin: ${{ steps.changed.outputs.cms-admin }}
       frontend: ${{ steps.changed.outputs.frontend }}
+      helm-chart: ${{ steps.changed.outputs.helm-chart }}
     steps:
       - uses: actions/checkout@v5
 
@@ -32,6 +33,8 @@ jobs:
                 - 'apps/cms-admin/**'
             frontend:
                 - 'apps/frontend/**'
+            helm-chart:
+                - 'charts/app-template/**'
 
       - name: Debug change detection
         if: always()
@@ -45,6 +48,7 @@ jobs:
               echo "- cms-api changed: \`${{ steps.changed.outputs.cms-api }}\`"
               echo "- cms-admin changed: \`${{ steps.changed.outputs.cms-admin }}\`"
               echo "- frontend changed: \`${{ steps.changed.outputs.frontend }}\`"
+              echo "- helm-chart changed: \`${{ steps.changed.outputs.helm-chart }}\`"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   cms-api-install:
@@ -402,6 +406,33 @@ jobs:
 
       - name: Build
         run: bun run build
+
+  helm-chart-publish:
+    name: Publish app-template Helm chart to GHCR
+    runs-on: ubuntu-latest
+    needs: [change-detecter]
+    if: needs.change-detecter.outputs.helm-chart == 'true' && github.ref == 'refs/heads/master' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Package chart
+        run: helm package charts/app-template -d /tmp/chart-dist
+
+      # Chart.yaml's `version` must be bumped on every template change — OCI tags are immutable,
+      # so pushing an already-published version fails the job instead of silently overwriting it.
+      - name: Push chart to GHCR
+        run: helm push /tmp/chart-dist/app-template-*.tgz oci://ghcr.io/hungnh1812dev/project-abyssoftime-v2/charts
 
   deploy-cms-api:
     name: Deploy CMS API

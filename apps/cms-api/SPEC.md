@@ -64,6 +64,14 @@ helmfile by hand.
    (`render` default / `ghcr`), decides whether `deploy-cms-api` still hits the Render webhook or a
    new `cms-api-ghcr-publish` job builds+pushes to GHCR instead. Unset behaves exactly as today
    (Render).
+5. **Chart distribution (added after Checkpoint A)**: `charts/app-template` is packaged and pushed as
+   a **versioned OCI Helm chart on GHCR** (`oci://ghcr.io/hungnh1812dev/project-abyssoftime-v2/charts/app-template`)
+   by a CI job, rather than every app referencing it by local relative path
+   (`../../charts/app-template`) or by a git-URL (`git::https://...`) chart reference. Consumers (e.g.
+   `apps/cms-api/helmfile.yaml`) pull it with a pinned `version:`. Chosen for consistency with the
+   GHCR-image precedent already established for cms-api's Docker images; the trade-off is an extra
+   publish step (`helm package` + `helm push`) whenever the chart changes, and OCI tags are immutable
+   so `Chart.yaml`'s `version` must be bumped on every template change.
 
 ## Open question — resolve during spec review
 
@@ -89,15 +97,22 @@ helmfile by hand.
   (`deps`/`build`/`prod-deps`/`migrator`/`runner`) is reused as-is, just built with two `--target`
   values in CI instead of one.
 - CI: existing GitHub Actions workflow (`.github/workflows/ci.yml`), extended with
-  `docker/login-action` + `docker/build-push-action` against `ghcr.io`.
+  `docker/login-action` + `docker/build-push-action` against `ghcr.io` for images, and
+  `azure/setup-helm` + `helm registry login`/`helm package`/`helm push` for the chart.
 
 ## Commands
 
 ```
-# Render the chart locally without applying (verification)
+# Render the chart locally without applying (verification) — local path, no registry needed
 helm template abyssoftime-cms-api charts/app-template -f apps/cms-api/k8s/values.yaml
 
-# Diff against the live cluster (requires kubeconfig context set)
+# Package + push the chart to GHCR (CI does this on master; can also be run once by hand to
+# bootstrap the first published version before apps/cms-api/helmfile.yaml can resolve it)
+helm registry login ghcr.io -u <github-username> --password-stdin
+helm package charts/app-template -d /tmp/chart-dist
+helm push /tmp/chart-dist/app-template-*.tgz oci://ghcr.io/hungnh1812dev/project-abyssoftime-v2/charts
+
+# Diff against the live cluster (requires kubeconfig context set; pulls the chart from GHCR)
 cd apps/cms-api && helmfile diff
 
 # Apply (manual, by the user — never run by an agent or CI)
@@ -125,8 +140,9 @@ charts/app-template/              → NEW: generic, reusable Helm chart (any app
     _helpers.tpl                   → full name / namespace / secret-name templating helpers
 
 apps/cms-api/
-  helmfile.yaml                    → NEW: release pointing at ../../charts/app-template,
-                                     namespace = "{{ .Values.namespaceBase }}-prod"
+  helmfile.yaml                    → NEW: release pointing at
+                                     oci://ghcr.io/hungnh1812dev/project-abyssoftime-v2/charts/app-template
+                                     (pinned version), namespace "abyssoftime-prod" set literally
   k8s/
     values.yaml                    → NEW: cms-api's own (non-secret) Helm values
     secret.example.yaml            → UPDATED: renamed Secret/namespace to match new naming
@@ -134,7 +150,9 @@ apps/cms-api/
     deployment.yaml, service.yaml  → REMOVED once the chart replaces them (ask before deleting —
                                      untracked but pre-existing files)
 
-.github/workflows/ci.yml           → UPDATED: new cms-api-ghcr-publish job (builds+pushes 2 tags),
+.github/workflows/ci.yml           → UPDATED: new helm-chart-publish job (packages+pushes the chart
+                                     to GHCR on changes to charts/app-template/**), new
+                                     cms-api-ghcr-publish job (builds+pushes 2 image tags),
                                      deploy-cms-api job gated by vars.CMS_API_DEPLOY_MODE
 ```
 
@@ -156,12 +174,18 @@ apps/cms-api/
 Infra config has no unit-test framework; verification is command-based and manual:
 
 - `helm lint charts/app-template` — chart passes lint with no errors.
-- `helm template ... -f apps/cms-api/k8s/values.yaml` renders valid YAML with the expected resource
-  names (`abyssoftime-cms-api` Deployment/Service, `abyssoftime-cms-api-secrets` referenced via
-  `envFrom`, init container using the `-migrate`-tagged image).
-- `helmfile diff` (or `helmfile template`) runs clean against `apps/cms-api/helmfile.yaml`.
+- `helm template ... -f apps/cms-api/k8s/values.yaml` (local path) renders valid YAML with the
+  expected resource names (`abyssoftime-cms-api` Deployment/Service, `abyssoftime-cms-api-secrets`
+  referenced via `envFrom`, init container using the `-migrate`-tagged image).
+- `helm package charts/app-template` succeeds locally (packaging logic, no registry credentials
+  needed) — the actual `helm push` to GHCR cannot be exercised from an agent session (no write
+  credentials); first real publish happens on merge to `master` or via a one-time local bootstrap by
+  the user.
+- `helmfile diff` (or `helmfile template`) runs clean against `apps/cms-api/helmfile.yaml`, **once
+  the chart has been published** to the pinned OCI coordinates (this step now pulls over the network
+  from GHCR instead of reading a local path).
 - GitHub Actions YAML is valid (`actionlint` if available, otherwise a syntax-only check) — the new
-  job doesn't break `change-detecter`/existing job graph for cms-admin/frontend.
+  jobs don't break `change-detecter`/existing job graph for cms-admin/frontend.
 - **Manual, by the user, out of this workflow's automated scope**: an actual `helmfile apply` against
   their live k3s cluster, confirming the init container completes a migration and the main container
   reaches Ready.
@@ -179,12 +203,16 @@ Infra config has no unit-test framework; verification is command-based and manua
 - **Never do**: read, edit, create, or delete `apps/cms-api/k8s/secret.yaml` (existing rule,
   unchanged); commit real secret values, GHCR credentials, or kubeconfig into the repo; add a
   `kubectl`/`helmfile apply` step to CI (deploy stays manual per the user's explicit ask); rename or
-  remove the existing `deploy-cms-api`/Render-webhook job.
+  remove the existing `deploy-cms-api`/Render-webhook job; re-push an unbumped `Chart.yaml` `version`
+  to the OCI registry (tags are immutable — bump the version first).
 
 ## Success Criteria
 
 - `charts/app-template` exists, lints clean, and takes `appName`/`servicePostfix`/`namespaceBase` as
   values with no cms-api-specific hardcoding.
+- `charts/app-template` is published as a versioned OCI chart at
+  `oci://ghcr.io/hungnh1812dev/project-abyssoftime-v2/charts/app-template` via a CI job scoped to
+  changes under `charts/app-template/**` on `master`.
 - `apps/cms-api/helmfile.yaml` + `apps/cms-api/k8s/values.yaml` render a Deployment named
   `abyssoftime-cms-api` in namespace `abyssoftime-prod`, with an init container running the
   `-migrate`-tagged image before the main `abyssoftime-cms-api` container starts, both pulling
