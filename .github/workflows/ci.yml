@@ -405,7 +405,7 @@ jobs:
         run: bun run build
 
   # master → GHCR images for the k3s deployment (staging keeps deploying to Render, see below). Only
-  # pushes images — rolling them out to k3s stays manual (see apps/cms-api/helmfile.yaml).
+  # pushes images — rolling them out to k3s stays manual (see apps/cms-api/k8s/helmfile.yaml.gotmpl).
   cms-api-ghcr-publish:
     name: CMS API - Publish Images to GHCR
     runs-on: ubuntu-latest

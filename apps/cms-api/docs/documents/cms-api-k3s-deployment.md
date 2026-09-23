@@ -9,8 +9,8 @@ each piece was chosen. For the image itself, see [dockerfile.md](./dockerfile.md
 
 | File | Role |
 | --- | --- |
-| `apps/cms-api/helmfile.yaml` | OCI repository entry (`ghcr.io/hungnh1812dev`) + one release, `abyssoftime-cms-api-prod` in `abyssoftime-prod`, using `helmfile-chart-template` with **no `version:`** |
-| `apps/cms-api/k8s/values.yaml` | Every cms-api-specific chart value: names, port, images, resources, secrets, init container, probes |
+| `apps/cms-api/k8s/helmfile.yaml.gotmpl` | OCI repository entry (`ghcr.io/hungnh1812dev`) + one release using `helmfile-chart-template` with **no `version:`**. Stores the identity values (name, namespace, env, port) as `APP_*` keys in its `values:` block and derives the release name and namespace from them |
+| `apps/cms-api/k8s/values.yaml` | The rest of cms-api's chart values: images, resources, secrets, init container, probes |
 | `apps/cms-api/k8s/secret.example.yaml` | Committed template for the Namespace + Secret (placeholders only) |
 | `apps/cms-api/k8s/secret.yaml` | Real values, gitignored, applied by hand. Agents never touch it (see `docs/rules/k8s-secrets.md`) |
 | `.github/workflows/ci.yml` → `cms-api-ghcr-publish` | Builds and pushes both images on every `master` push that changes cms-api |
@@ -19,7 +19,7 @@ each piece was chosen. For the image itself, see [dockerfile.md](./dockerfile.md
 
 The chart is `oci://ghcr.io/hungnh1812dev/helmfile-chart-template`, a generic Deployment + Service
 chart maintained in **its own repo**. This repo only consumes it; nothing in the chart is
-cms-api-specific. `helmfile.yaml` sets no version, so every deploy uses the **latest** published
+cms-api-specific. `helmfile.yaml.gotmpl` sets no version, so every deploy uses the **latest** published
 chart (0.3.0 at the time of writing).
 
 - **Cache gotcha:** helmfile caches an unversioned OCI chart and then skips refreshing it ("Skipping
@@ -32,8 +32,25 @@ chart (0.3.0 at the time of writing).
 
 ### Derived names
 
-The chart builds every name from four values in `k8s/values.yaml`: `appName: abyssoftime`,
-`serviceName: cms-api`, `appNamespace: abyssoftime`, `appEnv: prod`.
+`helmfile.yaml.gotmpl` stores the chart's identity values in its own top-level `values:` block, using
+the `APP_*` names the chart documents. No env vars or CLI flags are needed.
+
+| Key in `helmfile.yaml.gotmpl` | Chart value | Value | Meaning |
+| --- | --- | --- | --- |
+| `APP_NAME` | `appName` | `abyssoftime` | Application / product name |
+| `APP_SERVICE_NAME` | `serviceName` | `cms-api` | Service within the application |
+| `APP_NAMESPACE` | `appNamespace` | `abyssoftime` | Base namespace |
+| `APP_ENV` | `appEnv` | `prod` | Environment |
+| `APP_PORT` | `appPort` | `3000` | Container and Service port |
+
+The release reads these keys as `{{ .Values.APP_* }}`, passes them to the chart, and derives the
+release name and namespace from them. That way the names always match what the chart expects. Two
+helmfile v1 rules shape the file:
+- It needs the `.gotmpl` extension, because a plain `.yaml` isn't templated.
+- A `---` must separate the `values:` block from the releases. Without it, the render fails with
+  `map has no entry for key "APP_NAME"`.
+
+Resulting names:
 
 | Resource | Name |
 | --- | --- |
@@ -68,7 +85,8 @@ migrations. `values.yaml` therefore sets `imagePullPolicy: Always` on the init c
 
 The app listens on `process.env.PORT`, which comes from the Secret. The chart's `appPort`
 (`containerPort`, probes, Service port) is a separate plain value, because Helm can't read a
-Secret's value at render time. **Both must be `3000`**. Nothing enforces it, so change them together.
+Secret's value at render time. **`APP_PORT` (`3000`) must equal the Secret's `PORT`**. Nothing
+enforces it, so change them together.
 
 ## Images (GHCR)
 
@@ -90,7 +108,7 @@ run between steps. A `rollout restart` against a mismatched pair would start the
 schema. Both images carry the `org.opencontainers.image.source` label, which links the GHCR package
 to this repo.
 
-`apps/cms-api/.dockerignore` excludes `k8s/` and `helmfile.yaml`, so a local `docker build` can't bake
+`apps/cms-api/.dockerignore` excludes `k8s/` (helmfile, values and secrets all live there), so a local `docker build` can't bake
 the operator's real `k8s/secret.yaml` into an image through `COPY . .`.
 
 The branch decides where cms-api goes. Both paths require cms-api to have changed.
@@ -118,7 +136,7 @@ First deploy:
 kubectl apply -f apps/cms-api/k8s/secret.yaml
 
 # 2. Release
-cd apps/cms-api
+cd apps/cms-api/k8s
 helmfile cache cleanup && helmfile diff
 helmfile cache cleanup && helmfile apply
 ```

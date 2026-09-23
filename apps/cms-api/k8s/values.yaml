@@ -1,16 +1,6 @@
-# cms-api's (non-secret) values for helmfile-chart-template — see ../helmfile.yaml. Runtime config
-# and secrets come from the abyssoftime-cms-api-secrets-prod Secret (k8s/secret.yaml), never here.
-#
-# Derived names: Deployment/Service abyssoftime-cms-api-prod, namespace abyssoftime-prod,
-# Secret abyssoftime-cms-api-secrets-prod.
-appName: abyssoftime
-serviceName: cms-api
-appNamespace: abyssoftime
-appEnv: prod
-
-# Must match the Secret's PORT key (the app listens on process.env.PORT) — the chart can't read the
-# Secret, so keep the two in sync by hand.
-appPort: 3000
+# cms-api's (non-secret) chart values for helmfile-chart-template. The identity values (appName,
+# serviceName, appNamespace, appEnv, appPort) are set as APP_* keys in helmfile.yaml.gotmpl. Runtime
+# config and secrets come from the abyssoftime-cms-api-secrets-prod Secret (secret.yaml), never here.
 
 # pullPolicy defaults to Always in the chart, so a re-pushed `latest` is picked up on pod restart.
 image:
