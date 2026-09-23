@@ -1,7 +1,7 @@
 # Todo: cms-api Helmfile deployment + GHCR image pipeline
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS** — 2 done / 13 tasks (in-repo chart phases archived as superseded — see
+Status: **IN PROGRESS** — 5 done / 13 tasks (in-repo chart phases archived as superseded — see
 [`tasks/archive.md`](archive.md))
 
 Checkbox updates ship in the same commit as that phase's code.
@@ -64,7 +64,7 @@ has the same problem, so it adds nothing.
 
 ## Phase 2 — cms-api's helmfile release
 
-- [ ] **T4 — `apps/cms-api/helmfile.yaml` + `apps/cms-api/k8s/values.yaml`.** One release
+- [x] **T4 — `apps/cms-api/helmfile.yaml` + `apps/cms-api/k8s/values.yaml`.** One release
   `abyssoftime-cms-api-prod`, namespace `abyssoftime-prod` (literal; it must equal
   `<appNamespace>-<appEnv>` or the chart fails), chart from an OCI repository entry
   (`repositories: [{name: hungnh1812dev, url: ghcr.io/hungnh1812dev, oci: true}]`,
@@ -98,8 +98,10 @@ has the same problem, so it adds nothing.
     entry) and these exact values rendered successfully against 0.3.0 during planning.
   - Files: `apps/cms-api/helmfile.yaml`, `apps/cms-api/k8s/values.yaml`
   - Deps: T0a. Size: S
+  - **Done (2026-09-23).** `helmfile cache cleanup && helmfile template` pulled chart 0.3.0 with no
+    tag, and every acceptance item checked out in the render.
 
-- [ ] **T5 — Rename `apps/cms-api/k8s/secret.example.yaml`.** `Namespace.metadata.name` and
+- [x] **T5 — Rename `apps/cms-api/k8s/secret.example.yaml`.** `Namespace.metadata.name` and
   `Secret.metadata.namespace` → `abyssoftime-prod` (was `abyssoftime`); `Secret.metadata.name` →
   `abyssoftime-cms-api-secrets-prod` (was `cms-api-env`). This name is fixed by the chart's
   `chart.secretName` helper. Update the header comment (apply-order note, `kubectl apply -f` example)
@@ -110,8 +112,13 @@ has the same problem, so it adds nothing.
     (client-side, no live cluster needed); diff review against T4's rendered secret name.
   - Files: `apps/cms-api/k8s/secret.example.yaml`
   - Deps: T4. Size: XS
+  - **Done (2026-09-23).** The header now also notes the apply-before-helmfile order and that the
+    Secret name is fixed by the chart. `kubectl apply --dry-run=client` can't run offline: it still
+    fetches OpenAPI from the unreachable cluster. It was replaced by a YAML parse check (Namespace
+    `abyssoftime-prod` plus Secret `abyssoftime-cms-api-secrets-prod` in `abyssoftime-prod`, 20 keys)
+    and a name match against T4's rendered `envFrom`. `kubeconform` is not installed.
 
-- [ ] **T6 — Remove superseded raw manifests.** Ask the user explicitly before deleting (untracked,
+- [x] **T6 — Remove superseded raw manifests.** Ask the user explicitly before deleting (untracked,
   pre-existing files). First cross-check T4's render against the old files. Resources and the `/health`
   readiness/liveness probes (same timings) carry over. The Service port changes from `80` to `3000`, so the port-forward becomes
   `svc/abyssoftime-cms-api-prod 3000:3000`. The old `imagePullPolicy: Never` +
@@ -122,10 +129,16 @@ has the same problem, so it adds nothing.
   - Verify: manual cross-check + confirmation.
   - Files (deleted): `apps/cms-api/k8s/deployment.yaml`, `apps/cms-api/k8s/service.yaml`
   - Deps: T4, T5. Size: XS
+  - **Done (2026-09-23).** Cross-check passed: resources and probes are identical. Additions:
+    migrate init container and GHCR images. Renames: names/namespace, with Service `80→http` becoming
+    `3000→3000`. Deletion was confirmed by the user, and no references remain outside the task/spec
+    history. Operator note: the old `cms-api` Deployment/Service and the `cms-api-env` Secret in the
+    `abyssoftime` namespace still exist on the live cluster until removed by hand.
 
-> **CHECKPOINT B**: go/no-go. The helmfile (pulling the latest `helmfile-chart-template` from GHCR) and
-> the renamed secret template fully replace the old raw manifests, and deletion is confirmed with the
-> user. The render matches the old manifest, including probes.
+> **CHECKPOINT B**: **PASSED** (2026-09-23). The helmfile, pulling the latest
+> `helmfile-chart-template` (0.3.0) from GHCR, and the renamed secret template fully replace the old
+> raw manifests. The render matches the old manifest, including probes, and deletion was confirmed by
+> the user.
 > **Commit 2**: once Checkpoint B passes.
 
 ## Phase 3 — CI/CD for cms-api images (parallel to Phase 0/2)

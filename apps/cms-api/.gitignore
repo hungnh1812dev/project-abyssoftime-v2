@@ -46,6 +46,9 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# k8s secret manifest with real values — k8s/secret.example.yaml stays committed as the template
+/k8s/secret.yaml
+
 # temp directory
 .temp
 .tmp
