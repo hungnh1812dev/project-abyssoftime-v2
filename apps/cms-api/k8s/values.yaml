@@ -1,5 +1,5 @@
 # cms-api's (non-secret) chart values for helmfile-chart-template. The identity values (appName,
-# serviceName, appNamespace, appEnv, appPort) are set as APP_* keys in helmfile.yaml.gotmpl. Runtime
+# serviceName, appNamespace, appEnv, appPort) come from required APP_* env vars in helmfile.yaml.gotmpl. Runtime
 # config and secrets come from the abyssoftime-cms-api-secrets-prod Secret (secret.yaml), never here.
 
 # pullPolicy defaults to Always in the chart, so a re-pushed `latest` is picked up on pod restart.

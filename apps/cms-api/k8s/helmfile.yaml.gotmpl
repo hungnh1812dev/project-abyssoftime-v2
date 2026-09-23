@@ -1,9 +1,18 @@
 # cms-api's k3s release, built from the shared helmfile-chart-template chart (source lives in its own
 # repo). Pre-req: the namespace + Secret from secret.yaml already exist (apply it first).
 #
-# The chart's identity values are set in the `values:` block below, under the same APP_* names the
-# chart documents. The release name and namespace are derived from them. Everything else lives in
-# values.yaml.
+# The chart's identity values come from env vars. Load them from a .env file when running the CLI
+# (it's gitignored); every one is required:
+#
+#   | Env var            | Chart value    | cms-api prod  | Meaning                        |
+#   |--------------------|----------------|---------------|--------------------------------|
+#   | `APP_NAME`         | `appName`      | `abyssoftime` | Application / product name     |
+#   | `APP_SERVICE_NAME` | `serviceName`  | `cms-api`     | Service within the application |
+#   | `APP_NAMESPACE`    | `appNamespace` | `abyssoftime` | Base namespace                 |
+#   | `APP_ENV`          | `appEnv`       | `prod`        | Environment                    |
+#   | `APP_PORT`         | `appPort`      | `3000`        | Container and Service port     |
+#
+# The release name and namespace are derived from them. Everything else lives in values.yaml.
 #
 # APP_PORT must match the Secret's PORT key (the app listens on process.env.PORT) — the chart can't
 # read the Secret, so keep the two in sync by hand.
@@ -11,6 +20,7 @@
 # No `version:` on the release on purpose — every deploy uses the latest published chart. helmfile
 # caches an unversioned OCI chart and won't refresh it on its own, so always clear the cache first:
 #
+#   set -a && . ./.env && set +a
 #   helmfile cache cleanup && helmfile diff
 #   helmfile cache cleanup && helmfile apply
 #
@@ -18,29 +28,20 @@
 # image tag). To roll out newly pushed images:
 #
 #   kubectl -n abyssoftime-prod rollout restart deploy/abyssoftime-cms-api-prod
-values:
-  - APP_NAME: abyssoftime # appName: application / product name
-    APP_SERVICE_NAME: cms-api # serviceName: service within the application
-    APP_NAMESPACE: abyssoftime # appNamespace: base namespace
-    APP_ENV: prod # appEnv: environment
-    APP_PORT: 3000 # appPort: container and Service port
-
-# `---` is required: helmfile only exposes the values above as `.Values` to later parts of the file.
----
 repositories:
   - name: hungnh1812dev
     url: ghcr.io/hungnh1812dev
     oci: true
 
 releases:
-  - name: {{ .Values.APP_NAME }}-{{ .Values.APP_SERVICE_NAME }}-{{ .Values.APP_ENV }}
+  - name: {{ requiredEnv "APP_NAME" }}-{{ requiredEnv "APP_SERVICE_NAME" }}-{{ requiredEnv "APP_ENV" }}
     # The chart fails the render unless the release namespace is <appNamespace>-<appEnv>.
-    namespace: {{ .Values.APP_NAMESPACE }}-{{ .Values.APP_ENV }}
+    namespace: {{ requiredEnv "APP_NAMESPACE" }}-{{ requiredEnv "APP_ENV" }}
     chart: hungnh1812dev/helmfile-chart-template
     values:
-      - appName: {{ .Values.APP_NAME }}
-        serviceName: {{ .Values.APP_SERVICE_NAME }}
-        appNamespace: {{ .Values.APP_NAMESPACE }}
-        appEnv: {{ .Values.APP_ENV }}
-        appPort: {{ .Values.APP_PORT }}
+      - appName: {{ requiredEnv "APP_NAME" }}
+        serviceName: {{ requiredEnv "APP_SERVICE_NAME" }}
+        appNamespace: {{ requiredEnv "APP_NAMESPACE" }}
+        appEnv: {{ requiredEnv "APP_ENV" }}
+        appPort: {{ requiredEnv "APP_PORT" }}
       - values.yaml

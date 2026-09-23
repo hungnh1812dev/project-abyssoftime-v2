@@ -9,7 +9,7 @@ each piece was chosen. For the image itself, see [dockerfile.md](./dockerfile.md
 
 | File | Role |
 | --- | --- |
-| `apps/cms-api/k8s/helmfile.yaml.gotmpl` | OCI repository entry (`ghcr.io/hungnh1812dev`) + one release using `helmfile-chart-template` with **no `version:`**. Stores the identity values (name, namespace, env, port) as `APP_*` keys in its `values:` block and derives the release name and namespace from them |
+| `apps/cms-api/k8s/helmfile.yaml.gotmpl` | OCI repository entry (`ghcr.io/hungnh1812dev`) + one release using `helmfile-chart-template` with **no `version:`**. Reads the identity values (name, namespace, env, port) from required `APP_*` env vars and derives the release name and namespace from them |
 | `apps/cms-api/k8s/values.yaml` | The rest of cms-api's chart values: images, resources, secrets, init container, probes |
 | `apps/cms-api/k8s/secret.example.yaml` | Committed template for the Namespace + Secret (placeholders only) |
 | `apps/cms-api/k8s/secret.yaml` | Real values, gitignored, applied by hand. Agents never touch it (see `docs/rules/k8s-secrets.md`) |
@@ -32,10 +32,12 @@ chart (0.3.0 at the time of writing).
 
 ### Derived names
 
-`helmfile.yaml.gotmpl` stores the chart's identity values in its own top-level `values:` block, using
-the `APP_*` names the chart documents. No env vars or CLI flags are needed.
+`helmfile.yaml.gotmpl` reads the chart's identity values from **required** env vars (`requiredEnv`).
+You provide them from a `.env` file in `k8s/` when running the CLI. `apps/cms-api/.gitignore` ignores
+`.env`, so it never gets committed. A missing var fails the render with
+`required env var APP_NAME is not set` instead of deploying under a wrong name.
 
-| Key in `helmfile.yaml.gotmpl` | Chart value | Value | Meaning |
+| Env var | Chart value | cms-api prod value | Meaning |
 | --- | --- | --- | --- |
 | `APP_NAME` | `appName` | `abyssoftime` | Application / product name |
 | `APP_SERVICE_NAME` | `serviceName` | `cms-api` | Service within the application |
@@ -43,14 +45,11 @@ the `APP_*` names the chart documents. No env vars or CLI flags are needed.
 | `APP_ENV` | `appEnv` | `prod` | Environment |
 | `APP_PORT` | `appPort` | `3000` | Container and Service port |
 
-The release reads these keys as `{{ .Values.APP_* }}`, passes them to the chart, and derives the
-release name and namespace from them. That way the names always match what the chart expects. Two
-helmfile v1 rules shape the file:
-- It needs the `.gotmpl` extension, because a plain `.yaml` isn't templated.
-- A `---` must separate the `values:` block from the releases. Without it, the render fails with
-  `map has no entry for key "APP_NAME"`.
+The release passes these values to the chart and derives the release name and namespace from them.
+That way the names always match what the chart expects. The file needs the `.gotmpl` extension,
+because helmfile v1 doesn't template a plain `.yaml`.
 
-Resulting names:
+Resulting names with the cms-api prod values:
 
 | Resource | Name |
 | --- | --- |
@@ -85,7 +84,7 @@ migrations. `values.yaml` therefore sets `imagePullPolicy: Always` on the init c
 
 The app listens on `process.env.PORT`, which comes from the Secret. The chart's `appPort`
 (`containerPort`, probes, Service port) is a separate plain value, because Helm can't read a
-Secret's value at render time. **`APP_PORT` (`3000`) must equal the Secret's `PORT`**. Nothing
+Secret's value at render time. **`APP_PORT` (`3000` for prod) must equal the Secret's `PORT`**. Nothing
 enforces it, so change them together.
 
 ## Images (GHCR)
@@ -137,6 +136,7 @@ kubectl apply -f apps/cms-api/k8s/secret.yaml
 
 # 2. Release
 cd apps/cms-api/k8s
+set -a && . ./.env && set +a          # APP_NAME, APP_SERVICE_NAME, APP_NAMESPACE, APP_ENV, APP_PORT
 helmfile cache cleanup && helmfile diff
 helmfile cache cleanup && helmfile apply
 ```
