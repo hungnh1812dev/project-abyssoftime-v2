@@ -1,7 +1,7 @@
 # Todo: cms-api Helmfile deployment + GHCR image pipeline
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS** — 10 done / 13 tasks (in-repo chart phases archived as superseded — see
+Status: **IN PROGRESS** — 12 done / 13 tasks (in-repo chart phases archived as superseded — see
 [`tasks/archive.md`](archive.md))
 
 Checkbox updates ship in the same commit as that phase's code.
@@ -232,7 +232,7 @@ has the same problem, so it adds nothing.
 
 ## Phase 5 — Review & cleanup
 
-- [ ] **T12 — Five-axis review** (`agent-skills:code-reviewer`). Axes:
+- [x] **T12 — Five-axis review** (`agent-skills:code-reviewer`). Axes:
   - Correctness: helmfile/values render the intended names, the namespace guard passes, and the
     init container gets the secret.
   - Readability.
@@ -242,11 +242,28 @@ has the same problem, so it adds nothing.
     credentials in CI.
   - Performance: n/a for YAML; note it and skip.
   - Deps: Checkpoint D. Size: M
+  - **Done (2026-09-23).** Verdict: REQUEST CHANGES, with no Critical findings. Both Important
+    findings were confirmed and fixed:
+    - `latest` and `latest-migrate` could diverge if the run failed or was cancelled
+      (`cancel-in-progress`) between the two pushes. Now both images are built first and pushed in
+      order: SHA tags, then `latest-migrate`, then `latest`.
+    - `.dockerignore` didn't exclude `k8s/`, so a local `COPY . .` would bake the real `secret.yaml`
+      into the migrator image. `k8s` and `helmfile.yaml` are now excluded.
+    - Also applied: the `org.opencontainers.image.source` label, and an `ENTRYPOINT.md` techstack
+      list that was missing 2 of the 6 tables.
+    - Not applied: `resources` on the init container, a non-root `USER` in the `migrator` stage, and
+      buildx GHA cache. All three are optional follow-ups.
+    - The pre-existing `needs.change-detecter` issue (see T7) was re-raised as possibly blocking the
+      whole cms-api chain. It needs a real CI run to confirm and is left to the user.
+    - The `ci.yml` change after the fix still parses.
 
-- [ ] **T13 — Reduce `apps/cms-api/SPEC.md` to a minimal pointer**, per this repo's established
+- [x] **T13 — Reduce `apps/cms-api/SPEC.md` to a minimal pointer**, per this repo's established
   convention (see the Dockerfile feature's `tasks/archive.md` T14 for precedent) — once T9/T10 fully
   capture the implementation, strip the spec back to a short pointer at those docs.
   - Deps: T12. Size: XS
+  - **Done (2026-09-23).** Every spec decision is captured in `cms-api-k3s-deployment.md` and
+    `cms-api-k3s-deployment-techstack.md`. `SPEC.md` is now the standard "No active spec → see
+    `docs/ENTRYPOINT.md`" pointer.
 
 > **CHECKPOINT E** — Final review sign-off. Ask for explicit commit confirmation (exact staged files
 > + full commit message) before committing, per `docs/workflow.md`'s commit rules.

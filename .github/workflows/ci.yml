@@ -429,25 +429,42 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push runner image
+      # Build both targets before pushing anything, so a failed or cancelled run can't leave
+      # `latest` and `latest-migrate` pointing at different commits. The default docker driver keeps
+      # the built images in the local store for the push step below.
+      - name: Build runner image
         uses: docker/build-push-action@v6
         with:
           context: apps/cms-api
           target: runner
-          push: true
+          push: false
+          labels: org.opencontainers.image.source=https://github.com/hungnh1812dev/project-abyssoftime-v2
           tags: |
             ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest
             ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:${{ steps.sha.outputs.short }}
 
-      - name: Build and push migrator image
+      - name: Build migrator image
         uses: docker/build-push-action@v6
         with:
           context: apps/cms-api
           target: migrator
-          push: true
+          push: false
+          labels: org.opencontainers.image.source=https://github.com/hungnh1812dev/project-abyssoftime-v2
           tags: |
             ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest-migrate
             ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:${{ steps.sha.outputs.short }}-migrate
+
+      # SHA tags first, then `latest-migrate` before `latest` — the app's `latest` never moves ahead
+      # of the migrations it needs.
+      - name: Push images
+        env:
+          IMAGE: ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api
+          SHA: ${{ steps.sha.outputs.short }}
+        run: |
+          docker push "$IMAGE:$SHA"
+          docker push "$IMAGE:$SHA-migrate"
+          docker push "$IMAGE:latest-migrate"
+          docker push "$IMAGE:latest"
 
   deploy-cms-api:
     name: Deploy CMS API

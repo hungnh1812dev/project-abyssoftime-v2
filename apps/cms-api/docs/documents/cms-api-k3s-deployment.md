@@ -83,6 +83,16 @@ The `cms-api-ghcr-publish` job runs only on a `master` push, only when cms-api c
 `cms-api-build`), and only when the **repository variable** `CMS_API_DEPLOY_MODE` is `ghcr`. It uses
 `GITHUB_TOKEN` with `packages: write`; no other credentials are involved.
 
+The job builds **both** targets before pushing anything. It then pushes the SHA tags first, then
+`latest-migrate`, and `latest` last. A failed or cancelled run therefore can't leave `latest` on a
+newer app than `latest-migrate`, which matters because `concurrency: cancel-in-progress` can stop a
+run between steps. A `rollout restart` against a mismatched pair would start the new app on the old
+schema. Both images carry the `org.opencontainers.image.source` label, which links the GHCR package
+to this repo.
+
+`apps/cms-api/.dockerignore` excludes `k8s/` and `helmfile.yaml`, so a local `docker build` can't bake
+the operator's real `k8s/secret.yaml` into an image through `COPY . .`.
+
 | `CMS_API_DEPLOY_MODE` | `cms-api-ghcr-publish` | `deploy-cms-api` (Render webhook) |
 | --- | --- | --- |
 | unset / `render` | skipped | runs (the original behaviour) |
