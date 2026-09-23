@@ -1,0 +1,10 @@
+apiVersion: v2
+name: app-template
+description: >-
+  Generic Deployment + Service chart for AbyssOfTime apps — one main container plus an
+  optional Prisma-migration init container, parameterized by appName/servicePostfix/namespaceBase.
+  No app-specific values live here; each app supplies its own values file (e.g.
+  apps/cms-api/k8s/values.yaml).
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
