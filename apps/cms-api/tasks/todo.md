@@ -1,7 +1,7 @@
 # Todo: cms-api Helmfile deployment + GHCR image pipeline
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS** — 7 done / 13 tasks (in-repo chart phases archived as superseded — see
+Status: **IN PROGRESS** — 10 done / 13 tasks (in-repo chart phases archived as superseded — see
 [`tasks/archive.md`](archive.md))
 
 Checkbox updates ship in the same commit as that phase's code.
@@ -186,7 +186,7 @@ has the same problem, so it adds nothing.
 
 ## Phase 4 — Docs & wrap-up
 
-- [ ] **T9 — `docs/documents/cms-api-k3s-deployment.md`.** Module doc (matches the
+- [x] **T9 — `docs/documents/cms-api-k3s-deployment.md`.** Module doc (matches the
   `docs/documents/*.md` convention). Cover:
   - The external chart (`oci://ghcr.io/hungnh1812dev/helmfile-chart-template`, unpinned so each
     deploy uses the latest version, source in its own repo). Cover the cache caveat
@@ -206,7 +206,7 @@ has the same problem, so it adds nothing.
   - Files: `apps/cms-api/docs/documents/cms-api-k3s-deployment.md`
   - Deps: Checkpoint B, Checkpoint C. Size: S
 
-- [ ] **T10 — `docs/documents/cms-api-k3s-deployment-techstack.md`.** Decision-rationale table per
+- [x] **T10 — `docs/documents/cms-api-k3s-deployment-techstack.md`.** Decision-rationale table per
   `docs/workflow.md`. Compare:
   - Helm+helmfile vs. Kustomize vs. raw manifests.
   - Unpinned (latest) chart vs. a pinned version vs. a semver range. Latest was chosen by the user
@@ -218,12 +218,16 @@ has the same problem, so it adds nothing.
   - Files: `apps/cms-api/docs/documents/cms-api-k3s-deployment-techstack.md`
   - Deps: T9. Size: S
 
-- [ ] **T11 — `apps/cms-api/docs/ENTRYPOINT.md`.** Add index entries for T9/T10, matching the
+- [x] **T11 — `apps/cms-api/docs/ENTRYPOINT.md`.** Add index entries for T9/T10, matching the
   existing bullet format.
   - Files: `apps/cms-api/docs/ENTRYPOINT.md`
   - Deps: T10. Size: XS
 
-> **CHECKPOINT D**: docs read-through for consistency.
+> **CHECKPOINT D**: **PASSED** (2026-09-23). A read-through of both docs, `SPEC.md`,
+> `helmfile.yaml` and `values.yaml` found no contradictions. T9 also documents two operator points
+> that weren't planned: GHCR packages are private by default, so the node needs pull access (the chart
+> has no `imagePullSecrets` value yet), and the old `abyssoftime`-namespace resources must be removed
+> by hand.
 > **Commit 4**: once Checkpoint D passes.
 
 ## Phase 5 — Review & cleanup
