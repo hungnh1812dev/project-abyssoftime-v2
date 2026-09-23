@@ -1,12 +1,14 @@
 # cms-api's (non-secret) chart values for helmfile-chart-template. The identity values (appName,
-# serviceName, appNamespace, appEnv, appPort) come from required APP_* env vars in helmfile.yaml.gotmpl. Runtime
+# serviceName, appNamespace, appEnv, appPort) come from required APP_* env vars in helmfile.yaml.gotmpl,
+# and the image tag from APP_IMAGE_TAG here (a .gotmpl, so helmfile templates it). Runtime
 # config and secrets come from the abyssoftime-cms-api-secrets-prod Secret, which helmfile renders from
-# k8s/.env via the secrets release — never here.
+# exported env vars via the secrets release — never here.
 
 # pullPolicy defaults to Always in the chart, so a re-pushed `latest` is picked up on pod restart.
+# APP_IMAGE_TAG is `latest` or a commit's short SHA (e.g. 7074d17) to pin/roll back.
 image:
-  repository: ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api
-  tag: latest
+  repository: {{ requiredEnv "APP_IMAGE_REPO" | quote }}
+  tag: {{ requiredEnv "APP_IMAGE_TAG" | quote }}
 
 resources:
   requests:
@@ -24,8 +26,9 @@ secrets:
 initContainers:
   enabled: true
   containers:
-    - name: migrate
-      image: ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest-migrate
+    - name: init
+      # Same tag as the app plus `-migrate`, so the pair always comes from one commit.
+      image: {{ requiredEnv "APP_INIT_IMAGE_REPO" | quote }}:{{ requiredEnv "APP_INIT_IMAGE_TAG" | quote }}
       # Needed explicitly: the chart's pullPolicy only covers the main container, and Kubernetes only
       # defaults to Always for a tag that is exactly `latest`.
       imagePullPolicy: Always

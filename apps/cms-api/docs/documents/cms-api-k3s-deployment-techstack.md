@@ -46,12 +46,12 @@ user's standalone `helmfile-chart-template`, and the in-repo chart was removed.
 | Tag listing | Mixed runner/migrator tags | Clean per package |
 | **Verdict** | **Chosen**: one set of permissions, and the SHA pairs them | Rejected: double the package admin for a cosmetic gain |
 
-## Rolling out `latest`: `rollout restart` (chosen default) vs. SHA tags in `values.yaml`
+## Rolling out `latest`: `rollout restart` (chosen default) vs. a SHA in `APP_IMAGE_TAG`
 
-| Criteria | Keep `latest`, `kubectl rollout restart` (chosen default) | Bump `<short-sha>` tags in `values.yaml` |
+| Criteria | Keep `latest`, `kubectl rollout restart` (chosen default) | Set `APP_IMAGE_TAG=<short-sha>` in the env file |
 | --- | --- | --- |
-| Steps per release | 1 command | Edit 2 values + `helmfile apply` (+ commit) |
-| Record of what's deployed | Only in the cluster | In git |
+| Steps per release | 1 command | Edit 1 env var + `helmfile apply` |
+| Record of what's deployed | Only in the cluster | In the cluster (the tag names the commit; the env file is gitignored) |
 | Works with `pullPolicy: Always` | Yes: the restart re-pulls | Yes, and a changed tag triggers the rollout anyway |
 | **Verdict** | **Chosen default**: the lowest-effort manual flow the user asked for | Documented alternative for when traceability matters |
 

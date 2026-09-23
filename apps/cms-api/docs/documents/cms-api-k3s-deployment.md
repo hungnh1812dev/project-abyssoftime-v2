@@ -9,11 +9,11 @@ each piece was chosen. For the image itself, see [dockerfile.md](./dockerfile.md
 
 | File | Role |
 | --- | --- |
-| `apps/cms-api/k8s/helmfile.yaml.gotmpl` | OCI repository entry (`ghcr.io/hungnh1812dev`) + two releases: `<name>-secrets` (local `secrets-chart`, the Secret built from `k8s/.env`) and `<name>` (`helmfile-chart-template`, **no `version:`**, `needs` the Secret release). Reads the identity values (name, namespace, env, port) from required `APP_*` env vars and derives the release names and namespace from them |
-| `apps/cms-api/k8s/secrets-chart/` | Tiny local chart: one `Secret` whose `stringData` is the `env` map helmfile parsed from `k8s/.env` |
-| `apps/cms-api/k8s/values.yaml` | The rest of cms-api's chart values: images, resources, secrets, init container, probes |
-| `apps/cms-api/k8s/.env.example` | Committed template for `k8s/.env`: the `APP_*` block with prod values plus every runtime key |
-| `apps/cms-api/k8s/.env` | Gitignored. The single source for both the `APP_*` identity vars and every runtime config/secret key. Agents never touch it (see `docs/rules/k8s-secrets.md`) |
+| `apps/cms-api/k8s/helmfile.yaml.gotmpl` | OCI repository entry (`ghcr.io/hungnh1812dev`) + two releases: `<name>-secrets` (local `secrets-chart`, the Secret built from exported env vars) and `<name>` (`helmfile-chart-template`, **no `version:`**, `needs` the Secret release). Reads the identity values (name, namespace, env, port) from required `APP_*` env vars and derives the release names and namespace from them |
+| `apps/cms-api/k8s/secrets-chart/` | Tiny local chart: one `Secret` whose `stringData` is the `env` map helmfile built from the environment |
+| `apps/cms-api/k8s/values.yaml.gotmpl` | The rest of cms-api's chart values: images, resources, secrets, init container, probes. A `.gotmpl` so helmfile fills in the image tag from `APP_IMAGE_TAG` |
+| `apps/cms-api/k8s/.env.example` | Committed template for your env file: the `APP_*` block with prod values plus every runtime key. Also the list of key names that go into the Secret |
+| `apps/cms-api/k8s/.env.local` (any name) | Gitignored, exported into the shell before running helmfile. The single source for both the `APP_*` identity vars and every runtime config/secret key. Agents never touch it (see `docs/rules/k8s-secrets.md`) |
 | `.github/workflows/ci.yml` → `cms-api-ghcr-publish` | Builds and pushes both images on every `master` push that changes cms-api |
 
 ## The chart: shared, external, unpinned
@@ -34,8 +34,8 @@ chart (0.3.0 at the time of writing).
 ### Derived names
 
 `helmfile.yaml.gotmpl` reads the chart's identity values from **required** env vars (`requiredEnv`).
-You provide them from a `.env` file in `k8s/` when running the CLI. `apps/cms-api/.gitignore` ignores
-`.env`, so it never gets committed. A missing var fails the render with
+You export them from a gitignored env file in `k8s/` (e.g. `.env.local`) before running the CLI. A
+missing var fails the render with
 `required env var APP_NAME is not set` instead of deploying under a wrong name.
 
 | Env var | Chart value | cms-api prod value | Meaning |
@@ -45,6 +45,7 @@ You provide them from a `.env` file in `k8s/` when running the CLI. `apps/cms-ap
 | `APP_NAMESPACE` | `appNamespace` | `abyssoftime` | Base namespace |
 | `APP_ENV` | `appEnv` | `prod` | Environment |
 | `APP_PORT` | `appPort` | `3000` | Container and Service port |
+| `APP_IMAGE_TAG` | `image.tag`, init image `<tag>-migrate` (in `values.yaml.gotmpl`) | `latest` | `latest`, or a short SHA to pin/roll back |
 
 The release passes these values to the chart and derives the release name and namespace from them.
 That way the names always match what the chart expects. The file needs the `.gotmpl` extension,
@@ -61,10 +62,10 @@ Resulting names with the cms-api prod values:
 
 ## What the render contains
 
-- **Migration init container** `migrate`: runs image `cms-api:latest-migrate`, the Dockerfile's
+- **Migration init container** `migrate`: runs image `cms-api:<APP_IMAGE_TAG>-migrate` (`latest-migrate` by default), the Dockerfile's
   `migrator` target. Its own `CMD` runs `prisma migrate deploy`, so no `command` is set. It runs to
   completion before the app container starts on every pod start.
-- **App container** `cms-api`: runs image `cms-api:latest`, the `runner` target.
+- **App container** `cms-api`: runs image `cms-api:<APP_IMAGE_TAG>`, the `runner` target.
 - **Secrets:** `secrets.enabled: true` adds `envFrom: abyssoftime-cms-api-secrets-prod` to both
   containers. The migrator needs the DB vars too.
 - **Probes:** liveness and readiness `httpGet` on `/health`, port `http`. Liveness uses 15s initial
@@ -80,29 +81,33 @@ Resulting names with the cms-api prod values:
 The main container uses the chart's `image.pullPolicy`, which defaults to `Always` as of 0.3.0. That
 setting **does not apply to init containers**. Kubernetes defaults to `Always` only when the tag is
 exactly `latest`, so `latest-migrate` would default to `IfNotPresent` and keep running stale
-migrations. `values.yaml` therefore sets `imagePullPolicy: Always` on the init container explicitly.
+migrations. `values.yaml.gotmpl` therefore sets `imagePullPolicy: Always` on the init container explicitly.
 
-## The Secret, from `k8s/.env`
+## The Secret, from environment variables
 
-`helmfile.yaml.gotmpl` reads `k8s/.env` with `readFile` and parses it line by line into a map that
-becomes the Secret's `stringData`:
+The helmfile never reads your env file. You export it into the shell (`set -a && . ./.env.local && set +a`),
+and `helmfile.yaml.gotmpl` builds the Secret's `stringData` from the environment:
 
-- One `KEY=VALUE` per line. Blank lines and `#` comment lines are skipped, and a leading `export ` is
-  dropped. The value is everything after the first `=`, with one pair of surrounding `"` or `'`
-  stripped. No multi-line values, no inline `# comments`.
+- **Key names** come from the committed `k8s/.env.example`: every `KEY=` line that isn't a comment.
+  Other variables in your shell (`PATH`, `HOME`, …) never reach the Secret, and neither does a key
+  that's missing from the template. **A new app env var must be added to `k8s/.env.example`**.
+- **Values** come only from the environment (`env "KEY"`). Quoting and escaping are the shell's job,
+  so any value the shell accepts works.
 - `APP_*` keys are left out (they're helmfile's identity vars, not app config).
-- Keys with an **empty** value are left out, so the app sees them as unset and falls back to its
-  defaults (e.g. no `SMTP_HOST` means the console email sender), exactly as with a blank `.env.example` entry.
-- `PORT` is always set from `APP_PORT`, overriding any `PORT` line. The app listens on
+- Unset or **empty** keys are left out, so the app sees them as unset and falls back to its defaults
+  (e.g. no `SMTP_HOST` means the console email sender).
+- `PORT` is always set from `APP_PORT`, overriding any exported `PORT`. The app listens on
   `process.env.PORT` while the chart's `appPort` drives `containerPort`, probes and the Service port,
   so deriving one from the other keeps them from drifting apart.
 
-`k8s/.env.example` is the template; the keys the app accepts are documented in `apps/cms-api/.env.example`. `helmfile diff` shows Secret
-changes masked (helm-diff's default), not in plain text. The values are stored in-cluster in Helm's
-release Secret, same as any Helm-managed Secret.
+The env file can have any name (`.env`, `.env.local`, `.env.staging`, …). `apps/cms-api/.gitignore`
+ignores `.env` and `.env.local`; add a pattern for any other name you use. The keys the app accepts
+are documented in `apps/cms-api/.env.example`. `helmfile diff` shows Secret changes masked
+(helm-diff's default), not in plain text. The values are stored in-cluster in Helm's release Secret,
+same as any Helm-managed Secret.
 
 A Secret change alone doesn't restart pods (`envFrom` is only read at container start), so run a
-`rollout restart` after changing `.env`.
+`rollout restart` after changing values.
 
 ## Images (GHCR)
 
@@ -115,7 +120,7 @@ A Secret change alone doesn't restart pods (`envFrom` is only read at container 
 
 The runner build passes `APP_PORT` from the **`CMS_API_APP_PORT` repo variable** (Settings → Secrets and
 variables → Actions → Variables). The Dockerfile requires it, so the job fails until it's set. Keep it
-equal to `APP_PORT` in `k8s/.env`. It only sets the image's `EXPOSE` and default `PORT`; in k3s the
+equal to `APP_PORT` in your k8s env file. It only sets the image's `EXPOSE` and default `PORT`; in k3s the
 Secret's `PORT` decides the listen port.
 
 The `cms-api-ghcr-publish` job runs only on a `master` push, and only when cms-api changed (it depends on
@@ -130,7 +135,7 @@ schema. Both images carry the `org.opencontainers.image.source` label, which lin
 to this repo.
 
 `apps/cms-api/.dockerignore` excludes `k8s/` (helmfile, values and secrets all live there), so a local `docker build` can't bake
-the operator's real `k8s/.env` into an image through `COPY . .`.
+the operator's real `k8s/.env*` files into an image through `COPY . .`.
 
 The branch decides where cms-api goes. Both paths require cms-api to have changed.
 
@@ -150,13 +155,13 @@ public, or add an `imagePullSecrets` registry credential. The chart has no value
 
 ## Operator flow
 
-Deploy (first time or any later change to `.env`/values). Copy `k8s/.env.example` to `k8s/.env` and fill it
-in first. helmfile creates the namespace, then the
+Deploy (first time or any later change to env values or chart values). Copy `k8s/.env.example` to
+`k8s/.env.local` (or any gitignored name) and fill it in first. helmfile creates the namespace, then the
 Secret release, then the app release:
 
 ```
 cd apps/cms-api/k8s
-set -a && . ./.env && set +a          # APP_NAME, APP_SERVICE_NAME, APP_NAMESPACE, APP_ENV, APP_PORT
+set -a && . ./.env.local && set +a    # exports APP_* + every runtime key for this terminal only
 helmfile cache cleanup && helmfile diff
 helmfile cache cleanup && helmfile apply
 ```
@@ -180,9 +185,10 @@ kubectl -n abyssoftime-prod rollout restart deploy/abyssoftime-cms-api-prod
 kubectl -n abyssoftime-prod rollout status  deploy/abyssoftime-cms-api-prod
 ```
 
-Alternatively, set `image.tag` and the init container image to the `<short-sha>` tags in
-`k8s/values.yaml` and `helmfile apply`. That triggers a normal rollout and records what's deployed
-in git.
+Alternatively, set `APP_IMAGE_TAG` in your env file to a `<short-sha>` (e.g. `7074d17`) and
+`helmfile apply`. Both the app and the migrate image switch to that commit (`7074d17`,
+`7074d17-migrate`), and the changed tag triggers a normal rollout. Setting it back to an older SHA
+is a rollback. The env file isn't committed, so the deployed tag is recorded only in the cluster.
 
 Reach it (no Ingress): `kubectl -n abyssoftime-prod port-forward svc/abyssoftime-cms-api-prod 3000:3000`.
 

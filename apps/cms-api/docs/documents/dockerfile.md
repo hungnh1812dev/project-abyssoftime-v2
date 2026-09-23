@@ -69,7 +69,7 @@ required-vs-optional split maps directly to k8s `Secret` (required: `JWT_ACCESS_
 `STORAGE_PROVIDER`/`EMAIL_PROVIDER` credentials are selected) vs. `ConfigMap` (everything with a
 default) keys. `PORT` (not `SERVER_PORT` — a pre-existing, unrelated dead-config issue, see
 `SPEC.md` §8) controls the listen port. The `runner` stage requires an `APP_PORT` build arg (no default,
-the build fails without it; same name as in `k8s/.env`), which sets both `EXPOSE` and the image's
+the build fails without it; same name as in the k8s env file), which sets both `EXPOSE` and the image's
 default `PORT`. Pass it from the environment with a bare `--build-arg APP_PORT`. CI passes the
 `CMS_API_APP_PORT` repo variable. `EXPOSE` is fixed at build time; a runtime `-e PORT=...` still
 changes the listen port but not the exposed-port metadata. The `migrator` target doesn't need it.
