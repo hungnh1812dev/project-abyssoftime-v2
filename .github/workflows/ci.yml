@@ -80,7 +80,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-api
-    needs: [cms-api-install]
+    needs: [change-detecter, cms-api-install]
     if: needs.change-detecter.outputs.cms-api == 'true'
 
     steps:
@@ -110,7 +110,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-api
-    needs: [cms-api-lint]
+    needs: [change-detecter, cms-api-lint]
     if: needs.change-detecter.outputs.cms-api == 'true'
 
     steps:
@@ -140,7 +140,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-api
-    needs: [cms-api-test]
+    needs: [change-detecter, cms-api-test]
     if: needs.change-detecter.outputs.cms-api == 'true'
 
     steps:
@@ -197,7 +197,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-admin
-    needs: [cms-admin-install]
+    needs: [change-detecter, cms-admin-install]
     if: needs.change-detecter.outputs.cms-admin == 'true'
 
     steps:
@@ -227,7 +227,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-admin
-    needs: [cms-admin-lint]
+    needs: [change-detecter, cms-admin-lint]
     if: needs.change-detecter.outputs.cms-admin == 'true'
 
     steps:
@@ -257,7 +257,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-admin
-    needs: [cms-admin-test]
+    needs: [change-detecter, cms-admin-test]
     if: needs.change-detecter.outputs.cms-admin == 'true'
 
     steps:
@@ -314,7 +314,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/frontend
-    needs: [frontend-install]
+    needs: [change-detecter, frontend-install]
     if: needs.change-detecter.outputs.frontend == 'true'
 
     steps:
@@ -344,7 +344,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/frontend
-    needs: [frontend-lint]
+    needs: [change-detecter, frontend-lint]
     if: needs.change-detecter.outputs.frontend == 'true'
 
     steps:
@@ -379,7 +379,7 @@ jobs:
       # data for every route that imports it (even dynamic, non-prerendered ones) — this job never
       # deploys the build, so the value just needs to be set, not match the real Vercel secret.
       AUTH_SECRET: ${{ secrets.AUTH_SECRET || 'ci-build-only-placeholder-not-used-at-runtime' }}
-    needs: [frontend-test]
+    needs: [change-detecter, frontend-test]
     if: needs.change-detecter.outputs.frontend == 'true'
 
     steps:
