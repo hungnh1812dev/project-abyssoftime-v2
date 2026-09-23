@@ -1,0 +1,11 @@
+# cms-api's k8s resources, applied by the Flux Kustomization in ../kustomization.flux.yaml. Every
+# ${APP_*} placeholder is substituted by Flux (postBuild) from the <full-app-name>-config ConfigMap,
+# plus APP_IMAGE_TAG from image automation — no project values live in these files.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+  - image-repository.yaml
+  - image-policy.yaml
+  - image-update.yaml
