@@ -403,12 +403,58 @@ jobs:
       - name: Build
         run: bun run build
 
+  # Opt-in via repo variable CMS_API_DEPLOY_MODE=ghcr (replaces the Render deploy below). Only pushes
+  # images — rolling them out to k3s stays manual (see apps/cms-api/helmfile.yaml).
+  cms-api-ghcr-publish:
+    name: CMS API - Publish Images to GHCR
+    runs-on: ubuntu-latest
+    needs: [cms-api-build]
+    if: vars.CMS_API_DEPLOY_MODE == 'ghcr' && github.ref == 'refs/heads/master' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Compute short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push runner image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/cms-api
+          target: runner
+          push: true
+          tags: |
+            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest
+            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:${{ steps.sha.outputs.short }}
+
+      - name: Build and push migrator image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/cms-api
+          target: migrator
+          push: true
+          tags: |
+            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest-migrate
+            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:${{ steps.sha.outputs.short }}-migrate
+
   deploy-cms-api:
     name: Deploy CMS API
     runs-on: ubuntu-latest
     needs: [cms-api-build]
     environment: Production
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push' && vars.CMS_API_DEPLOY_MODE != 'ghcr'
 
     steps:
       - name: Debug deploy trigger condition

@@ -1,7 +1,7 @@
 # Todo: cms-api Helmfile deployment + GHCR image pipeline
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS** — 5 done / 13 tasks (in-repo chart phases archived as superseded — see
+Status: **IN PROGRESS** — 7 done / 13 tasks (in-repo chart phases archived as superseded — see
 [`tasks/archive.md`](archive.md))
 
 Checkbox updates ship in the same commit as that phase's code.
@@ -143,7 +143,7 @@ has the same problem, so it adds nothing.
 
 ## Phase 3 — CI/CD for cms-api images (parallel to Phase 0/2)
 
-- [ ] **T7 — New `cms-api-ghcr-publish` job.** `needs: [cms-api-build]`,
+- [x] **T7 — New `cms-api-ghcr-publish` job.** `needs: [cms-api-build]`,
   `if: needs.change-detecter.outputs.cms-api == 'true' && vars.CMS_API_DEPLOY_MODE == 'ghcr' && github.ref == 'refs/heads/master' && github.event_name == 'push'`,
   `permissions: { contents: read, packages: write }`. Steps: checkout, `docker/login-action@v3`
   (`registry: ghcr.io`, `username: ${{ github.actor }}`, `password: ${{ secrets.GITHUB_TOKEN }}`),
@@ -157,8 +157,17 @@ has the same problem, so it adds nothing.
     to before.
   - Files: `.github/workflows/ci.yml`
   - Deps: T0b (same file; land the removal first). Size: M
+  - **Done (2026-09-23), with one deviation:** the `if` drops the
+    `needs.change-detecter.outputs.cms-api == 'true'` check. The `needs` context only holds *direct*
+    dependencies, so it would evaluate to empty here. It is also redundant, because
+    `needs: [cms-api-build]` already skips this job when cms-api didn't change, the same way
+    `deploy-cms-api` works. The short SHA is computed in a step (`${GITHUB_SHA::7}`). There is no buildx
+    setup: the default driver shares layers between the two builds in the same job. Unverified
+    observation: the existing `cms-api-lint`/`-test`/`-build` jobs (and the cms-admin/frontend
+    equivalents) use the same `needs.change-detecter` pattern without a direct dependency. That may
+    make them always skip. Worth checking against a real run, but it is outside this feature's scope.
 
-- [ ] **T8 — Gate the existing Render deploy job.** Add `&& vars.CMS_API_DEPLOY_MODE != 'ghcr'` to
+- [x] **T8 — Gate the existing Render deploy job.** Add `&& vars.CMS_API_DEPLOY_MODE != 'ghcr'` to
   `deploy-cms-api`'s existing `if:` condition — every other line of that job untouched, so an unset
   variable reproduces today's behavior exactly.
   - Acceptance: with `CMS_API_DEPLOY_MODE` unset, `deploy-cms-api` still runs and
@@ -166,11 +175,13 @@ has the same problem, so it adds nothing.
   - Verify: same YAML-parse check as T7; trace both branches of the condition by hand.
   - Files: `.github/workflows/ci.yml`
   - Deps: T7 (same file/section, sequential). Size: XS
+  - **Done (2026-09-23).** Both branches traced by hand. Unset or `render` means Render deploy runs
+    and the publish job is skipped; `ghcr` means the reverse.
 
-> **CHECKPOINT C**: go/no-go. Review the full diff of `.github/workflows/ci.yml` since Commit 1. The
-> only changes should be the new `cms-api-ghcr-publish` job and one added `if` clause. Every other job
-> (`cms-admin-*`, `frontend-*`, `deploy-cms-admin`, `deploy-frontend`, all `cms-api-*` build/test/lint
-> jobs) is untouched, and the YAML is valid.
+> **CHECKPOINT C**: **PASSED** (2026-09-23). The `ci.yml` diff since Commit 2 is +47/-1: the new
+> `cms-api-ghcr-publish` job plus the one changed `deploy-cms-api` `if` line. Every other job is
+> untouched, and the YAML parses. `actionlint` is not installed. The image builds run only on a real
+> master push, because there are no GHCR credentials here.
 > **Commit 3**: once Checkpoint C passes.
 
 ## Phase 4 — Docs & wrap-up
