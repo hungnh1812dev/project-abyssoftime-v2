@@ -396,7 +396,9 @@ jobs:
         run: bun run build
 
   # master → GHCR images for the k3s deployment (staging keeps deploying to Render, see below). Only
-  # pushes images — rolling them out to k3s stays manual (see apps/cms-api/k8s/helmfile.yaml.gotmpl).
+  # pushes images — Flux image automation in the GitOps repo picks up each new tag and rolls it out
+  # (see apps/cms-api/k8s/flux/). Tags are <run_number>-<sha7> (the ImagePolicy sorts by the run
+  # number) and <tag>-init for the migration init container.
   cms-api-ghcr-publish:
     name: CMS API Deploy - GHCR
     runs-on: ubuntu-latest
@@ -411,9 +413,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Compute short SHA
-        id: sha
-        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      # The image repo (e.g. ghcr.io/<owner>/<repo>/cms-api, lowercase) is a repo variable, not code.
+      - name: Check image repo variable
+        env:
+          IMAGE: ${{ vars.CMS_API_IMAGE_REPO }}
+        run: |
+          if [ -z "$IMAGE" ]; then
+            echo "::error::Repository variable CMS_API_IMAGE_REPO is not set"
+            exit 1
+          fi
+
+      - name: Compute image tag
+        id: tag
+        run: echo "tag=${{ github.run_number }}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -422,21 +434,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build both targets before pushing anything, so a failed or cancelled run can't leave
-      # `latest` and `latest-migrate` pointing at different commits. The default docker driver keeps
-      # the built images in the local store for the push step below.
+      # Build both targets before pushing anything, so a failed build can't leave an app tag without
+      # its init image. The default docker driver keeps the built images in the local store for the
+      # push step below.
       - name: Build runner image
         uses: docker/build-push-action@v6
         with:
           context: apps/cms-api
           target: runner
           push: false
-          # Required by the Dockerfile (EXPOSE + default PORT). Keep equal to APP_PORT in the k8s env file.
-          build-args: APP_PORT=${{ vars.CMS_API_APP_PORT }}
-          labels: org.opencontainers.image.source=https://github.com/hungnh1812dev/project-abyssoftime-v2
-          tags: |
-            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest
-            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:${{ steps.sha.outputs.short }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          tags: ${{ vars.CMS_API_IMAGE_REPO }}:${{ steps.tag.outputs.tag }}
 
       - name: Build migrator image
         uses: docker/build-push-action@v6
@@ -444,22 +452,18 @@ jobs:
           context: apps/cms-api
           target: migrator
           push: false
-          labels: org.opencontainers.image.source=https://github.com/hungnh1812dev/project-abyssoftime-v2
-          tags: |
-            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest-migrate
-            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:${{ steps.sha.outputs.short }}-migrate
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          tags: ${{ vars.CMS_API_IMAGE_REPO }}:${{ steps.tag.outputs.tag }}-init
 
-      # SHA tags first, then `latest-migrate` before `latest` — the app's `latest` never moves ahead
-      # of the migrations it needs.
+      # `-init` first: Flux only follows the app tag, so it must never see one whose init image
+      # (the migrations it needs) isn't pushed yet.
       - name: Push images
         env:
-          IMAGE: ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api
-          SHA: ${{ steps.sha.outputs.short }}
+          IMAGE: ${{ vars.CMS_API_IMAGE_REPO }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          docker push "$IMAGE:$SHA"
-          docker push "$IMAGE:$SHA-migrate"
-          docker push "$IMAGE:latest-migrate"
-          docker push "$IMAGE:latest"
+          docker push "$IMAGE:$TAG-init"
+          docker push "$IMAGE:$TAG"
 
   deploy-cms-api:
     name: Deploy CMS API

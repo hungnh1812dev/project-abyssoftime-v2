@@ -85,7 +85,13 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
 
 ## Phase 2: Producer side and owner inputs
 
-- [ ] **Task 4: CI publish job → sortable tags**
+- [x] **Task 4: CI publish job → sortable tags**. Done: the `check-ci.py` asserts pass (tag
+  step, both builds tagged from `vars.CMS_API_IMAGE_REPO`, `-init` pushed first, no
+  `latest`/`migrate`/literal repo, and every other job unchanged vs HEAD). Also: a fail-fast
+  guard for an unset `CMS_API_IMAGE_REPO`, the OCI source label now comes from
+  `github.server_url`/`github.repository`, and the dead `APP_PORT` build arg is dropped (the
+  Dockerfile stopped using it in `62438de`). The owner creates the `CMS_API_IMAGE_REPO` repo
+  variable, and `CMS_API_APP_PORT` can be deleted.
   - Acceptance:
     - In `cms-api-ghcr-publish`, the tag is `${{ github.run_number }}-<sha7>`, and the image
       repo is `${{ vars.CMS_API_IMAGE_REPO }}`, not a literal.
@@ -101,7 +107,11 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
   - Files: `.github/workflows/ci.yml`
   - Deps: Task 0 · Size: S
 
-- [ ] **Task 5: Secret template for manual creation**
+- [x] **Task 5: Secret template for manual creation**. Done: the check passes (no
+  `APP_*`/`PORT` keys, the secret key list is identical and in the same order as `62438de`, the
+  header documents `kubectl create secret generic … --from-env-file=<(grep non-empty)`, the
+  update-in-place variant and `rollout restart`, with no helmfile mention).
+  `apps/cms-api/.env.example` is unchanged: the only divergence is `PORT`, which is intentional.
   - Acceptance:
     - `k8s/.env.example` has no `APP_*` keys and no `PORT`.
     - The header explains the `kubectl create secret generic <full-app-name>-secrets
@@ -114,8 +124,8 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
   - Deps: Task 1 · Size: XS
 
 ### Checkpoint: CI + inputs
-- [ ] `cd apps/cms-api && bun run lint && bun run test && bun run build` pass (regression guard).
-- [ ] Commit (Yes/No confirmation).
+- [x] `cd apps/cms-api && bun run lint && bun run test && bun run build` pass (regression guard). Lint 0 errors (1 pre-existing warning in `src/main.ts`), 152/152 suites, 1117 tests, build OK.
+- [x] Commit (Yes/No confirmation).
 
 ## Phase 3: Remove helmfile
 
