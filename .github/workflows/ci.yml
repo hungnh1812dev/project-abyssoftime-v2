@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+      - staging
       - master
 
 concurrency:
@@ -80,7 +81,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-api
-    needs: [cms-api-install]
+    needs: [change-detecter, cms-api-install]
     if: needs.change-detecter.outputs.cms-api == 'true'
 
     steps:
@@ -110,7 +111,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-api
-    needs: [cms-api-lint]
+    needs: [change-detecter, cms-api-lint]
     if: needs.change-detecter.outputs.cms-api == 'true'
 
     steps:
@@ -140,7 +141,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-api
-    needs: [cms-api-test]
+    needs: [change-detecter, cms-api-test]
     if: needs.change-detecter.outputs.cms-api == 'true'
 
     steps:
@@ -197,7 +198,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-admin
-    needs: [cms-admin-install]
+    needs: [change-detecter, cms-admin-install]
     if: needs.change-detecter.outputs.cms-admin == 'true'
 
     steps:
@@ -227,7 +228,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-admin
-    needs: [cms-admin-lint]
+    needs: [change-detecter, cms-admin-lint]
     if: needs.change-detecter.outputs.cms-admin == 'true'
 
     steps:
@@ -257,7 +258,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/cms-admin
-    needs: [cms-admin-test]
+    needs: [change-detecter, cms-admin-test]
     if: needs.change-detecter.outputs.cms-admin == 'true'
 
     steps:
@@ -314,7 +315,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/frontend
-    needs: [frontend-install]
+    needs: [change-detecter, frontend-install]
     if: needs.change-detecter.outputs.frontend == 'true'
 
     steps:
@@ -344,7 +345,7 @@ jobs:
     defaults:
       run:
         working-directory: apps/frontend
-    needs: [frontend-lint]
+    needs: [change-detecter, frontend-lint]
     if: needs.change-detecter.outputs.frontend == 'true'
 
     steps:
@@ -379,7 +380,7 @@ jobs:
       # data for every route that imports it (even dynamic, non-prerendered ones) — this job never
       # deploys the build, so the value just needs to be set, not match the real Vercel secret.
       AUTH_SECRET: ${{ secrets.AUTH_SECRET || 'ci-build-only-placeholder-not-used-at-runtime' }}
-    needs: [frontend-test]
+    needs: [change-detecter, frontend-test]
     if: needs.change-detecter.outputs.frontend == 'true'
 
     steps:
@@ -403,12 +404,75 @@ jobs:
       - name: Build
         run: bun run build
 
+  # master → GHCR images for the k3s deployment (staging keeps deploying to Render, see below). Only
+  # pushes images — rolling them out to k3s stays manual (see apps/cms-api/k8s/helmfile.yaml.gotmpl).
+  cms-api-ghcr-publish:
+    name: CMS API - Publish Images to GHCR
+    runs-on: ubuntu-latest
+    needs: [cms-api-build]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Compute short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build both targets before pushing anything, so a failed or cancelled run can't leave
+      # `latest` and `latest-migrate` pointing at different commits. The default docker driver keeps
+      # the built images in the local store for the push step below.
+      - name: Build runner image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/cms-api
+          target: runner
+          push: false
+          labels: org.opencontainers.image.source=https://github.com/hungnh1812dev/project-abyssoftime-v2
+          tags: |
+            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest
+            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:${{ steps.sha.outputs.short }}
+
+      - name: Build migrator image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/cms-api
+          target: migrator
+          push: false
+          labels: org.opencontainers.image.source=https://github.com/hungnh1812dev/project-abyssoftime-v2
+          tags: |
+            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest-migrate
+            ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:${{ steps.sha.outputs.short }}-migrate
+
+      # SHA tags first, then `latest-migrate` before `latest` — the app's `latest` never moves ahead
+      # of the migrations it needs.
+      - name: Push images
+        env:
+          IMAGE: ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api
+          SHA: ${{ steps.sha.outputs.short }}
+        run: |
+          docker push "$IMAGE:$SHA"
+          docker push "$IMAGE:$SHA-migrate"
+          docker push "$IMAGE:latest-migrate"
+          docker push "$IMAGE:latest"
+
   deploy-cms-api:
     name: Deploy CMS API
     runs-on: ubuntu-latest
     needs: [cms-api-build]
     environment: Production
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
 
     steps:
       - name: Debug deploy trigger condition

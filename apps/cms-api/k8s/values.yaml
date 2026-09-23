@@ -1,0 +1,42 @@
+# cms-api's (non-secret) chart values for helmfile-chart-template. The identity values (appName,
+# serviceName, appNamespace, appEnv, appPort) come from required APP_* env vars in helmfile.yaml.gotmpl. Runtime
+# config and secrets come from the abyssoftime-cms-api-secrets-prod Secret (secret.yaml), never here.
+
+# pullPolicy defaults to Always in the chart, so a re-pushed `latest` is picked up on pod restart.
+image:
+  repository: ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api
+  tag: latest
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Loads abyssoftime-cms-api-secrets-prod via envFrom into the app and the migrate init container.
+secrets:
+  enabled: true
+
+# Runs `prisma migrate deploy` (the migrator target's CMD) before the app starts.
+initContainers:
+  enabled: true
+  containers:
+    - name: migrate
+      image: ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest-migrate
+      # Needed explicitly: the chart's pullPolicy only covers the main container, and Kubernetes only
+      # defaults to Always for a tag that is exactly `latest`.
+      imagePullPolicy: Always
+
+# The chart defaults probe paths to /healthz; cms-api serves /health (outside the api/v1 prefix).
+probes:
+  enabled: true
+  liveness:
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  readiness:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10

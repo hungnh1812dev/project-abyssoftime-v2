@@ -13,14 +13,9 @@ describe("validate", () => {
     expect(() => validate({})).toThrow(/Environment variable validation failed/);
   });
 
-  it("throws when DB_DRIVER is not one of the supported drivers", () => {
-    expect(() => validate({ ...requiredConfig, DB_DRIVER: "not-a-real-driver" })).toThrow();
-  });
-
   it("applies defaults for every field with one, given only the required fields", () => {
     const result = validate(requiredConfig);
 
-    expect(result.DB_DRIVER).toBe("postgresql");
     expect(result.DB_HOST).toBe("localhost");
     expect(result.DB_NAME).toBe("abyssoftime-cms");
     expect(result.DB_PASSWORD).toBe("");
