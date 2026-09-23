@@ -25,7 +25,7 @@ spec:
   wait: true
   timeout: 5m
   postBuild:
-    # Created by hand before the first deploy (k8s/config.env.example). Not optional: a missing
+    # Created by hand before the first deploy (k8s/configmap.example.yaml). Not optional: a missing
     # ConfigMap fails the reconcile instead of applying unsubstituted names.
     substituteFrom:
       - kind: ConfigMap

@@ -206,6 +206,19 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
     the memory file
   - Deps: Tasks 7–8 · Size: S
 
+- [x] **Task 10 (follow-up request): Secret/ConfigMap YAML templates**. Done:
+  - `k8s/secret.example.yaml` and `k8s/configmap.example.yaml` are full manifests with
+    `<placeholders>`, and they replace `k8s/.env.example` and `k8s/config.env.example` (removed, at
+    your choice). The filled copies `k8s/secret.yaml` and `k8s/configmap.yaml` are gitignored.
+  - In the Secret, required and defaulted keys are active and optional keys are commented out.
+    `env.validation.ts` rejects `""` (e.g. `RATE_LIMIT_FPS: ""` → `0` → `@Min(1)`), so an empty
+    optional key would stop the app booting.
+  - Apply commands use `kubectl apply --server-side`, which avoids a plaintext
+    `last-applied-configuration` copy of the Secret.
+  - Updated the rule, `ENTRYPOINT.md`, the deployment doc, the entry-Kustomization comment and
+    memory. `check-yaml-templates.py` passes 21/21, and all 6 checks are green.
+  - `SPEC.md` still describes the env-file flow and is reduced at cleanup.
+
 ### Checkpoint: Complete
 - [x] Every SPEC Success Criterion is ticked.
 - [ ] Five-axis review (`/review`).

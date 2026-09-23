@@ -18,9 +18,9 @@ for why each piece was chosen, and [dockerfile.md](./dockerfile.md) for the imag
 | --- | --- |
 | `apps/cms-api/k8s/flux/kustomization.flux.yaml` | Flux entry point (`kustomize.toolkit.fluxcd.io/v1` Kustomization in `flux-system`). It substitutes `${APP_*}` from the ConfigMap and carries the `APP_IMAGE_TAG` setter marker. It is the only file with placeholders you fill in when copying |
 | `apps/cms-api/k8s/flux/app/` | Deployment, Service, ImageRepository, ImagePolicy and ImageUpdateAutomation. Only `${APP_*}` placeholders, with no project values |
-| `apps/cms-api/k8s/config.env.example` | Template for the ConfigMap's keys |
-| `apps/cms-api/k8s/.env.example` | Template for the Secret's keys (runtime config and secrets) |
-| `apps/cms-api/k8s/.env.local` (any gitignored name) | Your filled-in copy, used only to create the Secret. Agents never touch it (see `docs/rules/k8s-secrets.md`) |
+| `apps/cms-api/k8s/configmap.example.yaml` | ConfigMap manifest template: the six `APP_*` keys, `<placeholders>` only |
+| `apps/cms-api/k8s/secret.example.yaml` | Secret manifest template: runtime config and secrets. Required keys active, optional keys commented out |
+| `apps/cms-api/k8s/configmap.yaml`, `apps/cms-api/k8s/secret.yaml` | Your filled-in copies, applied with `kubectl apply --server-side -f`. Gitignored. Agents never touch them (see `docs/rules/k8s-secrets.md`) |
 | `.github/workflows/ci.yml` → `cms-api-ghcr-publish` | Builds and pushes both images on every `master` push that changes cms-api |
 
 This repo only holds **templates**. The GitOps repo holds the live copy, and Flux reads only
@@ -109,8 +109,8 @@ away.
 - **Visibility:** the templates have no `imagePullSecrets` and no ImageRepository `secretRef`, so
   the GHCR package must be **public**. If you make it private, add a pull Secret to the Deployment
   and a `secretRef` to the ImageRepository.
-- `apps/cms-api/.dockerignore` excludes `k8s/`, so `COPY . .` can't bake a real `k8s/.env*` into
-  an image.
+- `apps/cms-api/.dockerignore` excludes `k8s/`, so `COPY . .` can't bake a filled-in
+  `k8s/secret.yaml` into an image.
 
 The branch decides where cms-api goes. Both paths require cms-api to have changed.
 
@@ -153,18 +153,24 @@ Then create the cluster inputs **before** pushing the manifests:
 ```bash
 kubectl create namespace <app-namespace>-<app-env>
 
-# Secret: fill a copy of k8s/.env.example (e.g. k8s/.env.local), keep only non-empty keys
-kubectl -n <app-namespace>-<app-env> create secret generic \
-  <app-name>-<app-service-name>-<app-env>-secrets \
-  --from-env-file=<(grep -E '^[A-Z0-9_]+=.+' k8s/.env.local)
-
-# ConfigMap: fill a private copy of k8s/config.env.example
-kubectl -n flux-system create configmap <app-name>-<app-service-name>-<app-env>-config \
-  --from-env-file=<your filled-in config copy>
+# Copy the templates to their gitignored names, fill in names and values, then apply
+cp k8s/secret.example.yaml k8s/secret.yaml
+cp k8s/configmap.example.yaml k8s/configmap.yaml
+kubectl apply --server-side -f k8s/secret.yaml -f k8s/configmap.yaml
 ```
 
-`--from-env-file` keeps quotes literally, so write values unquoted. Leave empty keys out (the
-`grep` above does that), so the app falls back to its defaults.
+Use `--server-side`. A plain `kubectl apply` would also store every Secret value in plain text in
+the `last-applied-configuration` annotation.
+
+When filling in the templates:
+
+- **Quote every value** (`"true"`, `"5432"`, `"3000"`). Secret and ConfigMap data must be strings.
+- **In the Secret, uncomment only the optional keys you use**, such as the credentials for your
+  storage and email provider. Don't leave an optional key as `""`: an empty value is not "unset",
+  and some fail validation. For example, `RATE_LIMIT_FPS: ""` becomes `0`, fails `@Min(1)`, and
+  the app won't boot.
+- Don't add `PORT` to the Secret. The Deployment sets it from `APP_PORT`.
+- The ConfigMap must stay in `flux-system`.
 
 Finally, copy the templates into the GitOps repo:
 
@@ -190,7 +196,8 @@ Flux recreate the objects. **Expect a short downtime** between the uninstall and
 apply.
 
 1. Create the new Secret (`abyssoftime-cms-api-prod-secrets`, a new name) and the ConfigMap as
-   above. The namespace already exists. Drop `PORT` from your env file: the Deployment sets it.
+   above. The namespace already exists. Carry your values over from your old env file into
+   `k8s/secret.yaml`, leaving out `PORT` and the `APP_*` keys.
 2. Remove the Helm releases. This also deletes the old `abyssoftime-cms-api-secrets-prod` Secret:
    ```bash
    helm -n abyssoftime-prod uninstall abyssoftime-cms-api-prod abyssoftime-cms-api-prod-secrets
@@ -200,15 +207,16 @@ apply.
 
 ## Day-2 operations
 
-- **Secret change:** envFrom is only read when a container starts, so update the Secret, then
-  restart:
+- **Secret change:** envFrom is only read when a container starts. So edit `k8s/secret.yaml`,
+  re-apply it, and restart:
   ```bash
-  kubectl -n <full-namespace> create secret generic <full-app-name>-secrets \
-    --from-env-file=<(grep -E '^[A-Z0-9_]+=.+' k8s/.env.local) --dry-run=client -o yaml | kubectl apply -f -
+  kubectl apply --server-side -f k8s/secret.yaml
   kubectl -n <full-namespace> rollout restart deploy/<full-app-name>
   ```
-- **ConfigMap change** (e.g. port): `kubectl -n flux-system edit configmap <full-app-name>-config`,
-  then `flux reconcile kustomization <full-app-name>`. Changed values change the manifests, so the
+  A key you remove from the file is also removed from the Secret, because server-side apply
+  tracks which keys it owns.
+- **ConfigMap change** (e.g. port): edit `k8s/configmap.yaml`, run `kubectl apply --server-side -f
+  k8s/configmap.yaml`, then `flux reconcile kustomization <full-app-name>`. Changed values change the manifests, so the
   pods roll out normally. Changing `APP_NAME`, `APP_SERVICE_NAME`, `APP_NAMESPACE` or `APP_ENV`
   renames everything. The entry file's literals, the Secret and the ConfigMap have to follow.
 - **Rollback or pin a tag.** Reverting the tag commit alone doesn't hold: automation writes the
