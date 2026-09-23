@@ -38,28 +38,14 @@ const root = process.cwd();
 loadEnvFile(join(root, ".env.test.local"));
 loadEnvFile(join(root, ".env.local"));
 
-const driver = process.env.DB_DRIVER ?? "postgresql";
 const host = process.env.DB_HOST ?? "localhost";
 const port = process.env.DB_PORT ?? "5432";
 const database = process.env.DB_NAME ?? "abyssoftime-cms";
 const username = encodeURIComponent(process.env.DB_USERNAME ?? "postgres");
 const password = encodeURIComponent(process.env.DB_PASSWORD ?? "");
 
-function buildDatasourceUrl(): string {
-  switch (driver) {
-    case "postgresql":
-      return `postgresql://${username}:${password}@${host}:${port}/${database}`;
-    case "mysql":
-      return `mysql://${username}:${password}@${host}:${port}/${database}`;
-    case "sqlite":
-      return `file:${database}`;
-    default:
-      throw new Error(`Unsupported DB_DRIVER: "${driver}"`);
-  }
-}
-
 export default defineConfig({
   datasource: {
-    url: buildDatasourceUrl(),
+    url: `postgresql://${username}:${password}@${host}:${port}/${database}`,
   },
 });

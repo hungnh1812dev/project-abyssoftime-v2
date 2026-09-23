@@ -1,0 +1,84 @@
+# cms-api's k3s releases:
+#   1. <name>-secrets — the runtime Secret, rendered by the local ./secrets-chart from k8s/.env.
+#   2. <name>         — the app, built from the shared helmfile-chart-template chart (source lives in
+#                       its own repo). It `needs` the Secret release, so the Secret always lands first.
+#
+# Everything comes from one gitignored k8s/.env file (template: k8s/.env.example). The chart's
+# identity values are read from it as env vars, so source it before running the CLI; every one is
+# required:
+#
+#   | Env var            | Chart value    | cms-api prod  | Meaning                        |
+#   |--------------------|----------------|---------------|--------------------------------|
+#   | `APP_NAME`         | `appName`      | `abyssoftime` | Application / product name     |
+#   | `APP_SERVICE_NAME` | `serviceName`  | `cms-api`     | Service within the application |
+#   | `APP_NAMESPACE`    | `appNamespace` | `abyssoftime` | Base namespace                 |
+#   | `APP_ENV`          | `appEnv`       | `prod`        | Environment                    |
+#   | `APP_PORT`         | `appPort`      | `3000`        | Container and Service port     |
+#
+# The release names and namespace are derived from them. Every other non-empty key in .env (the
+# app's runtime config, see apps/cms-api/.env.example) goes into the Secret. APP_* keys are left out,
+# and PORT is always set from APP_PORT so the app and the chart can't disagree on the port. Parsing is
+# plain KEY=VALUE per line: `#` comment lines, blank lines and an `export ` prefix are skipped, one
+# pair of surrounding quotes is stripped, no multi-line values or inline comments.
+#
+# No `version:` on the app release on purpose — every deploy uses the latest published chart.
+# helmfile caches an unversioned OCI chart and won't refresh it on its own, so always clear the
+# cache first:
+#
+#   set -a && . ./.env && set +a
+#   helmfile cache cleanup && helmfile diff
+#   helmfile cache cleanup && helmfile apply
+#
+# `helmfile apply` doesn't restart pods when the rendered manifests are unchanged (same `latest`
+# image tag), and a changed Secret alone doesn't restart them either. To roll out newly pushed
+# images or new Secret values:
+#
+#   kubectl -n abyssoftime-prod rollout restart deploy/abyssoftime-cms-api-prod
+{{- $name := printf "%s-%s-%s" (requiredEnv "APP_NAME") (requiredEnv "APP_SERVICE_NAME") (requiredEnv "APP_ENV") }}
+{{- $namespace := printf "%s-%s" (requiredEnv "APP_NAMESPACE") (requiredEnv "APP_ENV") }}
+{{- $env := dict }}
+{{- range $line := readFile ".env" | splitList "\n" }}
+{{-   $line = trimPrefix "export " (trim $line) }}
+{{-   if and $line (not (hasPrefix "#" $line)) (contains "=" $line) }}
+{{-     $kv := splitn "=" 2 $line }}
+{{-     $key := trim $kv._0 }}
+{{-     $value := trim $kv._1 }}
+{{-     if and (hasPrefix "\"" $value) (hasSuffix "\"" $value) (gt (len $value) 1) }}
+{{-       $value = $value | trimPrefix "\"" | trimSuffix "\"" }}
+{{-     else if and (hasPrefix "'" $value) (hasSuffix "'" $value) (gt (len $value) 1) }}
+{{-       $value = $value | trimPrefix "'" | trimSuffix "'" }}
+{{-     end }}
+{{-     if and $value (not (hasPrefix "APP_" $key)) }}
+{{-       $_ := set $env $key $value }}
+{{-     end }}
+{{-   end }}
+{{- end }}
+{{- $_ := set $env "PORT" (requiredEnv "APP_PORT") }}
+
+repositories:
+  - name: hungnh1812dev
+    url: ghcr.io/hungnh1812dev
+    oci: true
+
+releases:
+  - name: {{ $name }}-secrets
+    namespace: {{ $namespace }}
+    chart: ./secrets-chart
+    values:
+      # The Secret name is fixed by helmfile-chart-template: <appName>-<serviceName>-secrets-<appEnv>.
+      - secretName: {{ requiredEnv "APP_NAME" }}-{{ requiredEnv "APP_SERVICE_NAME" }}-secrets-{{ requiredEnv "APP_ENV" }}
+        env: {{ $env | toJson }}
+
+  - name: {{ $name }}
+    # The chart fails the render unless the release namespace is <appNamespace>-<appEnv>.
+    namespace: {{ $namespace }}
+    chart: hungnh1812dev/helmfile-chart-template
+    needs:
+      - {{ $namespace }}/{{ $name }}-secrets
+    values:
+      - appName: {{ requiredEnv "APP_NAME" }}
+        serviceName: {{ requiredEnv "APP_SERVICE_NAME" }}
+        appNamespace: {{ requiredEnv "APP_NAMESPACE" }}
+        appEnv: {{ requiredEnv "APP_ENV" }}
+        appPort: {{ requiredEnv "APP_PORT" }}
+      - values.yaml
