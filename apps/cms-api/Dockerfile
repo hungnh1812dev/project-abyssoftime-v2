@@ -41,12 +41,14 @@ ENV NODE_ENV=production
 
 WORKDIR /app
 
-COPY --from=prod-deps --chown=bun:bun /app/node_modules ./node_modules
-COPY --from=build --chown=bun:bun /app/dist ./dist
-COPY --from=build --chown=bun:bun /app/content-types ./content-types
-COPY --chown=bun:bun package.json ./
+RUN addgroup -S abyssdev && adduser -S -G abyssdev abyssdev
 
-USER bun
+COPY --from=prod-deps --chown=abyssdev:abyssdev /app/node_modules ./node_modules
+COPY --from=build --chown=abyssdev:abyssdev /app/dist ./dist
+COPY --from=build --chown=abyssdev:abyssdev /app/content-types ./content-types
+COPY --chown=abyssdev:abyssdev package.json ./
+
+USER abyssdev
 
 # No HEALTHCHECK — k8s liveness/readiness probes target GET /health instead.
 CMD ["bun", "dist/src/main"]

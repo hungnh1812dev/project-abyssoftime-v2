@@ -32,10 +32,10 @@ Five stages, two build targets — `runner` (default) and `migrator`:
    deliberately — this target is built and run as a one-off job (a k8s `Job`, a CI step), never the
    always-on production image, so its size doesn't matter the way `runner`'s does.
 5. **`runner`** (**default target — must stay the last stage in the file**; see "Docker gotcha" below)
-   — `ENV NODE_ENV=production`, copies `node_modules` from `prod-deps`, `dist/` and `content-types/`
-   from `build`, and `package.json`. Runs as the non-root `bun` user (built into `oven/bun:1-alpine`,
-   uid 1000 — no `useradd`/`addgroup` needed). `CMD ["bun", "dist/src/main"]`, mirroring the existing
-   `start:prod` script.
+   — `ENV NODE_ENV=production`, creates a dedicated non-root `abyssdev` system user/group
+   (`addgroup -S abyssdev && adduser -S -G abyssdev abyssdev`), copies `node_modules` from `prod-deps`,
+   `dist/` and `content-types/` from `build`, and `package.json` (all `--chown=abyssdev:abyssdev`).
+   `CMD ["bun", "dist/src/main"]`, mirroring the existing `start:prod` script.
 
 ### Docker gotcha: default target = last stage in the file
 
@@ -99,9 +99,9 @@ for why migrations are a separate target rather than baked into `runner`'s boot 
 
 ## Non-root, no `HEALTHCHECK` — by design
 
-- **Non-root**: `runner`'s final `USER bun` switches off `root` before `CMD` runs, using the `bun` user
-  already built into the `oven/bun:1-alpine` base image (uid 1000) — no extra `addgroup`/`adduser`
-  needed. Verified: `docker run ... whoami` → `bun`.
+- **Non-root**: `runner` creates a dedicated `abyssdev` system user/group (rather than using the base
+  image's built-in `bun` user) and switches to it via `USER abyssdev` before `CMD` runs. Verified:
+  `docker run ... whoami` → `abyssdev`.
 - **No `HEALTHCHECK` instruction**: deliberately omitted. This image is meant to run under k8s, where
   liveness/readiness probes (targeting `GET /health`) are the standard mechanism and make a Docker-level
   `HEALTHCHECK` redundant — the two mechanisms would duplicate the same check with different failure
