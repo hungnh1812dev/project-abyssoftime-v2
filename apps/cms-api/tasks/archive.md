@@ -347,3 +347,105 @@ untouched by this work.
   files + full commit message) before committing, per `docs/rules/workflow.md`'s commit rules.
 
 </details>
+
+## Helmfile deployment — in-repo `app-template` chart (archived 2026-09-23, superseded)
+
+Status: done, then **superseded**. Phases 1 + 1.5 were committed as `c7cc99b` (chart) and `817bccc`
+(CI publish job). The user then published a standalone chart,
+`oci://ghcr.io/hungnh1812dev/helmfile-chart-template` (0.2.0 adds `initContainers` + `secrets.enabled`),
+which replaces this one. `charts/app-template/` and the `helm-chart-publish` job are removed by T0b in
+`tasks/todo.md`. Frozen snapshot of the original task text:
+
+### Phase 1 — Reusable Helm chart (`charts/app-template/`)
+
+- [x] **T1 — Chart skeleton: naming plumbing.** `Chart.yaml` (apiVersion v2), `values.yaml` schema
+  (all generic, no cms-api defaults): `appName`, `servicePostfix`, `namespaceBase`,
+  `image.{repository,tag}`, `migratorImage.{repository,tag}`, `migration.enabled` (bool, default
+  `true`), `appPort` (default `3000`), `secretName` (optional override; defaults to computed
+  `<appName>-<servicePostfix>-secrets`), `resources`, `probePath` (default `/health`). `_helpers.tpl`:
+  `app-template.fullname` (`<appName>-<servicePostfix>`), `app-template.namespace`
+  (`<namespaceBase>-prod`), `app-template.secretName` (override or computed default).
+  - Acceptance: chart metadata valid; helpers compute the three names correctly for arbitrary
+    appName/servicePostfix input (verified via T2's render — a bare `_helpers.tpl` has nothing to
+    render on its own).
+  - Verify: folded into T2's verify.
+  - Files: `charts/app-template/Chart.yaml`, `charts/app-template/values.yaml`,
+    `charts/app-template/templates/_helpers.tpl`
+  - Deps: none. Size: S
+
+- [x] **T2 — Deployment + Service templates.** `deployment.yaml`: one container
+  (`image.repository:image.tag`, `envFrom` the computed secret, `containerPort`/readiness+liveness
+  `httpGet` on `probePath` using `appPort`); one `initContainers` entry when `migration.enabled`
+  (image `migratorImage.repository:migratorImage.tag`, same `envFrom` — no command override needed,
+  the `migrator` Dockerfile target's own `CMD` already runs `prisma migrate deploy`). `service.yaml`:
+  ClusterIP, named port `http`, `port: 80` → `targetPort: http` (same convention as the current
+  uncommitted `service.yaml`).
+  - Acceptance: `helm template` output has exactly one Deployment + one Service, names matching the
+    helper convention, init container listed before the main container, `envFrom` on both containers.
+  - Verify: `helm lint charts/app-template` (no errors); `helm template rel charts/app-template
+    --set appName=demo,servicePostfix=api,namespaceBase=demo,image.repository=example/app,image.tag=v1,migratorImage.repository=example/app,migratorImage.tag=v1-migrate`
+    — inspect rendered YAML.
+  - Files: `charts/app-template/templates/deployment.yaml`,
+    `charts/app-template/templates/service.yaml`
+  - Deps: T1. Size: M
+
+> **CHECKPOINT A** — **PASSED** (2026-09-23). `helm lint charts/app-template` clean (no errors).
+> `helm template` with cms-api-like sample values (`appName=demo,servicePostfix=api,namespaceBase=demo,...`)
+> renders exactly one Deployment + one Service named `demo-api`, namespace `demo-prod`, init
+> container (`demo-api-migrate`) listed before the main container, both with `envFrom:
+> secretRef.name: demo-api-secrets`. `secretName` override verified independently (renders the
+> literal override instead of the computed default). No cms-api specifics in the chart itself.
+>
+> Implementation note: the chart's own **default** `values.yaml` (used by bare `helm lint`/
+> `helm template` with no overrides) needed non-empty placeholder values (`appName: "app"`,
+> `servicePostfix: "service"`, `namespaceBase: "default"`, `*.repository: "changeme/app"`) rather
+> than empty strings — an empty `appName`/`servicePostfix` renders `name: -`, which is invalid/
+> ambiguous YAML to Helm's parser (`block sequence entries are not allowed in this context`).
+> These are still generic, non-app-specific placeholders; every real consumer overrides all of them.
+> **Commit 1** — once Checkpoint A passes.
+
+### Phase 1.5 — Publish `app-template` as an OCI Helm chart to GHCR
+
+Added after user discussion: instead of every app referencing the chart by local relative path
+(`../../charts/app-template`, only works from inside this monorepo checkout), package it as a
+versioned OCI artifact on GHCR — the same registry already chosen for cms-api's images — so any
+app's `helmfile.yaml` can pull it by `oci://` reference + pinned version, with no local chart
+checkout required. Mirrors this repo's existing precedent of CI publishing artifacts to GHCR
+(`docker/build-push-action` in Phase 3) rather than introducing a new mechanism.
+
+- [x] **T3 — New `helm-chart-publish` CI job.** Add a `helm-chart` path-filter output to
+  `change-detecter` (`charts/app-template/**`). New job `helm-chart-publish`,
+  `needs: [change-detecter]`,
+  `if: needs.change-detecter.outputs.helm-chart == 'true' && github.ref == 'refs/heads/master' && github.event_name == 'push'`,
+  `permissions: { contents: read, packages: write }`. Steps: checkout; `azure/setup-helm@v4`;
+  `helm registry login ghcr.io -u ${{ github.actor }} --password-stdin <<< "${{ secrets.GITHUB_TOKEN }}"`;
+  `helm package charts/app-template -d /tmp/chart-dist` (version comes from `Chart.yaml`);
+  `helm push /tmp/chart-dist/app-template-*.tgz oci://ghcr.io/hungnh1812dev/project-abyssoftime-v2/charts`.
+  Document in the job (a comment) that `Chart.yaml`'s `version` must be bumped on every template
+  change — OCI tags are immutable, so re-pushing the same version fails.
+  - Acceptance: job only runs on a master push that touches `charts/app-template/**`; publishes to
+    `oci://ghcr.io/hungnh1812dev/project-abyssoftime-v2/charts/app-template` at the `Chart.yaml`
+    version.
+  - Verify: YAML parses; `helm package charts/app-template -d /tmp/chart-dist` succeeds locally
+    (packaging logic, no registry credentials needed); read-through confirms the new
+    `change-detecter` output and job don't alter any existing job's `needs`/`if` graph.
+    **Cannot be fully verified end-to-end from here** — actually publishing requires GHCR
+    credentials only the user has. First real publish happens either when this lands on `master`
+    and CI runs, or the user runs the same `helm registry login`/`helm package`/`helm push`
+    sequence locally once to bootstrap it before Phase 2 needs the artifact to exist.
+  - Files: `.github/workflows/ci.yml`
+  - Deps: Checkpoint A. Size: M
+
+> **CHECKPOINT A.5** — **PASSED** (2026-09-23). `python3 -c "import yaml; yaml.safe_load(...)"`
+> confirms `ci.yml` is valid YAML. `helm package charts/app-template -d /tmp/chart-dist` succeeds
+> locally, producing `app-template-0.1.0.tgz`. Full `git diff .github/workflows/ci.yml` reviewed:
+> only the 3 added lines in `change-detecter` (new `helm-chart` output/filter/debug line) and the
+> new standalone `helm-chart-publish` job — every other job (`cms-api-*`, `cms-admin-*`,
+> `frontend-*`, `deploy-cms-api`, `deploy-cms-admin`, `deploy-frontend`) byte-identical to before.
+>
+> **Not yet done (needs the user, no agent has GHCR write credentials):** the job has never actually
+> run against real GHCR — first real publish happens when this lands on `master`, or the user runs
+> the bootstrap sequence in `SPEC.md`'s Commands section locally. **Phase 2 (T4) is blocked on that
+> publish actually happening** — `helmfile template` against the `oci://` chart reference will fail
+> with "not found" until the artifact exists at those coordinates.
+> **Commit 2** — once Checkpoint A.5 passes.
