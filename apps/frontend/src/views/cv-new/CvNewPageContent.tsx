@@ -27,6 +27,7 @@ interface CvNewPageContentProps {
   contact: CvContactType;
   commonText: CommonTextType;
   cvList: CvNewListItemType[];
+  hideAvatar?: boolean;
 }
 
 export const CvNewPageContent = ({
@@ -34,12 +35,13 @@ export const CvNewPageContent = ({
   contact,
   commonText,
   cvList,
+  hideAvatar,
 }: CvNewPageContentProps) => {
   return (
     <div
       className={`relative mx-auto max-w-[800px] overflow-hidden bg-background text-foreground/90 shadow-md sm:my-6 sm:rounded-lg ${styles.cvContainer}`}
     >
-      <CvNewHeader contact={contact} position={data.position} />
+      <CvNewHeader contact={contact} position={data.position} hideAvatar={hideAvatar} />
 
       <div className="px-5 py-2 sm:px-8">
         <CvNewSummary summary={data.summary} commonText={commonText} />
