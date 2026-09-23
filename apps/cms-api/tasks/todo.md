@@ -129,7 +129,11 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
 
 ## Phase 3: Remove helmfile
 
-- [ ] **Task 6: Delete helmfile artifacts** (ask before deleting)
+- [x] **Task 6: Delete helmfile artifacts** (ask before deleting). Done after your Yes: `git rm`
+  of the 5 tracked files, and `secrets-chart/` is gone. `k8s/` now tracks `.env.example`,
+  `config.env.example` and `flux/`. The Flux checks are still green. The remaining
+  `helmfile`/`secrets-chart` refs are `SPEC.md` (intentional) and the 4 docs/rule files for
+  Tasks 7–9. `ci.yml` is clean.
   - Acceptance: `k8s/helmfile.yaml.gotmpl`, `k8s/values.yaml.gotmpl` and `k8s/secrets-chart/`
     are removed.
   - Verify: `ls k8s` shows `.env.example`, `config.env.example` and `flux/`.
