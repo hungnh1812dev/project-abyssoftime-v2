@@ -10,7 +10,8 @@ This doc covers how cms-api gets from a `master` push to a running pod on the ow
 Nothing in CI touches the cluster. Project info (names, namespace, port, image repo) lives in a
 ConfigMap, and runtime config and secrets live in a Secret. The owner creates both by hand, and
 neither is in code. See [cms-api-flux-deployment-techstack.md](./cms-api-flux-deployment-techstack.md)
-for why each piece was chosen, and [dockerfile.md](./dockerfile.md) for the images.
+for why each piece was chosen, and [dockerfile.md](./dockerfile.md) for the images. For a
+step-by-step setup from zero, follow the runbook [k8s/README.md](../../k8s/README.md).
 
 ## Files
 
