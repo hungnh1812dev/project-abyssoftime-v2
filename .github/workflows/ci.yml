@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+      - staging
       - master
 
 concurrency:
@@ -403,13 +404,13 @@ jobs:
       - name: Build
         run: bun run build
 
-  # Opt-in via repo variable CMS_API_DEPLOY_MODE=ghcr (replaces the Render deploy below). Only pushes
-  # images — rolling them out to k3s stays manual (see apps/cms-api/helmfile.yaml).
+  # master → GHCR images for the k3s deployment (staging keeps deploying to Render, see below). Only
+  # pushes images — rolling them out to k3s stays manual (see apps/cms-api/helmfile.yaml).
   cms-api-ghcr-publish:
     name: CMS API - Publish Images to GHCR
     runs-on: ubuntu-latest
     needs: [cms-api-build]
-    if: vars.CMS_API_DEPLOY_MODE == 'ghcr' && github.ref == 'refs/heads/master' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     permissions:
       contents: read
       packages: write
@@ -471,7 +472,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [cms-api-build]
     environment: Production
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push' && vars.CMS_API_DEPLOY_MODE != 'ghcr'
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
 
     steps:
       - name: Debug deploy trigger condition

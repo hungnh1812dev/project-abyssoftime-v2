@@ -55,11 +55,15 @@ user's standalone `helmfile-chart-template`, and the in-repo chart was removed.
 | Works with `pullPolicy: Always` | Yes: the restart re-pulls | Yes, and a changed tag triggers the rollout anyway |
 | **Verdict** | **Chosen default**: the lowest-effort manual flow the user asked for | Documented alternative for when traceability matters |
 
-## CI switch: repository variable (chosen) vs. `workflow_dispatch` input
+## CI routing: by branch (chosen) vs. repository variable vs. `workflow_dispatch` input
 
-| Criteria | `vars.CMS_API_DEPLOY_MODE` (chosen) | `workflow_dispatch` input |
-| --- | --- | --- |
-| Applies to automatic `master` pushes | Yes | No: only to manual runs |
-| Default when unset | Render deploy (unchanged behaviour) | N/A |
-| Flip cost | Repo settings, once | Every run |
-| **Verdict** | **Chosen**: a persistent mode switch, and unset is safe | Rejected: per-run, doesn't cover pushes |
+The first implementation used a repository variable, `CMS_API_DEPLOY_MODE` (`render` or `ghcr`), to
+switch `master` between Render and GHCR. The user replaced it with a split by branch: `staging` deploys
+to Render, and `master` pushes images for k3s.
+
+| Criteria | Branch-based (chosen) | `vars.CMS_API_DEPLOY_MODE` (replaced) | `workflow_dispatch` input |
+| --- | --- | --- | --- |
+| Render and k3s side by side | Yes: one per branch | No: one or the other | Per run only |
+| Covers automatic pushes | Yes | Yes | No |
+| Hidden state outside the repo | None | A repo setting | None |
+| **Verdict** | **Chosen**: `staging` keeps the existing Render setup, and `master` feeds k3s | Replaced: couldn't run both targets | Rejected: doesn't cover pushes |

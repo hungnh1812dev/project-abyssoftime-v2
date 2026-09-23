@@ -13,7 +13,7 @@ each piece was chosen. For the image itself, see [dockerfile.md](./dockerfile.md
 | `apps/cms-api/k8s/values.yaml` | Every cms-api-specific chart value: names, port, images, resources, secrets, init container, probes |
 | `apps/cms-api/k8s/secret.example.yaml` | Committed template for the Namespace + Secret (placeholders only) |
 | `apps/cms-api/k8s/secret.yaml` | Real values, gitignored, applied by hand. Agents never touch it (see `docs/rules/k8s-secrets.md`) |
-| `.github/workflows/ci.yml` → `cms-api-ghcr-publish` | Builds and pushes both images when `CMS_API_DEPLOY_MODE=ghcr` |
+| `.github/workflows/ci.yml` → `cms-api-ghcr-publish` | Builds and pushes both images on every `master` push that changes cms-api |
 
 ## The chart: shared, external, unpinned
 
@@ -79,8 +79,8 @@ Secret's value at render time. **Both must be `3000`**. Nothing enforces it, so 
 | `runner` | `latest`, `<short-sha>` |
 | `migrator` | `latest-migrate`, `<short-sha>-migrate` |
 
-The `cms-api-ghcr-publish` job runs only on a `master` push, only when cms-api changed (it depends on
-`cms-api-build`), and only when the **repository variable** `CMS_API_DEPLOY_MODE` is `ghcr`. It uses
+The `cms-api-ghcr-publish` job runs only on a `master` push, and only when cms-api changed (it depends on
+`cms-api-build`). It uses
 `GITHUB_TOKEN` with `packages: write`; no other credentials are involved.
 
 The job builds **both** targets before pushing anything. It then pushes the SHA tags first, then
@@ -93,10 +93,17 @@ to this repo.
 `apps/cms-api/.dockerignore` excludes `k8s/` and `helmfile.yaml`, so a local `docker build` can't bake
 the operator's real `k8s/secret.yaml` into an image through `COPY . .`.
 
-| `CMS_API_DEPLOY_MODE` | `cms-api-ghcr-publish` | `deploy-cms-api` (Render webhook) |
+The branch decides where cms-api goes. Both paths require cms-api to have changed.
+
+| Push to | `cms-api-ghcr-publish` (k3s images) | `deploy-cms-api` (Render webhook) |
 | --- | --- | --- |
-| unset / `render` | skipped | runs (the original behaviour) |
-| `ghcr` | runs | skipped |
+| `staging` | skipped | runs |
+| `master` | runs | skipped |
+| `develop` | skipped | skipped (CI checks only) |
+
+`deploy-cms-api` still uses the `Production` GitHub environment, where `CMS_API_RENDER_DEPLOY_HOOK`
+lives. If that environment has a deployment-branch rule limited to `master`, the `staging` job will be
+rejected. In that case, allow `staging` there, or move the hook to a `Staging` environment.
 
 The images are private by default on GHCR. The k3s node needs pull access: either make the package
 public, or add an `imagePullSecrets` registry credential. The chart has no value for
