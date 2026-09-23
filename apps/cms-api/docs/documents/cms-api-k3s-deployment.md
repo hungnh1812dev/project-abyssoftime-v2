@@ -113,6 +113,11 @@ A Secret change alone doesn't restart pods (`envFrom` is only read at container 
 | `runner` | `latest`, `<short-sha>` |
 | `migrator` | `latest-migrate`, `<short-sha>-migrate` |
 
+The runner build passes `APP_PORT` from the **`CMS_API_APP_PORT` repo variable** (Settings → Secrets and
+variables → Actions → Variables). The Dockerfile requires it, so the job fails until it's set. Keep it
+equal to `APP_PORT` in `k8s/.env`. It only sets the image's `EXPOSE` and default `PORT`; in k3s the
+Secret's `PORT` decides the listen port.
+
 The `cms-api-ghcr-publish` job runs only on a `master` push, and only when cms-api changed (it depends on
 `cms-api-build`). It uses
 `GITHUB_TOKEN` with `packages: write`; no other credentials are involved.

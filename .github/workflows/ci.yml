@@ -439,6 +439,8 @@ jobs:
           context: apps/cms-api
           target: runner
           push: false
+          # Required by the Dockerfile (EXPOSE + default PORT). Keep equal to APP_PORT in k8s/.env.
+          build-args: APP_PORT=${{ vars.CMS_API_APP_PORT }}
           labels: org.opencontainers.image.source=https://github.com/hungnh1812dev/project-abyssoftime-v2
           tags: |
             ghcr.io/hungnh1812dev/project-abyssoftime-v2/cms-api:latest
