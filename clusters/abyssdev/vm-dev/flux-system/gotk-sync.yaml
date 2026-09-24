@@ -8,7 +8,7 @@ metadata:
 spec:
   interval: 1m0s
   ref:
-    branch: master
+    branch: deployment
   secretRef:
     name: flux-system
   url: ssh://git@github.com/hungnh1812dev/project-abyssoftime-v2

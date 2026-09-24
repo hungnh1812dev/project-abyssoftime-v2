@@ -74,7 +74,7 @@ build args and has no `EXPOSE`/`PORT`. In k3s, the Flux Deployment sets `PORT` f
 `APP_PORT`: it overrides the container `command` with
 `sh -c "PORT=${APP_PORT} exec bun dist/src/main"` (see
 [cms-api-flux-deployment.md](./cms-api-flux-deployment.md)). **That `command` repeats the runner
-`CMD`**, so a change to the `CMD` must also go into `k8s/flux/app/deployment.yaml`.
+`CMD`**, so a change to the `CMD` must also go into `k8s/flux/deployment.yaml`.
 
 ## Building and running
 
