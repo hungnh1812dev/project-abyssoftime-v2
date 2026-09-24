@@ -1,3 +1,7 @@
+# cms-api on vm-dev (local VM): applies ../../../apps/cms-api/k8s/flux with ${APP_*} from the
+# develop ConfigMap. APP_IMAGE_TAG is rewritten by CI (the cms-api-bump-tag job opens a PR after each
+# GHCR push); Flux applies it once that PR is merged. Keep this file's layout in sync with vm-prod's
+# abyssdev-apps-prod.yaml, since CI edits both with the same yq path.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -17,4 +21,4 @@ spec:
       - kind: ConfigMap
         name: abyssdev-cms-api-develop-config
     substitute:
-      APP_IMAGE_TAG: "dev" # {"$imagepolicy": "flux-system:abyssdev-cms-api-prod:tag"}
+      APP_IMAGE_TAG: "dev"

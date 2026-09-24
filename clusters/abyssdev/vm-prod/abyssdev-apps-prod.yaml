@@ -1,0 +1,24 @@
+# cms-api on vm-prod (VPS): applies ../../../apps/cms-api/k8s/flux with ${APP_*} from the prod
+# ConfigMap. APP_IMAGE_TAG is rewritten by CI (the cms-api-bump-tag job opens a PR after each GHCR
+# push); Flux applies it once that PR is merged. Keep this file's layout in sync with vm-dev's
+# abyssdev-apps-develop.yaml, since CI edits both with the same yq path.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: abyssdev-cms-api-sync-prod
+  namespace: flux-system
+spec:
+  interval: 3m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./apps/cms-api/k8s/flux
+  prune: true
+  wait: true
+  timeout: 5m
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: abyssdev-cms-api-prod-config
+    substitute:
+      APP_IMAGE_TAG: "dev"
