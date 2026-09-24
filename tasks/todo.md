@@ -1,7 +1,7 @@
 # Todo: cms-api tag bump from CI (replace Flux image automation)
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS**. 3 of 6 tasks done.
+Status: **IN PROGRESS**. 4 of 6 tasks done.
 
 Checkbox updates ship in the same commit as that phase's work. Verification is offline only: never
 run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.yaml` or
@@ -83,7 +83,7 @@ run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.
 
 ## Phase 3: Remove image automation
 
-- [ ] **T4: Delete the Flux image-automation manifests.** (S)
+- [x] **T4: Delete the Flux image-automation manifests.** (S)
   - Files:
     - `apps/cms-api/k8s/flux/image-repository.yaml`, `image-policy.yaml` and `image-update.yaml`
       (**ask first:** delete)
@@ -99,8 +99,8 @@ run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.
   - Deps: T3
 
 ### Checkpoint 3
-- [ ] Render and asserts pass.
-- [ ] Commit (Yes/No).
+- [x] Render and asserts pass.
+- [x] Commit (Yes/No).
 
 ## Phase 4: Docs and rules
 
