@@ -1,11 +1,13 @@
-# cms-api project-info ConfigMap template: the ${APP_*} values Flux substitutes into k8s/flux/app/*
+# cms-api project-info ConfigMap template: the ${APP_*} values Flux substitutes into k8s/flux/*
 # (via postBuild.substituteFrom, which only reads flux-system). Placeholders only; never commit real
-# values. Created by hand before the first Flux deploy:
+# values. Created by hand on each cluster before its first Flux deploy:
 #   cp k8s/configmap.example.yaml k8s/configmap.yaml   # gitignored; fill in name + values
 #   kubectl apply --server-side -f k8s/configmap.yaml
+# metadata.name (<app-name>-<app-service-name>-<app-env>-config) must match the substituteFrom
+# ConfigMap in that cluster's app Kustomization, clusters/abyssdev/<cluster>/abyssdev-apps-*.yaml.
 # Derived names: namespace <APP_NAMESPACE>-<APP_ENV>, app <APP_NAME>-<APP_SERVICE_NAME>-<APP_ENV>.
 # Quote every value (e.g. "3000"): ConfigMap data must be strings. After a change, re-apply and run
-# `flux reconcile kustomization <app-name>-<app-service-name>-<app-env>`.
+# `flux reconcile kustomization <app-kustomization>` (e.g. abyssdev-cms-api-sync-prod).
 apiVersion: v1
 kind: ConfigMap
 metadata:
