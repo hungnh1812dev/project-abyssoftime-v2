@@ -17,4 +17,4 @@ spec:
       - kind: ConfigMap
         name: abyssdev-cms-api-develop-config
     substitute:
-      APP_IMAGE_TAG: "63-ac16dca" # {"$imagepolicy": "flux-system:abyssdev-cms-api-prod:tag"}
+      APP_IMAGE_TAG: "75-4bef740" # {"$imagepolicy": "flux-system:abyssdev-cms-api-prod:tag"}
