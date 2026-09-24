@@ -8,11 +8,12 @@ Task list: [`tasks/todo.md`](todo.md)
 
 ## Overview
 
-After the GHCR push on `master`, CI opens or updates one PR. The PR sets `APP_IMAGE_TAG` in both
-cluster app Kustomizations: `vm-dev` (local VM) and `vm-prod` (VPS). When the owner merges it, each
-cluster's Flux picks up the change: `GitRepository` polls every 1m, and the app `Kustomization`
-reconciles and re-checks every 3m. Flux image automation (`ImageRepository`/`ImagePolicy`/
-`ImageUpdateAutomation`) is removed.
+After the GHCR push on `master`, the new `cms-api-bump-tag` job commits the tag to the **`deployment`**
+branch, the only branch Flux reads. It sets `APP_IMAGE_TAG` in both cluster app Kustomizations:
+`vm-dev` (local VM) and `vm-prod` (VPS). `master` and its existing CI jobs are untouched, apart from
+the publish job exposing its tag. Each cluster's Flux polls `deployment` every 1m and reconciles, with
+a 3m drift re-check. Other manifest changes reach `deployment` when the owner merges `master` into it.
+Flux image automation is removed.
 
 ## Dependency graph
 
@@ -23,9 +24,9 @@ T2 vm-prod wired (path + files) ─────┼─▶ T3 CI bump job (edits b
                                      └────────────────────────────────────────────┴─▶ T5 docs ─▶ T6 rules/runbook
 ```
 
-- T3 needs both cluster files to exist with the same key layout, because `yq` must hit a real key in
-  each.
-- T4 comes after T3, so no revision of `master` is left with no tag writer at all. The current
+- T3 needs both cluster files to exist with the same `APP_IMAGE_TAG:` line, because `sed` rewrites
+  that line in each.
+- T4 comes after T3, so no revision is left with no tag writer at all. The current
   automation is already miswired (vm-dev's marker points at a `-prod` policy), so the ordering is
   about hygiene, not an outage risk.
 - The docs come last, so they describe the final state.
@@ -34,18 +35,20 @@ T2 vm-prod wired (path + files) ─────┼─▶ T3 CI bump job (edits b
 
 - **CI is the only writer of the tag.** The tag comes from a new `outputs.tag` on
   `cms-api-ghcr-publish`, so it's computed once.
-- **The PR lives on a fixed branch, `ci/cms-api-image-tag`,** managed by
-  `peter-evans/create-pull-request@v7`. Each run force-pushes the branch, so there's always one
-  open PR with the newest tag. This is a new action dependency; ask before adding it (T3).
-- **`yq -i` on `ubuntu-latest`,** where it's preinstalled, rather than `sed`.
-- **Loop safety:**
-  - Pushes and PRs made with `GITHUB_TOKEN` don't trigger workflows.
-  - The merge only touches `clusters/**`, which the `cms-api` paths filter ignores.
+- **Direct push to `deployment`,** using plain `git` with no third-party action. This changed at the
+  owner's request during T3: first from a PR to `master`, then to `deployment`. Flux's
+  `gotk-sync.yaml` `ref.branch` becomes `deployment` on both clusters.
+- **Races:** each of up to 3 attempts runs `fetch`, `reset --hard origin/deployment`, re-applies the
+  edit and pushes. A file's tag is only replaced if its run number is lower than ours. The job-level
+  `concurrency` (no cancel) runs bumps one at a time.
+- **`sed` + `grep` read-back** rather than `yq` (owner: no extra tools). Writing through a temp file
+  instead of `sed -i` makes GNU and BSD sed behave the same.
+- **No CI loop:** the workflow only runs on `develop`/`staging`/`master` pushes, and a
+  `GITHUB_TOKEN` push never triggers a workflow run.
 - **Offline verification only.** A throwaway Python/PyYAML assert script lives in the session
   scratchpad, not the repo, like the previous Flux work. Nothing runs against a cluster.
-- **`yq` isn't installed locally.** To dry-run the exact CI command, use
-  `docker run --rm -v "$PWD":/w -w /w mikefarah/yq` if Docker is available. Otherwise mirror the
-  edit in Python and rely on CI's first real run. Installing `yq` through brew needs asking first.
+- **The exact CI script is dry-run locally.** It's extracted from `ci.yml` and run against a
+  throwaway bare origin with `deployment` and `master` branches, using macOS bash 3.2 and BSD sed.
 
 ## Phases
 
@@ -65,7 +68,12 @@ Add the job, and add a tag output to the publish job.
 - `ci.yml` parses.
 - Every job except `cms-api-ghcr-publish` (which only gains `outputs`) and the new job is
   unchanged.
-- A `yq` dry-run on both files changes only the tag line.
+- The bump dry-run passes. It covers:
+  - Both files bumped with a +2/-2 diff, and the marker dropped.
+  - An older tag and a re-run are no-ops.
+  - A push race is retried.
+  - A bad tag and a missing file fail loudly.
+  - `master` is never written.
 - Commit.
 
 ### Phase 3: Remove image automation (T4)
@@ -91,16 +99,18 @@ The docs describe this same-repo, CI-bump flow. Stale references to a separate G
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | vm-prod's in-cluster `flux-system` Kustomization reads the broken path, so the path fix in Git never gets applied | High (vm-prod never syncs) | Owner runs `kubectl patch` or re-bootstraps. The exact command is in the spec and gets repeated in the final hand-off. |
-| The repo setting "Allow GitHub Actions to create and approve pull requests" is off | Med (the bump job fails) | The job fails loudly. The setting is documented in the runbook. |
-| `yq` path misses (a renamed key or file) and silently writes a new key | Med | After the edit, the CI step checks with `yq e '.spec.postBuild.substitute.APP_IMAGE_TAG'` that each file equals `$TAG`, and fails otherwise. |
+| Protection on `deployment` blocks the Actions push | Med (the bump job fails, and nothing deploys) | The job fails loudly. The runbook documents the prerequisite. |
+| `deployment` is missing a cluster file (for example vm-prod's, before the first `master` → `deployment` merge) | Med (the bump fails) | The job fails with "merge master into deployment first". The owner's first step is that merge. |
+| The first `master` → `deployment` merge conflicts on vm-dev's tag line | Low | Documented in the spec's owner steps: keep `deployment`'s tag and drop the marker. |
+| The in-cluster `GitRepository` still tracks `master` | High (bumps never deploy) | The owner patches or re-bootstraps with `--branch=deployment`. The exact commands are in the spec and in the hand-off. |
+| The `sed` pattern misses (a renamed key or reformatted line) | Med | A `grep` read-back requires exactly one `APP_IMAGE_TAG: "<tag>"` line per file, or the job fails. The file headers say CI rewrites that line. |
 | Pruning image-* objects after T4 merges | Low | `prune: true` removes them. The image controllers stay installed but idle, which is a spec non-goal. |
-| vm-dev's current tag `"dev"` may not exist in GHCR | Low (vm-dev pods already in whatever state) | Open Q2. Until it's answered, T1 keeps `"dev"`, and the first CI bump PR replaces it. |
-| A bump PR sits unmerged while `master` moves on | Low | `create-pull-request` rebases the branch on `master` each run. |
+| vm-dev's current tag `"dev"` may not exist in GHCR | Low (vm-dev pods already in whatever state) | Open Q2. Until it's answered, T1 keeps `"dev"`, and the first CI bump on `deployment` replaces it. |
+| Two bumps race, or an older run finishes last | Low | `concurrency` runs them one at a time, the run-number guard stops a rollback, and the reset-and-reapply retry avoids rebase conflicts. |
 
 ## Open questions (carried from spec; plan proceeds on the stated defaults)
 
-1. Should one PR bump both clusters? **Default: yes.**
-2. Is vm-dev's `APP_IMAGE_TAG: "dev"` a real tag? **Default: leave it; the first bump PR replaces
+1. Is vm-dev's `APP_IMAGE_TAG: "dev"` a real tag? **Default: leave it; the first bump replaces
    it.**
-3. Can the stale `apps/cms-api/SPEC.md` be reduced to a pointer? **Default: yes, in the clean-up
+2. Can the stale `apps/cms-api/SPEC.md` be reduced to a pointer? **Default: yes, in the clean-up
    step after review.** The owner confirms before anything is deleted.

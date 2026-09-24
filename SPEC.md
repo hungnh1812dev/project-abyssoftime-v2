@@ -1,6 +1,6 @@
-# Spec: cms-api tag bump from CI (replace Flux image automation)
+# Spec: cms-api tag bump from CI to the `deployment` branch (replace Flux image automation)
 
-Status: **DRAFT**. Awaiting approval.
+Status: **IN PROGRESS** (see `tasks/todo.md`)
 Date: 2026-09-24
 Target areas: `.github/workflows/ci.yml` (cms-api jobs), `clusters/abyssdev/*`, `apps/cms-api/k8s/flux/`,
 cms-api Flux docs/rules
@@ -12,43 +12,51 @@ k8s templates. The `/cv-3` spec that was here is SHIPPED and has been replaced.
 
 ## Objective
 
-GitHub Actions becomes the only thing that writes the cms-api image tag. Flux image automation, which
-currently scans GHCR in the cluster and commits the tag itself, is removed. Flux on each cluster only
-polls this repo and reconciles whenever a file changes, including the tag.
+GitHub Actions becomes the only thing that writes the cms-api image tag. It writes it only on the
+**`deployment` branch**, which is the only branch Flux reads. Flux image automation, which currently
+scans GHCR in the cluster and commits the tag itself, is removed. The existing `master` CI stays as
+it is: it builds, tests and pushes to GHCR, and it gains exactly one extra job. Flux on each cluster
+polls `deployment` and reconciles whenever anything there changes, whether that's the tag or any
+other file.
 
 ```
-push master ─▶ CI build/test ─▶ GHCR push <run>-<sha7> (+ -init)
-                                      │
-                                      ▼
-                  CI opens/updates PR "bump cms-api to <tag>"  (edits APP_IMAGE_TAG in both clusters)
-                                      │  owner merges
-                                      ▼
-   vm-dev (local VM) ─┐     Flux GitRepository polls master every 1m
-   vm-prod (VPS) ─────┴─▶   Flux Kustomization reconciles on new revision (+ every 3m drift check)
-                                      ▼
-                            Deployment rolls to <tag>
+push master ─▶ CI build/test (unchanged) ─▶ GHCR push <run>-<sha7> (+ <run>-<sha7>-init)
+                                                  │
+                                                  ▼
+                      cms-api-bump-tag: commit "deploy image <tag>" to `deployment`
+                      (sed on the APP_IMAGE_TAG line in both cluster files; master untouched)
+                                                  │
+   vm-dev (local VM) ─┐                           ▼
+   vm-prod (VPS) ─────┴─▶  Flux GitRepository polls `deployment` every 1m
+                           Flux Kustomization reconciles on new revision (+ every 3m drift check)
+                                                  ▼
+                           Deployment rolls to <tag> (app) + <tag>-init (migrations)
+
+manifest changes: master ──(owner merges master into deployment)──▶ deployment ─▶ Flux
 ```
 
 ### User stories
 
-- **As the owner**, after a `master` push that changes cms-api, a PR appears within about a minute of
-  the GHCR push. It sets `APP_IMAGE_TAG` to the new tag in both `vm-dev` and `vm-prod`.
-- **As the owner**, I merge that PR, and both clusters run the new image within about 5 minutes. I
-  run no `kubectl` or `flux` command.
-- **As the owner**, I edit any manifest under a cluster's path (for example resources or probes) and
-  push to `master`. Flux applies it within about 5 minutes.
-- **As the owner**, if two cms-api builds land before I merge, there is still only one open bump PR,
-  and it carries the newest tag.
-- **As the owner**, I roll back by opening a PR that sets `APP_IMAGE_TAG` to an older tag. Nothing
-  overwrites it; there's no automation to suspend.
+- **As the owner**, after a `master` push that changes cms-api, a `github-actions[bot]` commit lands
+  on `deployment` about a minute after the GHCR push. It sets `APP_IMAGE_TAG` to the new tag in both
+  `vm-dev` and `vm-prod`. `master` gets no bot commit, and no extra CI run starts.
+- **As the owner**, both clusters run the new app and init images within about 5 minutes of that
+  commit. I run no `kubectl` or `flux` command.
+- **As the owner**, I change a manifest (for example resources, probes or a cluster file) on `master`
+  and then merge `master` into `deployment`. Flux applies it within about 5 minutes.
+- **As the owner**, if two cms-api builds race, `deployment` ends up on the newest tag. An older run
+  never overwrites a newer tag.
+- **As the owner**, I roll back by pushing a commit to `deployment` that sets `APP_IMAGE_TAG` to an
+  older tag. It holds until the next cms-api build; there's no automation to suspend.
 
 ### Non-goals
 
+- Changing any existing `master` CI job, beyond exposing the tag the publish job already computes.
+- Syncing `master` into `deployment` automatically. The owner merges by hand when manifests change.
 - Deploying cms-admin or frontend through Flux. They stay on Render and Vercel.
-- A separate `develop` image or build. Both clusters use the same GHCR images from `master`.
-- Promotion gates such as dev first and then prod. One PR bumps both clusters (see Open Questions).
-- Uninstalling the image-reflector and image-automation controllers from the clusters. Leaving them
-  idle is harmless; removing them means re-bootstrapping, which is an owner action.
+- Promotion gates such as dev first and then prod, or a manual approval step. One commit bumps both
+  clusters.
+- Uninstalling the image-reflector and image-automation controllers. Leaving them idle is harmless.
 - Any change to Secret or ConfigMap contents.
 
 ---
@@ -57,11 +65,12 @@ push master ─▶ CI build/test ─▶ GHCR push <run>-<sha7> (+ -init)
 
 | Question | Chosen | Rejected | Why |
 | --- | --- | --- | --- |
-| Who writes the tag | CI only | Keep Flux image automation too | Two writers to one line make conflicting commits. CI already knows the exact tag it pushed, so no GHCR scan or regex policy is needed, and Flux doesn't need a write deploy key. |
-| How CI writes it | Opens or updates a PR | Direct push to `master` | Owner's choice: merging is the deploy approval. |
-| Environments | One PR bumps `vm-dev` and `vm-prod` | Per-branch images (develop → vm-dev) | Both clusters pull the same GHCR repo. vm-dev (local VM) and vm-prod (VPS) differ only by host and ConfigMap. |
-| PR tooling | `peter-evans/create-pull-request@v7` | `gh pr create` script | It handles "update the existing PR on a fixed branch" natively. A script would need its own branch, force-push and PR-exists logic. **New action dependency: ask first.** |
-| YAML edit | `yq -i` (preinstalled on `ubuntu-latest`) | `sed` | It edits a structured key, not a text pattern, so a comment or reorder can't make it miss silently. |
+| Who writes the tag | CI only | Keep Flux image automation too | Two writers to one line make conflicting commits. CI already knows the exact tag it pushed. |
+| Where CI writes it | Direct push to the `deployment` branch | Push to `master` / open a PR | Owner's choice (T3). `master` stays clean and unprotected-branch concerns go away. The workflow never runs on `deployment` pushes, so there's structurally no CI loop. |
+| What Flux reads | `deployment` only (`gotk-sync.yaml` `ref.branch`) | `master` | A tag written to `deployment` must be what the clusters run. |
+| Environments | One commit bumps `vm-dev` and `vm-prod` | Per-branch images | Both clusters pull the same GHCR repo; they differ only by host and ConfigMap. |
+| Edit tool | `sed` + `grep` read-back (no `sed -i`) | `yq` | Owner's choice: no extra tool. Writing through a temp file behaves the same with GNU sed (runner) and BSD sed (macOS), so the exact CI script is dry-run locally. The read-back check makes a missed pattern fail loudly. |
+| Push races | Reset to `origin/deployment`, re-apply, push; 3 attempts; never lower the run number | `git pull --rebase` | Re-applying on a fresh tip can't conflict. The run-number check stops an older run from rolling back a newer tag. |
 
 The full comparison tables go in `apps/cms-api/docs/documents/cms-api-flux-deployment-techstack.md`
 during the docs step, as `docs/workflow.md` requires.
@@ -72,57 +81,69 @@ during the docs step, as `docs/workflow.md` requires.
 
 ### CI (`.github/workflows/ci.yml`)
 
-New job `cms-api-bump-tag`, with `needs: [cms-api-ghcr-publish]` and the same `master` + `push` guard:
-
-1. Checkout `master`.
-2. For each cluster file, set `.spec.postBuild.substitute.APP_IMAGE_TAG` to `<run_number>-<sha7>`.
-   Take the tag from a new `cms-api-ghcr-publish` output (`outputs.tag`) instead of computing it a
-   second time.
-3. Create or update the PR on the fixed branch `ci/cms-api-image-tag`, based on `master`, titled
-   `chore(cms-api): deploy image <tag>`. It force-pushes the branch, so an older unmerged bump is
-   replaced rather than stacked.
-4. Permissions: `contents: write`, `pull-requests: write`, and nothing else.
-
-There's no CI loop:
-- PRs and pushes made with `GITHUB_TOKEN` don't trigger workflows.
-- The merge commit only touches `clusters/**`, which the `cms-api` paths filter ignores, so no
-  rebuild or new bump happens.
-
-Repo setting the owner must enable: **Settings → Actions → General → "Allow GitHub Actions to create
-and approve pull requests"**.
+- **`cms-api-ghcr-publish`** gains `outputs: tag: ${{ steps.tag.outputs.tag }}`, and nothing else
+  changes in it.
+- **The new job `cms-api-bump-tag`** has `needs: [cms-api-ghcr-publish]` and the same `master` +
+  `push` guard. So it runs only when cms-api changed and the images were pushed.
+  1. Check out `deployment`.
+  2. Validate that `TAG` matches `^[0-9]+-[0-9a-f]{7}$`.
+  3. Up to 3 attempts:
+     1. `git fetch origin deployment` and `git reset --hard origin/deployment`.
+     2. For each cluster file:
+        - Fail with "merge master into deployment first" if the file is missing.
+        - Skip the file if its current tag's run number is at least ours.
+        - Otherwise `sed` the whole `APP_IMAGE_TAG:` line to `APP_IMAGE_TAG: "<tag>"`, which also
+          drops any old `$imagepolicy` marker. Then `grep` that it matches exactly once.
+     3. If nothing changed, exit 0.
+     4. Commit `chore(cms-api): deploy image <tag>` as `github-actions[bot]`, then
+        `git push origin HEAD:deployment`.
+  4. Permissions: `contents: write` only.
+  5. `concurrency: cms-api-bump-tag`, with `cancel-in-progress: false`.
+  6. No third-party actions and no extra tools.
+- **No CI loop.** `on.push.branches` is `develop`/`staging`/`master`, so a push to `deployment` never
+  triggers this workflow. Pushes made with `GITHUB_TOKEN` don't trigger workflows either.
 
 ### Flux, both clusters (`clusters/abyssdev/{vm-dev,vm-prod}/`)
 
 | File | vm-dev (local VM) | vm-prod (VPS) |
 | --- | --- | --- |
-| `flux-system/gotk-sync.yaml` path | `./clusters/abyssdev/vm-dev` (already fixed) | **Fix:** `./clusters/local-vm/abyssdev/cms-api` → `./clusters/abyssdev/vm-prod` |
+| `flux-system/gotk-sync.yaml` `ref.branch` | `master` → **`deployment`** | `master` → **`deployment`** |
+| `flux-system/gotk-sync.yaml` path | `./clusters/abyssdev/vm-dev` | **Fix:** → `./clusters/abyssdev/vm-prod` |
 | `kustomization.yaml` | exists | **New:** `flux-system/` + the app file |
 | App Flux Kustomization | `abyssdev-apps-develop.yaml` | **New:** `abyssdev-apps-prod.yaml` |
 | Kustomization name | `abyssdev-cms-api-sync-develop` | `abyssdev-cms-api-sync-prod` |
 | `substituteFrom` ConfigMap | `abyssdev-cms-api-develop-config` | `abyssdev-cms-api-prod-config` |
-| `APP_IMAGE_TAG` | a real tag; drop the `$imagepolicy` marker | same |
+| `APP_IMAGE_TAG` on `master` | placeholder `"dev"`, no marker | same |
 
-Reconcile loop (the "loop check"), the same on both clusters:
-- `GitRepository flux-system`: `interval: 1m`, branch `master`. It fetches new commits.
-- App `Kustomization`: `interval: 3m`, `prune: true`, `wait: true`, `timeout: 5m`. A new source
-  revision triggers an immediate reconcile. The interval re-applies to fix drift if someone edits
-  the cluster by hand.
+Reconcile loop, the same on both clusters:
+- `GitRepository flux-system`: `interval: 1m`, branch `deployment`.
+- App `Kustomization`: `interval: 3m`, `prune: true`, `wait: true`, `timeout: 5m`.
 
 ### cms-api templates (`apps/cms-api/k8s/flux/`)
 
 - Delete `image-repository.yaml`, `image-policy.yaml` and `image-update.yaml`, and remove them from
   `kustomization.yaml`. Deleting files needs the owner's OK.
-- `deployment.yaml` and `service.yaml` stay unchanged.
+- `deployment.yaml` and `service.yaml` stay unchanged. Both images already come from
+  `${APP_IMAGE_TAG}`.
 
-### Owner-run cluster steps (agent never runs these)
+### Owner-run steps (agent never runs these)
 
-- **vm-prod** can't pick up its own path fix, because its flux-system Kustomization reads from the
-  broken path. Re-run bootstrap with `--path=clusters/abyssdev/vm-prod`, or run
-  `kubectl -n flux-system patch kustomization flux-system --type merge -p '{"spec":{"path":"./clusters/abyssdev/vm-prod"}}'`.
-- Create `abyssdev-cms-api-prod-config` and the prod Secret on the VPS from the templates.
-- After the image-* manifests are pruned, the old `ImageRepository`/`ImagePolicy`/`ImageUpdateAutomation`
-  objects are removed by `prune: true` automatically. Nothing else is needed.
-- Optional: make the Flux deploy key read-only.
+1. **Merge this work into `master`, then merge `master` into `deployment`.** Expect one conflict on
+   vm-dev's `APP_IMAGE_TAG` line (`deployment` has `"75-4bef740" # {"$imagepolicy"…}`). Resolve it to
+   `APP_IMAGE_TAG: "75-4bef740"`, with no marker. Set vm-prod's tag to the same value.
+2. **Point each cluster at `deployment`.** The in-cluster `GitRepository` still tracks `master`, and
+   vm-prod also still reads the broken path. Re-bootstrap each cluster with
+   `--branch=deployment --path=clusters/abyssdev/<cluster>`, or patch:
+   ```bash
+   kubectl -n flux-system patch gitrepository flux-system --type merge -p '{"spec":{"ref":{"branch":"deployment"}}}'
+   # vm-prod only:
+   kubectl -n flux-system patch kustomization flux-system --type merge -p '{"spec":{"path":"./clusters/abyssdev/vm-prod"}}'
+   ```
+3. Create `abyssdev-cms-api-prod-config` and the prod Secret on the VPS from the templates.
+4. `deployment` must accept pushes from GitHub Actions. That means no protection rule, or one with an
+   Actions bypass.
+5. After T4 reaches `deployment`, `prune: true` removes the old `ImageRepository`/`ImagePolicy`/
+   `ImageUpdateAutomation` objects.
 
 ---
 
@@ -140,13 +161,7 @@ kubectl kustomize apps/cms-api/k8s/flux \
     APP_IMAGE_REPO=ghcr.io/x/y APP_IMAGE_TAG=57-a1b2c3d \
     envsubst '${APP_NAME} ${APP_SERVICE_NAME} ${APP_NAMESPACE} ${APP_ENV} ${APP_PORT} ${APP_IMAGE_REPO} ${APP_IMAGE_TAG}'
 
-# Tag edit dry-run, exactly as CI will run it
-TAG=57-a1b2c3d yq -i '.spec.postBuild.substitute.APP_IMAGE_TAG = strenv(TAG)' clusters/abyssdev/vm-dev/abyssdev-apps-develop.yaml
-
-# Workflow lint
-actionlint .github/workflows/ci.yml   # if installed; else parse with python -c 'import yaml,sys; yaml.safe_load(open(sys.argv[1]))'
-
-# Owner-only, live checks after merge
+# Owner-only, live checks after the bot commit
 flux get sources git
 flux get kustomizations
 kubectl -n <full-namespace> get deploy <full-app-name> -o jsonpath='{..image}'
@@ -166,52 +181,35 @@ apps/cms-api/docs/rules/k8s-secrets.md      → fix stale paths (k8s/flux/app/, 
 
 ## Code Style
 
-Match the existing manifests and CI: a header comment on each file saying what it does and why, and
-`${APP_*}` placeholders only in `apps/cms-api/k8s/flux/**`. The CI step style:
-
-```yaml
-  cms-api-bump-tag:
-    name: CMS API Deploy - Bump Flux tag
-    runs-on: ubuntu-latest
-    needs: [cms-api-ghcr-publish]
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-    permissions:
-      contents: write
-      pull-requests: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      # Same tag the publish job pushed; both clusters pull the same GHCR images.
-      - name: Set APP_IMAGE_TAG in cluster manifests
-        env:
-          TAG: ${{ needs.cms-api-ghcr-publish.outputs.tag }}
-        run: |
-          for f in clusters/abyssdev/vm-dev/abyssdev-apps-develop.yaml \
-                   clusters/abyssdev/vm-prod/abyssdev-apps-prod.yaml; do
-            yq -i '.spec.postBuild.substitute.APP_IMAGE_TAG = strenv(TAG)' "$f"
-          done
-```
+Match the existing manifests and CI:
+- A header comment on each file says what it does and why.
+- `${APP_*}` placeholders only in `apps/cms-api/k8s/flux/**`.
+- Bash in CI uses `set -euo pipefail` and `::error::` annotations on every failure path.
+- Portable `sed`: write to `"$f.tmp"` and `mv`, never `sed -i`.
 
 ## Testing Strategy
 
-There is no unit-test framework for YAML or CI here. Verification is offline and scripted, the same
-way as the previous Flux work:
+There is no unit-test framework for YAML or CI here. Verification is offline and scripted, and the
+scripts live in the session scratchpad:
 
 - `kubectl kustomize` renders `apps/cms-api/k8s/flux` and both cluster dirs without error.
-- The rendered app output contains no `ImageRepository`, `ImagePolicy` or `ImageUpdateAutomation`
-  kinds.
-- A Python/PyYAML assert script checks:
-  - Both cluster app Kustomizations have the same `APP_IMAGE_TAG`, no `$imagepolicy` marker, the
-    correct ConfigMap name and path, and the intervals above.
-  - The vm-prod `gotk-sync.yaml` path is `./clusters/abyssdev/vm-prod`.
-- `yq` bump dry-run: running it on a copy changes only the `APP_IMAGE_TAG` line (checked with
-  `git diff --stat`).
-- `ci.yml` parses. The new job has the right `needs`, guard and permissions, the publish job exposes
-  `outputs.tag`, and every other job is byte-identical.
-- **Manual (owner):** a real `master` push opens the PR. After the merge, both clusters report the
-  new image.
+- The rendered app output contains no `image.toolkit.fluxcd.io` kinds (after T4).
+- A PyYAML assert script checks:
+  - The cluster app Kustomizations mirror each other, have no `$imagepolicy` marker, and use the
+    right ConfigMaps and intervals.
+  - Both `gotk-sync.yaml` track `deployment`, and vm-prod's path is fixed.
+  - In `ci.yml`, only the publish job's `outputs` and the new job differ from the baseline, and the
+    new job's `needs`, guard, permissions, concurrency, checkout ref and push target are correct.
+- A bump dry-run extracts the job's `run` block from `ci.yml` and runs it with local bash and BSD sed
+  against a throwaway bare origin that has `deployment` and `master`. It checks:
+  - Both files are bumped with a +2/-2 diff, and the marker is dropped.
+  - The commit message and author are correct, and other files are untouched.
+  - An older tag and a re-run are both no-ops.
+  - A push race is rejected once, retried, and keeps the concurrent commit.
+  - A bad tag and a missing file fail loudly.
+  - `master` is never written.
+- **Manual (owner):** a real `master` push produces one bot commit on `deployment`, no extra CI run,
+  and both clusters report the new image.
 
 ## Boundaries
 
@@ -219,38 +217,36 @@ way as the previous Flux work:
   offline; give the owner exact commands for any cluster action; update docs and rules for the
   areas touched.
 - **Ask first:**
-  - Adding `peter-evans/create-pull-request`.
   - Deleting the three image-* manifests.
-  - Editing the generated `gotk-sync.yaml` (vm-prod path fix).
+  - Editing the generated `gotk-sync.yaml`. The path fix and the `deployment` branch switch are
+    already approved.
   - Committing (Yes/No with the file list and message; no `Co-Authored-By`).
+  - Pushing to or merging into `deployment` or `master`.
 - **Never:**
   - Run `kubectl`, `helm` or `flux` against a real cluster, including `--dry-run=client`.
   - Read or touch `apps/cms-api/k8s/secret.yaml`, `apps/cms-api/k8s/configmap.yaml` or any `.env*`.
   - Edit `gotk-components.yaml`.
   - Give CI any cluster credentials.
+  - Change existing `master` CI jobs beyond the publish `outputs`.
 
 ## Success Criteria
 
-1. A `master` push that changes cms-api ends with one open PR from `ci/cms-api-image-tag`. The PR
-   sets `APP_IMAGE_TAG` in both cluster files to the `<run>-<sha7>` that was just pushed to GHCR.
-2. A second push before the merge updates that same PR to the newer tag, instead of opening a
-   second one.
-3. Merging the PR doesn't start a cms-api build or another bump PR.
-4. No `image.toolkit.fluxcd.io` objects are rendered from this repo anymore.
-5. `vm-prod` has a working bootstrap path and an app Kustomization that mirrors vm-dev, with a
-   prod ConfigMap.
+1. A `master` push that changes cms-api ends with one `github-actions[bot]` commit on `deployment`.
+   It sets `APP_IMAGE_TAG` in both cluster files to the `<run>-<sha7>` just pushed to GHCR. `master`
+   gets no new commit.
+2. No workflow run is started by that commit.
+3. A bump from an older run never replaces a newer tag, and a push race is retried rather than
+   failing.
+4. Both clusters' Flux `GitRepository` tracks `deployment`, and vm-prod has a working path and an
+   app Kustomization that mirrors vm-dev.
+5. No `image.toolkit.fluxcd.io` objects are rendered from this repo anymore.
 6. Both clusters use `GitRepository interval: 1m` and app `Kustomization interval: 3m`, `prune: true`.
 7. The docs (`cms-api-flux-deployment.md`, `-techstack.md`, `k8s/README.md`, `k8s-secrets.md`)
-   describe this same-repo, CI-bump flow, with no mention of a separate GitOps repo or of image
+   describe this same-repo, `deployment`-branch flow, with no separate GitOps repo and no image
    automation.
-8. Owner-verified: after the merge, both clusters run the new tag within about 5 minutes.
+8. Owner-verified: after the bot commit, both clusters run the new tag within about 5 minutes.
 
 ## Open Questions
 
-1. **One PR for both clusters, or promote dev first?** The spec assumes one PR updates both files, so
-   one merge deploys to the local VM and the VPS together. The alternative is two PRs, vm-dev then
-   vm-prod.
-2. **vm-dev's current `APP_IMAGE_TAG: "dev"`.** Is that a real GHCR tag you pushed by hand? If not,
-   it gets replaced by the newest `<run>-<sha7>` during the build.
-3. **Stale `apps/cms-api/SPEC.md`** (the old Flux DRAFT, already shipped via PRs #63/#64). Can it be
-   reduced to a pointer as part of this work's clean-up step?
+1. **Stale `apps/cms-api/SPEC.md`** (the old Flux DRAFT, shipped via PRs #63/#64). Can it be reduced
+   to a pointer in this work's clean-up step?

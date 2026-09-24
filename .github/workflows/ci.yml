@@ -408,6 +408,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
 
     steps:
       - name: Checkout
@@ -489,6 +491,84 @@ jobs:
           package-name: ${{ steps.pkg.outputs.name }}
           package-type: container
           min-versions-to-keep: 10
+
+  # Deploys the tag just pushed to GHCR: commits it as APP_IMAGE_TAG (the app image <tag> and the
+  # init image <tag>-init) in each cluster's app Kustomization on the `deployment` branch, which is the
+  # only branch Flux reads (vm-dev local VM, vm-prod VPS). master itself is never written. No CI loop:
+  # this workflow only runs on develop/staging/master pushes, and a GITHUB_TOKEN push never triggers
+  # workflows anyway. Plain git + sed, no extra tools. Other manifest changes reach `deployment` by
+  # merging master into it by hand.
+  cms-api-bump-tag:
+    name: CMS API Deploy - Bump Flux tag
+    runs-on: ubuntu-latest
+    needs: [cms-api-ghcr-publish]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    permissions:
+      contents: write
+    # One bump at a time; queued, never cancelled, so no pushed image is skipped silently.
+    concurrency:
+      group: cms-api-bump-tag
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout deployment
+        uses: actions/checkout@v5
+        with:
+          ref: deployment
+
+      # Each attempt starts from the current origin/deployment and re-applies the edit, so a
+      # concurrent push is retried without rebase conflicts. A file already on a newer run number is
+      # left alone, so an older run finishing last can't roll the clusters back. sed writes via a temp
+      # file (no `sed -i`) so the script behaves the same with GNU and BSD sed.
+      - name: Commit APP_IMAGE_TAG to deployment
+        env:
+          TAG: ${{ needs.cms-api-ghcr-publish.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^[0-9]+-[0-9a-f]{7}$ ]]; then
+            echo "::error::Unexpected image tag '$TAG' (want <run_number>-<sha7>)"
+            exit 1
+          fi
+          FILES=(
+            clusters/abyssdev/vm-dev/abyssdev-apps-develop.yaml
+            clusters/abyssdev/vm-prod/abyssdev-apps-prod.yaml
+          )
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            git fetch origin deployment
+            git reset --hard origin/deployment
+            for f in "${FILES[@]}"; do
+              if [ ! -f "$f" ]; then
+                echo "::error::$f is not on the deployment branch; merge master into deployment first"
+                exit 1
+              fi
+              cur=$(sed -nE 's/^[[:space:]]*APP_IMAGE_TAG:[[:space:]]*"?([^"#[:space:]]*)"?.*/\1/p' "$f")
+              if [[ "$cur" =~ ^([0-9]+)-[0-9a-f]{7}$ ]] && (( BASH_REMATCH[1] >= ${TAG%%-*} )); then
+                echo "$f is already on $cur, not replacing it with $TAG"
+                continue
+              fi
+              sed -E "s/^([[:space:]]*APP_IMAGE_TAG:).*/\1 \"$TAG\"/" "$f" > "$f.tmp"
+              mv "$f.tmp" "$f"
+              if [ "$(grep -cE "^[[:space:]]*APP_IMAGE_TAG: \"$TAG\"$" "$f")" != 1 ]; then
+                echo "::error::$f: APP_IMAGE_TAG was not set to $TAG"
+                exit 1
+              fi
+            done
+
+            if git diff --quiet; then
+              echo "Nothing to commit"
+              exit 0
+            fi
+            git commit -m "chore(cms-api): deploy image $TAG" -- "${FILES[@]}"
+            if git push origin HEAD:deployment; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt), retrying on the new deployment"
+          done
+          echo "::error::Could not push the tag bump to deployment after 3 attempts"
+          exit 1
 
   deploy-cms-api:
     name: Deploy CMS API

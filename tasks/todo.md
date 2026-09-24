@@ -1,7 +1,7 @@
 # Todo: cms-api tag bump from CI (replace Flux image automation)
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS**. 2 of 6 tasks done.
+Status: **IN PROGRESS**. 3 of 6 tasks done.
 
 Checkbox updates ship in the same commit as that phase's work. Verification is offline only: never
 run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.yaml` or
@@ -14,7 +14,7 @@ run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.
   - Acceptance:
     - The `# {"$imagepolicy": …}` marker is removed. `APP_IMAGE_TAG` stays a plain quoted string
       (`"dev"` until the first bump).
-    - There's a header comment saying CI rewrites this value through a PR.
+    - There's a header comment saying CI rewrites this value (on the `deployment` branch).
     - `interval: 3m`, `prune: true`, `wait: true` and `timeout: 5m` are unchanged.
   - Verify:
     - `kubectl kustomize clusters/abyssdev/vm-dev` renders.
@@ -43,32 +43,43 @@ run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.
 
 ## Phase 2: CI bump
 
-- [ ] **T3: Add the `cms-api-bump-tag` job and the publish `outputs.tag`.** (S)
-  - Files: `.github/workflows/ci.yml`
-  - **Ask first:** adding `peter-evans/create-pull-request@v7`.
+- [x] **T3: Add the `cms-api-bump-tag` job (push to `deployment`), the publish `outputs.tag`, and point Flux at `deployment`.** (S)
+  - Files:
+    - `.github/workflows/ci.yml`
+    - Both `clusters/abyssdev/*/flux-system/gotk-sync.yaml` (`ref.branch` → `deployment`, as the
+      owner directed)
+    - Both cluster app files (header comments only)
+  - Decision changes during T3 (owner):
+    - Push directly to `deployment`, not a PR and not `master`.
+    - Flux reads only `deployment`.
+    - Use `sed`, not `yq`; no extra tools or actions.
+    - Existing `master` CI is unchanged.
   - Acceptance:
     - `cms-api-ghcr-publish` gains `outputs: tag: ${{ steps.tag.outputs.tag }}`. Nothing else in
-      that job changes.
+      that job changes, and every other existing job is unchanged.
     - The new job has:
-      - `needs: [cms-api-ghcr-publish]`, the same `master` + `push` guard, and permissions
-        `contents: write` and `pull-requests: write` only.
-      - A `yq -i` step on both cluster files, then a read-back check that each file equals `$TAG`,
-        failing otherwise.
-      - `create-pull-request` with branch `ci/cms-api-image-tag`, base `master`, title
-        `chore(cms-api): deploy image <tag>`, `add-paths` limited to the two cluster files, and
-        delete-branch on merge.
-    - A comment explains the loop safety (`GITHUB_TOKEN` + the paths filter) and the required repo
-      setting.
+      - `needs: [cms-api-ghcr-publish]` and the same `master` + `push` guard.
+      - Permissions `contents: write` only.
+      - `concurrency: cms-api-bump-tag`, with `cancel-in-progress: false`.
+      - Checkout with `ref: deployment`.
+    - The bump step validates the tag format, then makes up to 3 attempts. Each one:
+      1. Runs `fetch`, then `reset --hard origin/deployment`.
+      2. Checks each file exists; skips it if its run number is already at least ours; otherwise
+         `sed`s the tag line through a temp file, then `grep`s it back and fails on a mismatch.
+      3. Exits 0 if nothing changed.
+      4. Commits `chore(cms-api): deploy image <tag>` as `github-actions[bot]` and pushes
+         `HEAD:deployment`.
+    - Both `gotk-sync.yaml` files have `ref.branch: deployment`.
   - Verify:
-    - `ci.yml` parses (PyYAML).
-    - A dict diff against `HEAD` shows only the publish job's added `outputs` and the new job.
-    - `yq` dry-run on copies of both files (Docker `mikefarah/yq` if available, otherwise a Python
-      mirror) changes only the tag line.
+    - The PyYAML asserts pass (`t1`–`t3`): the job diff against the baseline, the job fields, and
+      the gotk-sync branch.
+    - The bump dry-run passes: the extracted `run` block against a bare origin, with bash 3.2 and
+      BSD sed, covering the bump, no-ops, race retry, loud failures, and `master` untouched.
   - Deps: T1, T2
 
 ### Checkpoint 2
-- [ ] Workflow asserts pass.
-- [ ] Commit (Yes/No).
+- [x] Workflow asserts pass.
+- [x] Commit (Yes/No).
 
 ## Phase 3: Remove image automation
 
@@ -80,7 +91,7 @@ run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.
     - `apps/cms-api/k8s/flux/deployment.yaml` (header comment only, if it mentions automation)
   - Acceptance:
     - `kustomization.yaml` lists only `deployment.yaml` and `service.yaml`, and its header comment
-      says `APP_IMAGE_TAG` comes from the cluster app Kustomization, set by the CI bump PR.
+      says `APP_IMAGE_TAG` comes from the cluster app Kustomization, set by the CI bump commit on `deployment`.
   - Verify:
     - The `kubectl kustomize apps/cms-api/k8s/flux | envsubst '<7 vars>'` render parses.
     - It has no `image.toolkit.fluxcd.io` kinds, and the placeholder set is exactly the 7
@@ -98,11 +109,17 @@ run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.
     - `apps/cms-api/docs/documents/cms-api-flux-deployment.md`
     - `apps/cms-api/docs/documents/cms-api-flux-deployment-techstack.md`
   - Acceptance:
-    - The flow is: CI → GHCR → bump PR → merge → Flux polls (1m/3m) on `vm-dev` and `vm-prod`.
+    - The flow is: CI → GHCR → bot commit to `deployment` → Flux polls `deployment` (1m/3m) on
+      `vm-dev` and `vm-prod`. Manifest changes reach Flux through an owner merge from `master` into
+      `deployment`.
     - The files table matches the new layout.
-    - The rollback section says to open a PR with an older tag; there's no `flux suspend image`.
-    - The techstack doc has comparison tables for CI-writes versus Flux image automation, PR versus
-      direct push, `create-pull-request` versus `gh`, and `yq` versus `sed`.
+    - The rollback section says to push a commit to `deployment` with an older tag, which holds
+      until the next build; there's no `flux suspend image`.
+    - The techstack doc has comparison tables for:
+      - CI writes the tag versus Flux image automation.
+      - The `deployment` branch versus `master` versus a PR.
+      - `sed` versus `yq`.
+      - Reset-and-reapply retry versus rebase.
     - "Verified state" is rewritten to match.
   - Verify:
     - `grep -nE 'GitOps repo|ImagePolicy|ImageUpdateAutomation|kustomization.flux|flux/app' <files>`
@@ -116,8 +133,9 @@ run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.
     - `apps/cms-api/k8s/configmap.example.yaml` (header comment only)
   - Acceptance:
     - The runbook covers per-cluster setup (vm-dev local VM, vm-prod VPS): bootstrap
-      `--path=clusters/abyssdev/<cluster>`, the ConfigMap and Secret names per env, the "Allow
-      GitHub Actions to create and approve pull requests" setting, and the vm-prod path-fix
+      `--branch=deployment --path=clusters/abyssdev/<cluster>` (or the `kubectl patch` commands),
+      the first `master` → `deployment` merge and its tag-line conflict, the ConfigMap and Secret names per env, the `deployment`
+      branch prerequisite (Actions must be able to push), and the vm-prod path-fix
       `kubectl patch` command.
     - The rule's stale paths (`k8s/flux/app/`, `kustomization.flux.yaml`, GitOps repo) are updated.
       The rule's intent is unchanged.
@@ -130,9 +148,11 @@ run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.
 - [ ] Five-axis review (`docs/workflow.md` step 6).
 - [ ] Commit (Yes/No).
 - [ ] Hand the owner:
-  - The vm-prod `kubectl patch` or re-bootstrap command.
+  - Merging `master` into `deployment` (and the conflict to resolve).
+  - Pointing both clusters at `deployment`, plus the vm-prod path fix.
   - Creating the prod ConfigMap and Secret.
-  - The repo Actions PR setting.
-  - Watching the first real bump PR through to both clusters running the new tag.
+  - The `deployment` push prerequisite (Actions must be able to push).
+  - Watching the first real bump commit on `deployment` through to both clusters running the new
+    tag.
 - [ ] Clean up (`docs/workflow.md` step 7): reduce `SPEC.md` to a pointer, and reduce the stale
   `apps/cms-api/SPEC.md` after the owner confirms.
