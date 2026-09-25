@@ -1,89 +1,78 @@
-# Implementation Plan: cms-api CI/CD on Flux
+# Implementation Plan: cms-api public Ingress (vm-prod)
 
 Spec: `apps/cms-api/SPEC.md`. Task list: `tasks/todo.md`. Prior work: `tasks/archive.md`.
 
 ## Overview
 
-Replace the helmfile deploy with Flux GitOps. CI pushes sortable `<run_number>-<sha7>` and
-`<run_number>-<sha7>-init` images. Plain k8s templates in `k8s/flux/` (which the owner copies to
-the GitOps repo) are filled in by Flux from a hand-made ConfigMap and the image-automation tag.
-The runtime Secret is hand-made too. helmfile, values and secrets-chart are removed.
+Expose cms-api on vm-prod over HTTPS on its own hostname. A kustomize Component, `k8s/flux/ingress/`,
+holds a Traefik Ingress and an http→https Middleware, and the Ingress gets its certificate through a
+cert-manager ClusterIssuer annotation. Only vm-prod's app Kustomization enables the Component
+(`spec.components`). The hostname and issuer come from two new prod ConfigMap keys. vm-dev and the
+base manifests are unchanged.
 
 ## Dependency graph
 
 ```
-naming contract (SPEC)
-  ├── k8s/config.env.example ──┐
-  ├── k8s/flux/app (Deployment, Service) ──┐
-  │       └── image automation (ImageRepository/Policy/UpdateAutomation) ── needs tag format ──┐
-  │               └── k8s/flux/kustomization.flux.yaml (substituteFrom + setter marker)        │
-  ├── CI publish job (tag format, -init before app, vars.CMS_API_IMAGE_REPO) ◄─────────────────┘
-  ├── k8s/.env.example (drop APP_*)
-  └── remove helmfile / values / secrets-chart ── after templates exist (nothing still points at them)
-          └── docs + rule + ENTRYPOINT (describe the final state)
+k8s/flux/ingress/ (Component: Ingress + Middleware)      ← T1
+    │
+    ├── vm-prod abyssdev-apps-prod.yaml: components: [ingress]   ← T2
+    │   configmap.example.yaml: APP_HOST, APP_TLS_CLUSTER_ISSUER ← T2
+    │
+    └── docs: k8s/README.md runbook                              ← T3
+              deployment doc + techstack doc + ENTRYPOINT        ← T4
 ```
 
-The tag format (`^\d+-[a-f0-9]{7}$`, with `-init` excluded) is the contract between the CI
-job and the ImagePolicy. It is fixed in the SPEC, so the two sides can be built independently.
+T3 and T4 depend only on T1–T2 being settled, and don't depend on each other.
 
-## Architecture decisions (from the SPEC intake)
+## Architecture decisions
 
-- Flux image automation instead of a manual tag bump. Git records what's deployed, and rollback
-  is a revert.
-- Plain manifests instead of the shared `helmfile-chart-template`. There's no chart to pin or
-  cache-clean, and there are only two resources.
-- A separate GitOps repo. This repo only ships templates, because agents can't write outside it.
-- The ConfigMap lives in `flux-system`, which `postBuild.substituteFrom` requires. The Secret
-  lives in `<full-namespace>`, which `envFrom` requires.
-- A single `APP_IMAGE_TAG` substitution feeds both images, so app and init always come from
-  one commit.
-- `PORT` is set from `${APP_PORT}` through the app container's
-  `command: ["sh","-c","PORT=${APP_PORT} exec bun dist/src/main"]`, replacing the helmfile `PORT`
-  injection. An `env` value can't carry it, because Flux substitutes after kustomize drops the
-  quotes, so the API server would get an int. The command must stay in sync with the Dockerfile
-  `CMD`.
+- **Component, not overlay and not a second Flux Kustomization.** Enabling it is a single line in
+  vm-prod's file. There's no second reconcile loop, and the base path and vm-dev stay
+  byte-identical. The techstack doc gets the full comparison.
+- **Traefik (bundled with k3s)** over ingress-nginx, which was retired in March 2026 and isn't
+  installed, and over Gateway API, which is more moving parts for one host.
+- **Backend port by name (`http`).** This avoids a numeric `${APP_PORT}` in the Ingress, which would
+  hit the int-substitution gotcha.
+- **`components:` goes right under `path:`** in `abyssdev-apps-prod.yaml`, away from the
+  `APP_IMAGE_TAG:` line. That keeps CI's line-based sed working and lets `master → deployment`
+  merges apply cleanly on top of the real tag.
+- **Offline test harness in the scratchpad**, not in the repo. A throwaway kustomization with
+  `resources: [<repo>/apps/cms-api/k8s/flux]` and `components: [<repo>/apps/cms-api/k8s/flux/ingress]`
+  mimics Flux's `spec.path` + `spec.components`. It is then rendered with `kubectl kustomize`, filled
+  with `envsubst` and fake values, and checked with PyYAML asserts. The existing
+  `kubectl` v1.36 / kustomize v5.8 support Components.
 
-## Phases
+## Task list
 
-1. **Flux templates.** This is new and carries the most risk (substitution typing, the setter
-   marker), so it goes first. Tasks 1–3.
-2. **CI + Secret template.** These are the producer side of the tag contract and the owner's
-   inputs. Tasks 4–5.
-3. **Remove helmfile.** Only after the replacement exists. Task 6.
-4. **Docs, rules, wrap-up.** Tasks 7–9.
+### Phase 1: Manifests
+- [ ] T1: Ingress Component (Ingress + https-redirect Middleware)
+- [ ] T2: Enable on vm-prod + document the new ConfigMap keys
 
-Checkpoints come after each phase. Commits are batched at checkpoints, and every commit needs
-an explicit Yes/No first (per `docs/workflow.md`).
+### Checkpoint 1: Manifests
+- [ ] vm-dev render is byte-identical, prod render passes all asserts, and there are no literals
+- [ ] Commit (Yes/No confirmation)
 
-## Verification toolkit (all local, no cluster access)
+### Phase 2: Docs
+- [ ] T3: Runbook (`k8s/README.md`)
+- [ ] T4: Deployment doc, techstack doc and ENTRYPOINT
 
-- `kubectl kustomize k8s/flux/app` renders the templates.
-- `… | envsubst` with fake `APP_*` values (same order as Flux), then PyYAML asserts. **Not**
-  `kubectl apply --dry-run=client`, because it contacts the kubeconfig's real cluster.
-- `python3 -c 'import yaml,sys; list(yaml.safe_load_all(sys.stdin))'` checks that YAML parses
-  (used for the Flux CRD files and `ci.yml`).
-- `grep -E` checks the ImagePolicy regex against sample tags, and a literal scan checks for
-  `abyssoftime|hungnh1812dev|cms-api|3000`.
-
-`flux`, `kubeconform` and `actionlint` aren't installed. Installing them is ask-first and isn't
-required by this plan.
+### Checkpoint 2: Complete
+- [ ] Every SPEC Success Criterion is ticked
+- [ ] Commit (Yes/No confirmation)
+- [ ] Five-axis review, then reduce SPEC.md to the minimal pointer (workflow steps 6–7)
 
 ## Risks and mitigations
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| A number-like placeholder becomes an int after substitution (kustomize drops quotes, then Flux converts YAML to JSON) | High (apply fails) | Seen in Task 1: `containerPort` must be an int, so it's fine. `PORT` moved into `command`. The check asserts every env value is a string |
-| `command` falls out of sync with the Dockerfile `CMD` | Med (app won't start) | Comments in both places, plus a note in the deployment doc and dockerfile doc (Tasks 7, 9) |
-| Setter marker in the wrong place or wrong format, so the tag never updates | High (no auto deploy) | Follow the Flux docs exactly: the marker goes on the `APP_IMAGE_TAG` line with `:tag` suffix. The owner verifies with `flux get images policy` |
-| Flux picks an app tag before its `-init` exists | Med (init pull fails, then retries) | CI pushes `-init` first (Task 4). The policy regex excludes `-init` |
-| `run_number` resets if the workflow file is renamed | Med (Flux stops picking up newer tags) | Documented. Switching to `<epoch>-<sha7>` is an open question |
-| Private GHCR package | High (ImageRepository scan and pod pulls fail) | Open question. If private, Task 2 and Task 1 add a pull-secret placeholder |
-| Cutover downtime between `helm uninstall` and the first Flux apply | Low | Documented in the migration steps. The owner picks the window |
-| Uncommitted helmfile work in the tree | Low | Resolve before Task 1 (Task 0) |
+| `APP_HOST` is missing from the prod ConfigMap when Flux applies. Flux substitutes an empty string, so the result is a host-less Ingress (a catch-all on every hostname). | High | The runbook orders the steps: add the keys and re-apply the ConfigMap **before** merging `master` into `deployment`. The Flux doc and the ConfigMap template call this out. Checked in T1: Flux's docs offer no fail-on-unset syntax (an undefined var becomes `""`), so this stays a documented step. |
+| The Traefik middleware reference name is wrong (`<ns>-<name>@kubernetescrd`), which makes the router fail with a 404 on all routes. | High | A T1 assert checks that the rendered annotation equals `<Middleware ns>-<Middleware name>@kubernetescrd`, built from the rendered Middleware. |
+| cert-manager or the ClusterIssuer is missing on vm-prod, so the Ingress serves Traefik's default self-signed cert. | Med | Owner prerequisite in the runbook, with a `kubectl get certificate` check in the verify section. |
+| ServiceLB SNAT hides client IPs, so the per-IP rate limit puts every user in one bucket. | Med | Documented in the runbook, with the `HelmChartConfig` snippet. Committing it is ask-first (SPEC Open Question 2). |
+| A merge conflict on `abyssdev-apps-prod.yaml` when merging `master → deployment`. | Low | The `components:` lines sit away from the tag line, and T2 verifies with a simulated merge in a temp worktree in the scratchpad. |
 
-## Open questions (defaults used unless you say otherwise)
+## Open questions (from SPEC, defaults applied if unanswered)
 
-1. Is the GHCR package public? **Default: public**, so no pull-secret placeholders.
-2. Tag counter: **default `run_number`**, as approved. The alternative is `<epoch>-<sha7>`.
-3. Uncommitted helmfile changes: **default: commit them as-is first** (Task 0, needs your Yes).
-4. Template location: **default `apps/cms-api/k8s/flux/`**.
+1. cert-manager / ClusterIssuer: **default = runbook step only**, nothing committed.
+2. Traefik `externalTrafficPolicy: Local`: **default = documented only**.
+3. Stray `apps/abyssdev-cms-api-prod/deployment.yaml`: **default = out of scope**, untouched.

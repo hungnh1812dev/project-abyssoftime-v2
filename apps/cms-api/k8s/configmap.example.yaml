@@ -26,3 +26,10 @@ data:
   APP_PORT: "<port>"
   # Image repository without a tag (app image <repo>:<tag>, init image <repo>:<tag>-init)
   APP_IMAGE_REPO: "<registry/owner/repo/image>"
+  # ── Only where the `ingress` component is enabled (vm-prod); leave out elsewhere ──
+  # Set both BEFORE merging master into deployment: a missing APP_HOST becomes "", and the Ingress
+  # then matches every hostname.
+  # Public hostname of cms-api
+  APP_HOST: "<cms-api.example.com>"
+  # cert-manager ClusterIssuer that issues the TLS certificate
+  APP_TLS_CLUSTER_ISSUER: "<cluster-issuer-name>"

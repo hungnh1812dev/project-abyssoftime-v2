@@ -14,6 +14,10 @@ spec:
     kind: GitRepository
     name: flux-system
   path: ./apps/cms-api/k8s/flux
+  # vm-prod only: the public Traefik Ingress (<path>/ingress, a kustomize Component). Needs
+  # APP_HOST and APP_TLS_CLUSTER_ISSUER in the ConfigMap below before this reaches the cluster.
+  components:
+    - ingress
   prune: true
   wait: true
   timeout: 5m
