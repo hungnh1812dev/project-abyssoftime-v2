@@ -1,7 +1,8 @@
-# Public HTTPS entry for cms-api on the k3s-bundled Traefik. All paths go to the Service.
+# Public HTTPS entry for cms-api on the k3s-bundled Traefik, at api.${APP_DOMAIN}. The bare domain
+# is for the frontend and admin.<domain> is for cms-admin. All paths go to the Service.
 # cert-manager issues the <full-app-name>-tls certificate from the ClusterIssuer in
-# ${APP_TLS_CLUSTER_ISSUER}. If APP_HOST is missing from the ConfigMap, Flux substitutes "", and the
-# Ingress then matches every hostname, so set it before this reaches the cluster.
+# ${APP_TLS_CLUSTER_ISSUER}. If APP_DOMAIN is missing, Flux substitutes "" and the host becomes
+# "api.", which the API server rejects, so the Flux apply fails instead of exposing a catch-all.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -17,10 +18,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - ${APP_HOST}
+        - api.${APP_DOMAIN}
       secretName: ${APP_NAME}-${APP_SERVICE_NAME}-${APP_ENV}-tls
   rules:
-    - host: ${APP_HOST}
+    - host: api.${APP_DOMAIN}
       http:
         paths:
           - path: /

@@ -16,7 +16,7 @@ base manifests are unchanged.
 k8s/flux/ingress/ (Component: Ingress + Middleware)      ← T1
     │
     ├── vm-prod abyssdev-apps-prod.yaml: components: [ingress]   ← T2
-    │   configmap.example.yaml: APP_HOST, APP_TLS_CLUSTER_ISSUER ← T2
+    │   configmap.example.yaml: APP_DOMAIN, APP_TLS_CLUSTER_ISSUER ← T2
     │
     └── docs: k8s/README.md runbook                              ← T3
               deployment doc + techstack doc + ENTRYPOINT        ← T4
@@ -65,7 +65,7 @@ T3 and T4 depend only on T1–T2 being settled, and don't depend on each other.
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| `APP_HOST` is missing from the prod ConfigMap when Flux applies. Flux substitutes an empty string, so the result is a host-less Ingress (a catch-all on every hostname). | High | The runbook orders the steps: add the keys and re-apply the ConfigMap **before** merging `master` into `deployment`. The Flux doc and the ConfigMap template call this out. Checked in T1: Flux's docs offer no fail-on-unset syntax (an undefined var becomes `""`), so this stays a documented step. |
+| `APP_DOMAIN` is missing from the prod ConfigMap when Flux applies. Flux substitutes `""` (its docs offer no fail-on-unset syntax). | Low (was High with `APP_HOST`) | The host is `api.${APP_DOMAIN}`, so an empty value renders `api.`, which isn't a valid DNS-1123 name. The API server rejects the Ingress and the Flux apply fails visibly, with no catch-all exposure. The runbook still orders the steps (keys before merging to `deployment`). |
 | The Traefik middleware reference name is wrong (`<ns>-<name>@kubernetescrd`), which makes the router fail with a 404 on all routes. | High | A T1 assert checks that the rendered annotation equals `<Middleware ns>-<Middleware name>@kubernetescrd`, built from the rendered Middleware. |
 | cert-manager or the ClusterIssuer is missing on vm-prod, so the Ingress serves Traefik's default self-signed cert. | Med | Owner prerequisite in the runbook, with a `kubectl get certificate` check in the verify section. |
 | ServiceLB SNAT hides client IPs, so the per-IP rate limit puts every user in one bucket. | Med | Documented in the runbook, with the `HelmChartConfig` snippet. Committing it is ask-first (SPEC Open Question 2). |
