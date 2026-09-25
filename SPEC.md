@@ -147,6 +147,29 @@ Reconcile loop, the same on both clusters:
 
 ---
 
+## Fix: per-arch images (found after the first live deploy)
+
+The first live deploy failed on the M1 VM with `init exec /usr/local/bin/docker-entrypoint.sh: exec
+format error`. CI built **amd64-only** images on `ubuntu-latest`. The Intel VPS runs them, but the
+arm64 VM (Apple Silicon) can't.
+
+| Question | Chosen | Rejected | Why |
+| --- | --- | --- | --- |
+| How to build arm64 | Native runners: matrix `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64) | QEMU + buildx | The repo is public, so arm64 runners are free. Native builds are fast and avoid Bun-under-QEMU crash reports. |
+| One multi-arch tag, or separate per-arch images | **Separate: 4 images per release** (owner's choice) | Multi-arch manifest lists via `imagetools create` | No merge job. Each cluster's file names exactly the arch it runs, visible in Git. |
+
+Target state:
+- **Tags:** `<run>-<sha7>-<arch>` (app) and `<run>-<sha7>-<arch>-init` (init), with `<arch>` in
+  `amd64`/`arm64`. `deployment.yaml` is unchanged: `${APP_IMAGE_TAG}` and `${APP_IMAGE_TAG}-init`,
+  where `APP_IMAGE_TAG` includes the arch.
+- **`cms-api-ghcr-publish`** is a 2-way matrix. Each leg builds both targets natively and pushes
+  `-<arch>-init` first, then `-<arch>`. It keeps `outputs.tag` (the arch-less `<run>-<sha7>`).
+- **`cms-api-ghcr-cleanup`** (new) runs after publish, with the same opt-in, and keeps 20 versions
+  (4 per release = 5 releases). It's a separate job so the matrix doesn't run the cleanup twice.
+- **`cms-api-bump-tag`** writes `<tag>-arm64` to vm-dev and `<tag>-amd64` to vm-prod. Its run-number
+  check accepts an optional `-amd64`/`-arm64` suffix, so an old arch-less tag like `79-d16e564` is
+  replaced.
+
 ## Commands
 
 ```bash

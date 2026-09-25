@@ -1,7 +1,7 @@
 # Todo: cms-api tag bump from CI (replace Flux image automation)
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS**. 6 of 6 tasks done.
+Status: **IN PROGRESS**. 7 of 7 tasks done (T7 = per-arch fix).
 
 Checkbox updates ship in the same commit as that phase's work. Verification is offline only: never
 run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.yaml` or
@@ -144,6 +144,29 @@ run `kubectl apply`/`flux`/`helm` against a cluster, and never read `k8s/secret.
   - Verify: the same stale-reference `grep` across `apps/cms-api/k8s` and `apps/cms-api/docs` is
     clean.
   - Deps: T5
+
+## Phase 5: Fix, per-arch images (live deploy: `exec format error` on the arm64 VM)
+
+- [x] **T7: Build separate amd64 and arm64 images (4 per release) and bump each cluster to its arch.** (S)
+  - Branch: `fix/cms-api-multiarch-images` (from `master`, after PR #68)
+  - Files:
+    - `.github/workflows/ci.yml`
+    - `apps/cms-api/docs/documents/cms-api-flux-deployment.md`
+    - `apps/cms-api/docs/documents/cms-api-flux-deployment-techstack.md`
+    - `apps/cms-api/k8s/README.md`
+  - Acceptance:
+    - `cms-api-ghcr-publish` is a matrix (`ubuntu-latest`/amd64, `ubuntu-24.04-arm`/arm64). It
+      pushes `<tag>-<arch>-init` and then `<tag>-<arch>`, and keeps `outputs.tag`.
+    - A new `cms-api-ghcr-cleanup` job, after publish with the opt-in, keeps 20 versions.
+    - `cms-api-bump-tag` writes `<tag>-arm64` to vm-dev and `<tag>-amd64` to vm-prod. Its guard
+      accepts the arch suffix.
+    - Every other job is unchanged. Manifests and templates are unchanged.
+  - Verify:
+    - The PyYAML asserts pass against `master`'s `ci.yml`.
+    - The bump dry-run passes: per-cluster arch, an old arch-less tag replaced, older tags no-op,
+      push race, `master` untouched.
+    - Owner: after the next `master` build, both clusters' init containers start.
+  - Deps: T1–T6 (merged)
 
 ### Checkpoint 4 (final)
 - [x] All the asserts from checkpoints 1–3 re-run clean.

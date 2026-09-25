@@ -87,9 +87,9 @@ The user is on a free GitHub account. According to GitHub's billing docs, GitHub
 for public packages, and container image storage is "currently free". Private packages on other
 registries get 500MB on Free.
 
-| Criteria | `<run_number>-<sha7>` + `delete-package-versions` keeping 10 (chosen) | `latest` / `latest-init` only | Unique tags, no cleanup |
+| Criteria | `<run_number>-<sha7>` + `delete-package-versions` keeping 20 (chosen) | `latest` / `latest-init` only | Unique tags, no cleanup |
 | --- | --- | --- | --- |
-| Storage over time | Bounded: 10 versions | **Unbounded**: each re-push leaves the old image as an untagged version | Unbounded |
+| Storage over time | Bounded: 20 versions (4 per release: 2 archs × app + init) | **Unbounded**: each re-push leaves the old image as an untagged version | Unbounded |
 | Tag bump / auto-deploy | Works | Breaks: the tag never changes, so there's nothing to deploy | Works |
 | Rollback | The last 5 releases | None (only whatever is `latest`) | Any release |
 | Risk | The first run deletes the pre-Flux `latest` images, hence the opt-in `CMS_API_GHCR_CLEANUP` variable. Needs the Admin role on the package | Manual `rollout restart` per release | None |
@@ -137,3 +137,20 @@ container that runs it. The Dockerfile target is still `migrator`.
 | Out-of-order runs | Run-number guard: never replaces a tag with a lower run number | Would overwrite a newer tag | Would overwrite a newer tag |
 | Serialisation | `concurrency: cms-api-bump-tag` (queued, never cancelled) | Same | Same |
 | **Verdict** | **Chosen**: simple, conflict-free, and safe against an older run finishing last | Rejected: a conflict fails the deploy | Rejected: a race loses the deploy |
+
+## CPU architectures: separate per-arch images from native runners (chosen) vs. multi-arch lists vs. QEMU vs. amd64 only (previous)
+
+The clusters run on different CPUs: vm-dev is an arm64 VM on Apple Silicon, and vm-prod is an amd64
+VPS. The first live deploy used amd64-only images, and the arm64 VM's init container failed with
+`exec format error`.
+
+| Criteria | 4 per-arch images, native matrix (chosen) | Native matrix + `imagetools` multi-arch lists | One job, QEMU `platforms: linux/amd64,linux/arm64` | amd64 only (previous) |
+| --- | --- | --- | --- | --- |
+| Runs on both clusters | Yes: each cluster file names its arch (`-arm64` / `-amd64`) | Yes: one tag, and each node pulls its variant | Yes | No: `exec format error` on the arm64 VM |
+| What's deployed, visible in Git | Exactly: the arch is in the tag | The arch is resolved at pull time | Resolved at pull time | — |
+| Build | Both legs native, in parallel | Both native, plus a merge job | The arm64 leg is emulated: slow, and Bun under QEMU has crash reports | Fastest |
+| CI complexity | The matrix + a per-cluster arch map in the bump job | The matrix + a merge job + a platform check | Smallest diff | None |
+| GHCR versions per release | 4 (cleanup keeps 20 = 5 releases) | 6 (4 images + 2 lists) | 6 | 2 |
+| Moving a cluster to another CPU | Change its entry in `TARGETS` | Nothing | Nothing | — |
+| **Verdict** | **Chosen (user decision)**: simplest artifacts, the arch is explicit per cluster, and there's no merge step | Rejected: an extra job and indirection that isn't needed with one fixed arch per cluster | Rejected: slow and flaky | Replaced: can't run on the arm64 VM |
+
