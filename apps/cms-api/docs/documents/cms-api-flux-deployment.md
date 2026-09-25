@@ -42,7 +42,8 @@ Related docs:
 | `apps/cms-api/k8s/configmap.example.yaml` | ConfigMap manifest template: the six `APP_*` keys, `<placeholders>` only |
 | `apps/cms-api/k8s/secret.example.yaml` | Secret manifest template: runtime config and secrets. Required keys are active, optional keys commented out |
 | `apps/cms-api/k8s/configmap.yaml`, `apps/cms-api/k8s/secret.yaml` | Your filled-in copies, applied with `kubectl apply --server-side -f`. Gitignored. Agents never touch them (see `docs/rules/k8s-secrets.md`) |
-| `.github/workflows/ci.yml` → `cms-api-ghcr-publish` | Builds and pushes both images on every `master` push that changes cms-api, and exposes the tag as `outputs.tag` |
+| `.github/workflows/ci.yml` → `cms-api-ghcr-publish` | Matrix job (amd64 on `ubuntu-latest`, arm64 on `ubuntu-24.04-arm`). On every `master` push that changes cms-api, it builds and pushes both images for each arch (4 images), and exposes the arch-less tag as `outputs.tag` |
+| `.github/workflows/ci.yml` → `cms-api-ghcr-cleanup` | Opt-in GHCR cleanup after publish (keeps 20 versions) |
 | `.github/workflows/ci.yml` → `cms-api-bump-tag` | Commits that tag to both cluster files on the `deployment` branch |
 
 ## Naming contract
@@ -54,8 +55,8 @@ Related docs:
 | Secret, in full-namespace | `<app-name>-<app-service-name>-<app-env>-secrets` | `abyssdev-cms-api-prod-secrets` |
 | ConfigMap, in `flux-system` | `<app-name>-<app-service-name>-<app-env>-config` | `abyssdev-cms-api-prod-config` (`-develop-config` on vm-dev) |
 | App Flux Kustomization | `abyssdev-cms-api-sync-<env>` | `abyssdev-cms-api-sync-prod` |
-| App image | `<app-image-repo>:<tag>` | `…/cms-api:57-a1b2c3d` |
-| Init (migration) image | `<app-image-repo>:<tag>-init` | `…/cms-api:57-a1b2c3d-init` |
+| App image | `<app-image-repo>:<tag>` | `…/cms-api:57-a1b2c3d-amd64` |
+| Init (migration) image | `<app-image-repo>:<tag>-init` | `…/cms-api:57-a1b2c3d-amd64-init` |
 
 The ConfigMap name in each cluster file must match the ConfigMap that the owner applies on that
 cluster.
@@ -70,7 +71,7 @@ cluster.
 | `APP_ENV` | ConfigMap | Every name and the namespace |
 | `APP_PORT` | ConfigMap | `containerPort`, probes, Service port, and the app's `PORT` |
 | `APP_IMAGE_REPO` | ConfigMap | Both images |
-| `APP_IMAGE_TAG` | `postBuild.substitute` in the cluster file, written by `cms-api-bump-tag` on `deployment` | Both images |
+| `APP_IMAGE_TAG` | `postBuild.substitute` in the cluster file, written by `cms-api-bump-tag` on `deployment`. Includes the arch: `<run>-<sha7>-arm64` on vm-dev, `<run>-<sha7>-amd64` on vm-prod | Both images |
 
 The ConfigMap sits in `flux-system` because `postBuild.substituteFrom` only reads objects in the
 Kustomization's own namespace. It isn't `optional`, so if it's missing, the reconcile fails instead
@@ -111,19 +112,26 @@ The `cms-api-ghcr-publish` job runs on a `master` push, only when cms-api change
 example `ghcr.io/<owner>/<repo>/cms-api` in lowercase. If the variable isn't set, the job fails
 straight away.
 
-| Dockerfile target | Tag |
-| --- | --- |
-| `migrator` | `<run_number>-<sha7>-init` |
-| `runner` | `<run_number>-<sha7>` |
+**Every release is 4 images, one per CPU architecture and target.** The two clusters run on
+different CPUs: vm-dev is an arm64 VM on Apple Silicon, and vm-prod is an amd64 VPS. An amd64 image
+fails on the arm64 VM with `exec format error`, so each cluster's `APP_IMAGE_TAG` names its own arch.
 
-- The job builds both targets first, then pushes `-init` **before** the app tag. It exposes the app
-  tag as `outputs.tag`. `cms-api-bump-tag` only runs after both pushes succeed, so `deployment`
-  never names a tag whose images aren't in the registry.
+| Dockerfile target | amd64 (vm-prod) | arm64 (vm-dev) |
+| --- | --- | --- |
+| `migrator` | `<run_number>-<sha7>-amd64-init` | `<run_number>-<sha7>-arm64-init` |
+| `runner` | `<run_number>-<sha7>-amd64` | `<run_number>-<sha7>-arm64` |
+
+- The job is a 2-way matrix: amd64 on `ubuntu-latest`, and arm64 on the free `ubuntu-24.04-arm`
+  runner, which needs the repo to stay public. Each leg builds natively, with no QEMU.
+- Each leg builds both targets first, then pushes `-<arch>-init` **before** `-<arch>`.
+- It exposes the arch-less `<run_number>-<sha7>` as `outputs.tag`. `cms-api-bump-tag` runs only
+  after both legs succeed, so `deployment` never names a tag whose images aren't in the registry.
 - There are no `latest` tags. Every tag is immutable and names one commit. Re-pushing `latest`
   wouldn't save storage anyway: the old image stays in GHCR as an untagged version.
 - **Cleanup (opt-in):** when the repo variable **`CMS_API_GHCR_CLEANUP`** is `true`, the job ends
-  by running `actions/delete-package-versions@v5`. It keeps the newest **10 versions** (5 releases,
-  app + `-init`) and deletes everything older, tagged or not. The package name and owner are
+  by running `actions/delete-package-versions@v5` in the separate `cms-api-ghcr-cleanup` job, so the
+  matrix doesn't run it twice. It keeps the newest **20 versions** and deletes everything older,
+  tagged or not. That's 5 releases, at 4 images each. The package name and owner are
   derived from `CMS_API_IMAGE_REPO`.
   - Turn it on only **after** the helmfile migration. The first run also deletes the old
     `latest`/`latest-migrate` images that the Helm deploy pulls.
@@ -145,7 +153,7 @@ straight away.
 
 The branch decides where cms-api goes. Both paths require cms-api to have changed.
 
-| Push to | `cms-api-ghcr-publish` + `cms-api-bump-tag` (k3s) | `deploy-cms-api` (Render webhook) |
+| Push to | `cms-api-ghcr-publish` (×2 arch) + `cms-api-bump-tag` (k3s) | `deploy-cms-api` (Render webhook) |
 | --- | --- | --- |
 | `staging` | skipped | runs |
 | `master` | runs | skipped |
@@ -170,7 +178,9 @@ are `contents: write` only, and it uses no third-party actions or extra tools: o
       - Leaves the file alone if its tag already has an equal or higher run number. This way an
         older run that finishes last can't roll the clusters back.
       - Otherwise uses `sed` to replace the whole `APP_IMAGE_TAG:` line with
-        `APP_IMAGE_TAG: "<tag>"`, which also drops any trailing comment. It writes through a temp
+        `APP_IMAGE_TAG: "<tag>-<arch>"`, which also drops any trailing comment. The job maps vm-dev
+        to `arm64` and vm-prod to `amd64`. The run-number check accepts the arch suffix, and also an
+        older tag without one, such as `79-d16e564`. It writes through a temp
         file rather than `sed -i`, so GNU and BSD sed behave the same. Then it uses `grep` to
         require exactly one matching line.
    3. If nothing changed, it exits successfully.
@@ -184,9 +194,11 @@ trigger workflows anyway.
 
 ## How a deploy happens
 
-1. A push to `master` changes cms-api. CI pushes `58-b2c3d4e-init` and then `58-b2c3d4e`.
+1. A push to `master` changes cms-api. For each arch, CI pushes `58-b2c3d4e-<arch>-init` and then
+   `58-b2c3d4e-<arch>`.
 2. `cms-api-bump-tag` commits `chore(cms-api): deploy image 58-b2c3d4e` to `deployment`. The commit
-   changes one line in each cluster file.
+   changes one line in each cluster file: vm-dev to `58-b2c3d4e-arm64`, and vm-prod to
+   `58-b2c3d4e-amd64`.
 3. Within about 1 minute, Flux on each cluster fetches the new `deployment` revision.
 4. The app Kustomization reconciles and the Deployment rolls out: the init container runs the
    migrations, then the app starts.
@@ -293,7 +305,7 @@ first apply.
   - Changing `APP_NAME`, `APP_SERVICE_NAME`, `APP_NAMESPACE` or `APP_ENV` renames everything. The
     cluster file's ConfigMap name and the Secret have to follow.
 - **Rollback or pin a tag:** push a commit to `deployment` that sets `APP_IMAGE_TAG` in the cluster
-  files to an older `<run_number>-<sha7>`, then optionally run
+  files to an older `<run_number>-<sha7>-<arch>` (keep each cluster's own arch), then optionally run
   `flux reconcile kustomization <app-kustomization> --with-source`.
   - There's nothing to suspend. The pin holds until the next cms-api build on `master`, whose higher
     run number replaces it.
@@ -317,6 +329,10 @@ first apply.
 - **Keep the `APP_IMAGE_TAG:` line simple.** CI finds it with `sed` by its key. Keep one such line
   per cluster file, with the key on the same line as its value. A value moved onto another line
   makes the bump job fail loudly rather than write the wrong thing.
+- **Each cluster's tag must match its CPU.** vm-dev (arm64) needs `-arm64`, and vm-prod (amd64)
+  needs `-amd64`. A cluster moved to a different CPU needs its mapping changed in
+  `cms-api-bump-tag`'s `TARGETS`. The wrong arch shows up as `exec format error` in the init
+  container.
 - **`master` alone deploys nothing.** Flux never reads `master`. A manifest fix that isn't merged
   into `deployment` isn't live.
 

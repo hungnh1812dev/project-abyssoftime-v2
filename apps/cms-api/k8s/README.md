@@ -41,7 +41,7 @@ Settings → Secrets and variables → Actions → **Variables** tab → New rep
 | Variable | Value | Required | What it does |
 | --- | --- | --- | --- |
 | `CMS_API_IMAGE_REPO` | `ghcr.io/<owner>/project-abyssoftime-v2/cms-api` (**lowercase**) | Yes | Where CI pushes images. If it isn't set, the publish job fails straight away |
-| `CMS_API_GHCR_CLEANUP` | `true` | No. Set it **only after step 7** | Keeps the newest 10 image versions (5 releases) and deletes older ones |
+| `CMS_API_GHCR_CLEANUP` | `true` | No. Set it **only after step 7** | Keeps the newest 20 image versions (5 releases × 4 images) and deletes older ones |
 | `CMS_API_APP_PORT` | — | **Delete it** | No longer used |
 
 `CMS_API_RENDER_DEPLOY_HOOK` (in the `Production` environment) is unrelated: it's the `staging` →
@@ -73,16 +73,19 @@ it, or a rule with a bypass for GitHub Actions. Otherwise `cms-api-bump-tag` fai
 
 ### 1.3 Build the first images
 
-Merge or push to `master` with a change under `apps/cms-api/`. The **CMS API Deploy - GHCR** job
-pushes two tags:
+Merge or push to `master` with a change under `apps/cms-api/`. The two **CMS API Deploy - GHCR
+(amd64 / arm64)** jobs each build natively and push two tags, so 4 images in total:
 
 ```
-ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>-init
-ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>
+ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>-amd64-init   # vm-prod (Intel VPS)
+ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>-amd64
+ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>-arm64-init   # vm-dev (M1 VM)
+ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>-arm64
 ```
 
 Then **CMS API Deploy - Bump Flux tag** (`cms-api-bump-tag`) commits
-`chore(cms-api): deploy image <run_number>-<sha7>` to `deployment`. If it fails with "merge master
+`chore(cms-api): deploy image <run_number>-<sha7>` to `deployment`. That commit sets vm-dev to
+`…-arm64` and vm-prod to `…-amd64`. If it fails with "merge master
 into deployment first", do step 1.2.
 
 ### 1.4 Package settings (github.com → your profile → Packages → `cms-api` → Package settings)
@@ -335,7 +338,7 @@ Everything Flux-related that you might tune:
 | Git poll | same file, GitRepository `interval` | 1m | Created by bootstrap |
 | App reconcile / drift fix | `clusters/abyssdev/<cluster>/abyssdev-apps-*.yaml` `spec.interval` | 3m | Also runs right after each new revision |
 | Rollout health timeout | same file, `wait: true`, `timeout` | 5m | Ready only once pods are healthy |
-| Deployed tag | `APP_IMAGE_TAG` line in the same file, **on `deployment`** | set by `cms-api-bump-tag` | On `master` it's a placeholder. Keep it on one line (CI edits it with `sed`) |
+| Deployed tag | `APP_IMAGE_TAG` line in the same file, **on `deployment`** | set by `cms-api-bump-tag` (`<run>-<sha7>-<arch>`) | On `master` it's a placeholder. Keep it on one line (CI edits it with `sed`) |
 
 Nothing else needs configuring: no webhooks, no inbound ports, and no extra secrets in Flux.
 
@@ -353,7 +356,7 @@ kubectl -n <full-namespace> rollout restart deploy/<full-app-name>
 vi configmap.yaml && kubectl apply --server-side -f configmap.yaml
 flux reconcile kustomization <app-kustomization>
 
-# Roll back / pin a tag: set APP_IMAGE_TAG to an older <run>-<sha7> in both cluster files on
+# Roll back / pin a tag: set APP_IMAGE_TAG to an older <run>-<sha7>-<arch> in both cluster files on
 # `deployment`, commit, push. It holds until the next cms-api build on master.
 flux reconcile kustomization <app-kustomization> --with-source
 
@@ -376,6 +379,7 @@ Rolling back doesn't undo database migrations.
 | New tag on `deployment`, but the cluster doesn't change | Flux still reads `master` or an old path | `flux get sources git` should show `deployment@…`; otherwise patch or re-bootstrap (step 4) |
 | Kustomization: `ConfigMap … not found` | ConfigMap missing, misnamed, or not in `flux-system` | Step 5.2: the name must match the cluster file |
 | Pod `ImagePullBackOff` | Wrong `APP_IMAGE_REPO`, the tag doesn't exist (for example the old `"dev"` placeholder), or the package is private | Check the ConfigMap and the tag on `deployment`, and the package visibility |
+| Pod `Init:CrashLoopBackOff`, and `kubectl logs … -c init` says `exec format error` | The tag's CPU arch doesn't match the node (for example amd64 on the M1 VM, or an old arch-less tag, which is amd64) | vm-dev needs `…-arm64` and vm-prod `…-amd64` on `deployment`. The next `master` build sets both. If a cluster moved to another CPU, change its entry in `cms-api-bump-tag`'s `TARGETS` |
 | Pod `Init:CrashLoopBackOff` | Migrations failed: DB unreachable or wrong `DB_*` | `kubectl logs … -c init`, fix `secret.yaml`, re-apply, restart |
 | App `CrashLoopBackOff` on boot | Env validation: a required key is missing, or an optional key is `""` | `kubectl logs …`, fix `secret.yaml` |
 | Manifest change on `master` not live | `deployment` not updated | Merge `master` into `deployment` |
