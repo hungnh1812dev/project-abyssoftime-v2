@@ -346,9 +346,20 @@ The setup steps are in [`k8s/README.md`](../../k8s/README.md) step 8.
   `redirectScheme: https`, permanent). The Ingress references it as
   `<namespace>-<middleware-name>@kubernetescrd`. If the two drift apart, Traefik drops the router and
   every path returns 404.
+  - How it works (checked in Traefik's source): Traefik's Ingress provider only uses `spec.tls` to
+    load the certificate, and it doesn't make the router TLS-only. With no entrypoints annotation,
+    the one router serves both `web` (:80) and `websecure` (:443). The Traefik chart that k3s ships
+    turns TLS on at the `websecure` entrypoint by default. On :80 the middleware redirects. On :443
+    the URL is already `https`, so it passes the request through (it only redirects when the
+    rewritten URL differs), with no loop. If someone turns off entrypoint TLS on `websecure`, :443
+    stops serving this Ingress. The fix is the annotation
+    `traefik.ingress.kubernetes.io/router.tls: "true"`, but that would also drop the :80 redirect,
+    so it's not used here.
 - **A missing `APP_DOMAIN` fails loudly.** Flux replaces an undefined `${VAR}` with `""`, and its
   docs offer no fail-on-unset syntax. The host then renders as `api.`, which isn't a valid DNS-1123
-  name, so the API server rejects the Ingress and the Kustomization goes not-Ready. A bare
+  name, so the API server rejects the Ingress and the Kustomization goes not-Ready. Flux applies
+  the Kustomization as a whole, so **nothing else on vm-prod is applied either, including new image
+  tags**, until the key is fixed. The same goes for a missing Traefik `Middleware` CRD. A bare
   `${APP_HOST}` would have rendered a host-less Ingress that answers for **every** hostname, and
   that's why the key is a domain and not a full host.
 - **Client IPs.** `TRUST_PROXY: "1"` trusts one hop, Traefik. k3s's ServiceLB uses

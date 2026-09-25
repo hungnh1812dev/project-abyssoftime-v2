@@ -104,7 +104,17 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
 ### Checkpoint 2: Complete
 - [x] Every SPEC Success Criterion is ticked.
 - [x] Commit `docs(cms-api): document the vm-prod ingress` (Yes/No confirmation).
-- [ ] Five-axis review (`/review`).
-- [ ] Reduce `apps/cms-api/SPEC.md` to the minimal pointer (workflow step 7).
+- [x] Five-axis review (done inline).
+  - Correctness: Traefik's source confirms `spec.tls` only loads certs, the router serves `web` +
+    `websecure` (entrypoint TLS), and `redirectScheme` passes through when the URL is already
+    https, so there's no loop. Now documented in the deployment doc.
+  - **Fixed (Important):** a failing Ingress (missing `APP_DOMAIN` or Traefik CRD) blocks the
+    whole vm-prod Kustomization, image bumps included. This is now in the deployment doc and the
+    runbook troubleshooting.
+  - Security: `/api-docs` is public (your call); CORS and client IPs are documented. Not done
+    (suggestion): an HSTS headers Middleware, which is out of scope.
+  - Architecture/readability/performance: nothing further. Suggestion: the offline harness lives
+    only in the scratchpad, so "Verified state" records what it checked.
+- [x] Reduce `apps/cms-api/SPEC.md` to the minimal pointer (workflow step 7).
 - [ ] Owner, manual: DNS, cert-manager + ClusterIssuer, ConfigMap keys, merge `master` into
       `deployment`, then run the runbook verify block.

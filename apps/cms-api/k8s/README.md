@@ -508,7 +508,7 @@ Rolling back doesn't undo database migrations.
 | Pod `Init:CrashLoopBackOff` | Migrations failed: DB unreachable or wrong `DB_*` | `kubectl logs … -c init`, fix `secret.yaml`, re-apply, restart |
 | App `CrashLoopBackOff` on boot | Env validation: a required key is missing, or an optional key is `""` | `kubectl logs …`, fix `secret.yaml` |
 | Manifest change on `master` not live | `deployment` not updated | Merge `master` into `deployment` |
-| Kustomization: `spec.rules[0].host: Invalid value: "api."` | `APP_DOMAIN` missing from vm-prod's ConfigMap | Step 8.3, then `flux reconcile kustomization abyssdev-cms-api-sync-prod` |
+| Kustomization: `spec.rules[0].host: Invalid value: "api."`. New image tags stop reaching vm-prod too | `APP_DOMAIN` missing from vm-prod's ConfigMap. Flux applies all or nothing, so the Deployment is held back as well | Step 8.3, then `flux reconcile kustomization abyssdev-cms-api-sync-prod` |
 | Kustomization: `no matches for kind "Middleware"` | Traefik isn't installed (k3s was started with `--disable traefik`) | Re-enable the bundled Traefik, or install Traefik v3 with its CRDs |
 | Browser shows `TRAEFIK DEFAULT CERT`, and the certificate isn't ready | DNS not pointing at the VPS yet, port 80 closed, or `APP_TLS_CLUSTER_ISSUER` doesn't match a ClusterIssuer | Steps 8.1–8.3, `kubectl get challenges -A` |
 | `api.<domain>` returns 404 for every path | The Ingress middleware annotation doesn't match the Middleware (renamed by hand) | Keep `ingress.yaml`'s annotation `<ns>-<middleware-name>@kubernetescrd` in sync with `middleware.yaml` |
