@@ -62,7 +62,13 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
 
 ## Phase 2: Docs
 
-- [ ] **T3: Runbook (`k8s/README.md`)**
+- [x] **T3: Runbook (`k8s/README.md`)**. Done: new step 8 (8.1 DNS/firewall, 8.2 cert-manager
+  v1.21.2 + ClusterIssuer, 8.3 ConfigMap keys, 8.4 CORS, 8.5 deploy/verify, 8.6 client IPs). Also
+  updated 3.3 inbound, the 5.2 example, the section 6 tree, the config reference row, 5 troubleshooting
+  rows, the checklist and a `<domain>` placeholder row. `secret.example.yaml`'s `TRUST_PROXY` comment
+  now names Traefik. Scratchpad `check-t3.py` passes: required content, every README YAML block
+  parses, ClusterIssuer/HelmChartConfig shapes, no stale lines, no real domain. The cert-manager
+  command and `ingressClassName` were checked against cert-manager.io docs.
   - Acceptance:
     - New section "Expose cms-api (vm-prod)" with the prerequisites in order: DNS record, inbound
       80/443, cert-manager + a Let's Encrypt ClusterIssuer (HTTP-01, `ingressClassName: traefik`,
@@ -78,7 +84,10 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
   - Files: `k8s/README.md`
   - Deps: T1, T2 · Size: S
 
-- [ ] **T4: Deployment doc, techstack doc and ENTRYPOINT**
+- [x] **T4: Deployment doc, techstack doc and ENTRYPOINT**. Done: new "Public Ingress (vm-prod)"
+  section, files/variables/"What Flux applies"/"Reach it"/"Verified state" updated. Three techstack
+  tables: controller, vm-prod-only mechanism, and `APP_DOMAIN` vs `APP_HOST`. ENTRYPOINT bullets updated.
+  Scratchpad `check-t4.py` passes, and all 4 suites pass together.
   - Acceptance:
     - `cms-api-flux-deployment.md`: "There's no Ingress" is replaced with an Ingress section
       covering the Component, the vm-prod-only mechanism, the new keys, the empty-`APP_DOMAIN` gotcha (host `api.`, apply fails),
@@ -93,8 +102,8 @@ Spec: `apps/cms-api/SPEC.md` · Plan: `tasks/plan.md` · History: `tasks/archive
   - Deps: T1, T2 · Size: S
 
 ### Checkpoint 2: Complete
-- [ ] Every SPEC Success Criterion is ticked.
-- [ ] Commit `docs(cms-api): document the vm-prod ingress` (Yes/No confirmation).
+- [x] Every SPEC Success Criterion is ticked.
+- [x] Commit `docs(cms-api): document the vm-prod ingress` (Yes/No confirmation).
 - [ ] Five-axis review (`/review`).
 - [ ] Reduce `apps/cms-api/SPEC.md` to the minimal pointer (workflow step 7).
 - [ ] Owner, manual: DNS, cert-manager + ClusterIssuer, ConfigMap keys, merge `master` into

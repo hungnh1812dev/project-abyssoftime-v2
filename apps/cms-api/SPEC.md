@@ -203,13 +203,13 @@ This is infra config, so there are no unit tests. Verification:
 
 ## Success Criteria
 
-- [ ] `k8s/flux/ingress/` Component exists and passes Testing steps 1–5.
-- [ ] vm-prod's app Kustomization enables it, and vm-dev's file is unchanged.
-- [ ] `configmap.example.yaml` documents `APP_DOMAIN` and `APP_TLS_CLUSTER_ISSUER` as prod/Ingress-only.
-- [ ] The runbook covers DNS, ports, cert-manager + ClusterIssuer, the new ConfigMap keys, the
+- [x] `k8s/flux/ingress/` Component exists and passes Testing steps 1–5.
+- [x] vm-prod's app Kustomization enables it, and vm-dev's file is unchanged.
+- [x] `configmap.example.yaml` documents `APP_DOMAIN` and `APP_TLS_CLUSTER_ISSUER` as prod/Ingress-only.
+- [x] The runbook covers DNS, ports, cert-manager + ClusterIssuer, the new ConfigMap keys, the
       post-deploy curl checks and the client-IP caveat. The deployment doc no longer says
       "There's no Ingress".
-- [ ] The techstack doc has comparison tables for the controller choice and the prod-only mechanism.
+- [x] The techstack doc has comparison tables for the controller choice and the prod-only mechanism.
 
 ## Open Questions
 

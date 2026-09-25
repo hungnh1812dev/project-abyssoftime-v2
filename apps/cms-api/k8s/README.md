@@ -29,6 +29,7 @@ Placeholders used below:
 | `<full-app-name>` | `<app-name>-<app-service-name>-<app-env>` (Deployment, Service) | — | — |
 | `<full-namespace>` | `<app-namespace>-<app-env>` | — | — |
 | `<owner>` | Your GitHub user | — | — |
+| `<domain>` | Bare site domain; cms-api is served at `api.<domain>` (step 8) | — | yours |
 
 ---
 
@@ -148,8 +149,8 @@ flux check --pre           # all checks must pass
 - **Outbound** from the VM or VPS: `github.com` (SSH 22 for git, 443), `ghcr.io` and
   `pkg-containers.githubusercontent.com` (443, images). Also whatever the app needs, such as your
   Postgres host (`DB_HOST`) and your storage and email providers.
-- **Inbound:** nothing is needed for deploys. Only open what your users need, such as 80/443 for an
-  ingress.
+- **Inbound:** nothing is needed for deploys. vm-prod serves cms-api publicly, so it needs 80 and 443
+  open (step 8). vm-dev needs nothing.
 
 ---
 
@@ -235,9 +236,13 @@ data:
   APP_ENV: "<app-env>"
   APP_PORT: "3000"
   APP_IMAGE_REPO: "ghcr.io/<owner>/project-abyssoftime-v2/cms-api"   # same as CMS_API_IMAGE_REPO
+  # vm-prod only (the Ingress, step 8):
+  APP_DOMAIN: "<domain>"                  # bare domain; cms-api is served at api.<domain>
+  APP_TLS_CLUSTER_ISSUER: "<issuer-name>" # e.g. letsencrypt-prod
 ```
 
-The name must match `substituteFrom` in `clusters/abyssdev/<cluster>/abyssdev-apps-*.yaml`.
+The name must match `substituteFrom` in `clusters/abyssdev/<cluster>/abyssdev-apps-*.yaml`. Leave
+the two vm-prod keys out on vm-dev.
 
 ### 5.3 Secret: runtime config and secrets (`<full-namespace>`)
 
@@ -280,6 +285,7 @@ clusters/abyssdev/<cluster>/
 ├── kustomization.yaml             ← flux-system/ + the app file
 └── abyssdev-apps-<env>.yaml       ← app Kustomization: path ./apps/cms-api/k8s/flux, <config-name>, APP_IMAGE_TAG
 apps/cms-api/k8s/flux/             ← Deployment + Service, ${APP_*} only
+└── ingress/                       ← Ingress + https redirect (Component, vm-prod only, step 8)
 ```
 
 Once `deployment` contains them (step 1.2) and has a real tag (1.3 or 6.1), Flux applies them on
@@ -328,6 +334,123 @@ Once this works, you can turn on GHCR cleanup: set `CMS_API_GHCR_CLEANUP=true` (
 
 ---
 
+## 8. Expose cms-api to the internet (vm-prod)
+
+vm-prod serves cms-api at **`https://api.<domain>`** through the Traefik that comes with k3s. The
+bare `<domain>` is for the frontend and `admin.<domain>` is for cms-admin; neither is deployed yet.
+The Ingress lives in `apps/cms-api/k8s/flux/ingress/` and only vm-prod's cluster file turns it on
+(`components: [ingress]`). vm-dev stays internal.
+
+Do 8.1–8.4 **before** merging `master` into `deployment`. Otherwise the Flux apply fails: with no
+`APP_DOMAIN`, the host renders as `api.`, and the API server rejects it.
+
+### 8.1 DNS and firewall
+
+- An `A` (and `AAAA`, if the VPS has IPv6) record for `api.<domain>` pointing at the VPS. Records
+  for `<domain>` and `admin.<domain>` can wait until those apps ship.
+- Inbound TCP **80 and 443** open on the VPS (provider firewall and `ufw`, if used). Port 80 has to
+  stay open: Let's Encrypt validates over it, and Traefik redirects it to https.
+
+```bash
+dig +short api.<domain>                  # the VPS IP
+```
+
+### 8.2 cert-manager and a ClusterIssuer
+
+Install cert-manager (check [the docs](https://cert-manager.io/docs/installation/kubectl/) for the
+current release):
+
+```bash
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.2/cert-manager.yaml
+kubectl -n cert-manager rollout status deploy/cert-manager-webhook
+```
+
+Create the Let's Encrypt ClusterIssuer. Its name is what goes into `APP_TLS_CLUSTER_ISSUER`:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: <you@example.com>              # expiry notices
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik
+```
+
+```bash
+kubectl apply --server-side -f cluster-issuer.yaml
+kubectl get clusterissuer letsencrypt-prod    # READY True
+```
+
+If you want to test without touching Let's Encrypt's production rate limits, make a second issuer
+with `server: https://acme-staging-v02.api.letsencrypt.org/directory`, point
+`APP_TLS_CLUSTER_ISSUER` at it first, then switch back. The staging cert isn't browser-trusted.
+
+### 8.3 ConfigMap keys
+
+Add both keys to vm-prod's `configmap.yaml` (step 5.2) and re-apply:
+
+```bash
+#   APP_DOMAIN: "<domain>"                     # bare, no scheme, no "api."
+#   APP_TLS_CLUSTER_ISSUER: "letsencrypt-prod"
+kubectl apply --server-side -f configmap.yaml
+```
+
+### 8.4 CORS
+
+Browsers call cms-api from the other subdomains, so `CORS_ORIGINS` in vm-prod's `secret.yaml` has to
+list them. Add each app once it's live, e.g. `"https://<domain>,https://admin.<domain>"`. Then
+re-apply and `rollout restart` (see Everyday commands).
+
+### 8.5 Deploy and verify
+
+Merge `master` into `deployment` (step 1.2), then:
+
+```bash
+flux reconcile kustomization abyssdev-cms-api-sync-prod --with-source
+kubectl -n <full-namespace> get ingress,certificate      # certificate READY True, within ~1-2 min
+curl -I http://api.<domain>/health                       # 301/308, Location: https://api.<domain>/health
+curl https://api.<domain>/health                         # 200, no -k needed
+```
+
+If the certificate stays not ready, run `kubectl -n <full-namespace> describe certificate` and
+`kubectl get challenges -A`. The usual causes are DNS not pointing at the VPS yet, or port 80 being
+closed.
+
+### 8.6 Real client IPs (recommended)
+
+cms-api rate-limits auth routes per client IP, and trusts one proxy hop (`TRUST_PROXY: "1"`, which
+is Traefik). But k3s's built-in load balancer (ServiceLB) uses `externalTrafficPolicy: Cluster` by
+default. That rewrites the source address, so Traefik may see the node's IP for every request, and
+then all users share one rate-limit bucket. To keep the real client IP, tell k3s's Traefik to use
+`Local`:
+
+```yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        externalTrafficPolicy: Local
+```
+
+Save it as `/var/lib/rancher/k3s/server/manifests/traefik-config.yaml` on the VPS. k3s picks it up
+and redeploys Traefik, with a brief blip on 80 and 443. This affects every Ingress on the cluster,
+so it's a cluster setting and isn't committed with cms-api.
+
+---
+
 ## Flux configuration reference
 
 Everything Flux-related that you might tune:
@@ -339,8 +462,10 @@ Everything Flux-related that you might tune:
 | App reconcile / drift fix | `clusters/abyssdev/<cluster>/abyssdev-apps-*.yaml` `spec.interval` | 3m | Also runs right after each new revision |
 | Rollout health timeout | same file, `wait: true`, `timeout` | 5m | Ready only once pods are healthy |
 | Deployed tag | `APP_IMAGE_TAG` line in the same file, **on `deployment`** | set by `cms-api-bump-tag` (`<run>-<sha7>-<arch>`) | On `master` it's a placeholder. Keep it on one line (CI edits it with `sed`) |
+| Public Ingress on/off | same file, `spec.components: [ingress]` | vm-prod on, vm-dev off | Needs the step 8 prerequisites on that cluster first |
 
-Nothing else needs configuring: no webhooks, no inbound ports, and no extra secrets in Flux.
+Nothing else needs configuring for Flux: no webhooks, no inbound ports, and no extra secrets in
+Flux. The only inbound ports are 80 and 443, for vm-prod's public Ingress.
 
 ## Everyday commands
 
@@ -383,6 +508,11 @@ Rolling back doesn't undo database migrations.
 | Pod `Init:CrashLoopBackOff` | Migrations failed: DB unreachable or wrong `DB_*` | `kubectl logs … -c init`, fix `secret.yaml`, re-apply, restart |
 | App `CrashLoopBackOff` on boot | Env validation: a required key is missing, or an optional key is `""` | `kubectl logs …`, fix `secret.yaml` |
 | Manifest change on `master` not live | `deployment` not updated | Merge `master` into `deployment` |
+| Kustomization: `spec.rules[0].host: Invalid value: "api."` | `APP_DOMAIN` missing from vm-prod's ConfigMap | Step 8.3, then `flux reconcile kustomization abyssdev-cms-api-sync-prod` |
+| Kustomization: `no matches for kind "Middleware"` | Traefik isn't installed (k3s was started with `--disable traefik`) | Re-enable the bundled Traefik, or install Traefik v3 with its CRDs |
+| Browser shows `TRAEFIK DEFAULT CERT`, and the certificate isn't ready | DNS not pointing at the VPS yet, port 80 closed, or `APP_TLS_CLUSTER_ISSUER` doesn't match a ClusterIssuer | Steps 8.1–8.3, `kubectl get challenges -A` |
+| `api.<domain>` returns 404 for every path | The Ingress middleware annotation doesn't match the Middleware (renamed by hand) | Keep `ingress.yaml`'s annotation `<ns>-<middleware-name>@kubernetescrd` in sync with `middleware.yaml` |
+| Auth rate limit trips for everyone at once | All requests share the node IP | Step 8.6 |
 | Deploys stopped after renaming `ci.yml` | `run_number` restarted at 1, so the bump job treats new tags as older | See the `run_number` caveat in the deployment doc |
 
 ## Checklist
@@ -400,4 +530,8 @@ Rolling back doesn't undo database migrations.
 - [ ] Old Helm releases uninstalled
 - [ ] `flux get kustomizations` Ready, pod Running, `/health` OK, on both clusters
 - [ ] A test push to `master` produces a bot commit on `deployment` and a new pod
+- [ ] vm-prod: DNS for `api.<domain>`, ports 80/443, cert-manager + ClusterIssuer, `APP_DOMAIN` +
+      `APP_TLS_CLUSTER_ISSUER` in the ConfigMap, all **before** the merge (step 8)
+- [ ] vm-prod: `curl https://api.<domain>/health` returns 200 with a trusted cert, and http redirects
+- [ ] (Recommended) vm-prod: Traefik `externalTrafficPolicy: Local` (step 8.6)
 - [ ] (Optional) `CMS_API_GHCR_CLEANUP=true`; bootstrap token deleted

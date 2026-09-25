@@ -39,7 +39,8 @@ Related docs:
 | `clusters/abyssdev/<cluster>/kustomization.yaml` | Lists `flux-system/` and the cluster's app Kustomization |
 | `clusters/abyssdev/vm-dev/abyssdev-apps-develop.yaml`, `clusters/abyssdev/vm-prod/abyssdev-apps-prod.yaml` | The app Flux `Kustomization` for each cluster, in `flux-system`. It applies `./apps/cms-api/k8s/flux`, substitutes `${APP_*}` from that cluster's ConfigMap, and holds `APP_IMAGE_TAG` in `postBuild.substitute`. CI rewrites that line on `deployment`. The two files must keep the same layout |
 | `apps/cms-api/k8s/flux/` | Deployment and Service, shared by both clusters. They contain only `${APP_*}` placeholders, with no project values |
-| `apps/cms-api/k8s/configmap.example.yaml` | ConfigMap manifest template: the six `APP_*` keys, `<placeholders>` only |
+| `apps/cms-api/k8s/flux/ingress/` | kustomize Component with the public Ingress and the https-redirect Middleware. Only vm-prod's cluster file enables it (`spec.components: [ingress]`). See [Public Ingress](#public-ingress-vm-prod) |
+| `apps/cms-api/k8s/configmap.example.yaml` | ConfigMap manifest template: the six `APP_*` keys, plus the two vm-prod-only Ingress keys. `<placeholders>` only |
 | `apps/cms-api/k8s/secret.example.yaml` | Secret manifest template: runtime config and secrets. Required keys are active, optional keys commented out |
 | `apps/cms-api/k8s/configmap.yaml`, `apps/cms-api/k8s/secret.yaml` | Your filled-in copies, applied with `kubectl apply --server-side -f`. Gitignored. Agents never touch them (see `docs/rules/k8s-secrets.md`) |
 | `.github/workflows/ci.yml` → `cms-api-ghcr-publish` | Matrix job (amd64 on `ubuntu-latest`, arm64 on `ubuntu-24.04-arm`). On every `master` push that changes cms-api, it builds and pushes both images for each arch (4 images), and exposes the arch-less tag as `outputs.tag` |
@@ -72,6 +73,8 @@ cluster.
 | `APP_PORT` | ConfigMap | `containerPort`, probes, Service port, and the app's `PORT` |
 | `APP_IMAGE_REPO` | ConfigMap | Both images |
 | `APP_IMAGE_TAG` | `postBuild.substitute` in the cluster file, written by `cms-api-bump-tag` on `deployment`. Includes the arch: `<run>-<sha7>-arm64` on vm-dev, `<run>-<sha7>-amd64` on vm-prod | Both images |
+| `APP_DOMAIN` | ConfigMap, **vm-prod only** | The Ingress host and TLS host `api.${APP_DOMAIN}` (`ingress/` only) |
+| `APP_TLS_CLUSTER_ISSUER` | ConfigMap, **vm-prod only** | The Ingress's `cert-manager.io/cluster-issuer` annotation (`ingress/` only) |
 
 The ConfigMap sits in `flux-system` because `postBuild.substituteFrom` only reads objects in the
 Kustomization's own namespace. It isn't `optional`, so if it's missing, the reconcile fails instead
@@ -95,7 +98,9 @@ of applying `${APP_NAME}`-style names.
   15s initial delay and a 20s period; readiness uses 5s and 10s. cms-api serves `/health` outside the
   `api/v1` prefix.
 - **Resources:** requests `100m`/`128Mi`, limits `500m`/`512Mi`.
-- **Service:** ClusterIP, `${APP_PORT} → ${APP_PORT}`. There's no Ingress.
+- **Service:** ClusterIP, `${APP_PORT} → ${APP_PORT}`, port name `http`.
+- **Ingress + Middleware:** vm-prod only, from the `ingress` Component. See
+  [Public Ingress](#public-ingress-vm-prod).
 
 Reconcile loop, the same on both clusters:
 - The `GitRepository flux-system` polls the `deployment` branch every **1m**.
@@ -312,8 +317,45 @@ first apply.
   - With cleanup on, only the last 5 releases still exist in GHCR.
   - The init container runs *forward* migrations only, so rolling back past a schema change needs a
     manual DB fix.
-- **Reach it** (there's no Ingress):
+- **Reach it:** on vm-prod, at `https://api.<domain>`. On vm-dev, which is ClusterIP-only, use
   `kubectl -n <full-namespace> port-forward svc/<full-app-name> <port>:<port>`.
+
+## Public Ingress (vm-prod)
+
+vm-prod serves cms-api at `https://api.${APP_DOMAIN}` through the Traefik that comes with k3s. The
+subdomain layout is fixed: the bare domain is for the frontend, `api.` is for cms-api and `admin.`
+is for cms-admin. So the ConfigMap holds only the bare domain, and each app adds its own prefix.
+The setup steps are in [`k8s/README.md`](../../k8s/README.md) step 8.
+
+- **vm-prod only, via a kustomize Component.** `apps/cms-api/k8s/flux/ingress/` is a
+  `kind: Component`. vm-prod's app Kustomization lists it in `spec.components: [ingress]`, which Flux
+  resolves relative to `spec.path`. vm-dev's file doesn't list it, and the base
+  `kustomization.yaml` doesn't reference it, so vm-dev renders exactly as before. The `components`
+  lines sit away from the `APP_IMAGE_TAG:` line, so CI's sed and `master → deployment` merges are
+  unaffected.
+- **Ingress** `<full-app-name>`: `ingressClassName: traefik`, one rule for host
+  `api.${APP_DOMAIN}` with path `/` (Prefix) → the Service's port **by name** (`http`). No numeric
+  `${APP_PORT}` lands in it, which avoids the int-substitution gotcha. Every path is public,
+  including `/api-docs`.
+- **TLS:** the `cert-manager.io/cluster-issuer: ${APP_TLS_CLUSTER_ISSUER}` annotation makes
+  cert-manager issue `<full-app-name>-tls` for `api.${APP_DOMAIN}`. The owner installs cert-manager
+  and a Let's Encrypt ClusterIssuer with an HTTP-01 solver on `ingressClassName: traefik`. The
+  solver's own `/.well-known/acme-challenge/…` Ingress wins over the redirect because Traefik
+  ranks the longer rule higher.
+- **http → https:** Middleware `<full-app-name>-https-redirect` (`traefik.io/v1alpha1`,
+  `redirectScheme: https`, permanent). The Ingress references it as
+  `<namespace>-<middleware-name>@kubernetescrd`. If the two drift apart, Traefik drops the router and
+  every path returns 404.
+- **A missing `APP_DOMAIN` fails loudly.** Flux replaces an undefined `${VAR}` with `""`, and its
+  docs offer no fail-on-unset syntax. The host then renders as `api.`, which isn't a valid DNS-1123
+  name, so the API server rejects the Ingress and the Kustomization goes not-Ready. A bare
+  `${APP_HOST}` would have rendered a host-less Ingress that answers for **every** hostname, and
+  that's why the key is a domain and not a full host.
+- **Client IPs.** `TRUST_PROXY: "1"` trusts one hop, Traefik. k3s's ServiceLB uses
+  `externalTrafficPolicy: Cluster` by default, which can replace the client address with the node's
+  IP, so all users share one auth rate-limit bucket. The fix is a cluster-wide Traefik
+  `HelmChartConfig` (`externalTrafficPolicy: Local`). The runbook documents it, and it isn't
+  committed here because it affects every Ingress on the cluster.
 
 ## Gotchas
 
@@ -356,6 +398,18 @@ first apply.
   - A push race, rejected once, then retried with the concurrent commit kept.
   - A bad tag and a missing file, which both fail loudly.
   - `master`, which is never written.
-- Not verified here (manual, by the owner): Flux reconciling in the live clusters, the first real
+- Ingress (offline):
+  - `apps/cms-api/k8s/flux` renders byte-identically with and without the Component.
+  - A throwaway kustomization with `components: [ingress]` (mimicking vm-prod) renders
+    Deployment, Service, Ingress and Middleware, with exactly the 7 variables plus `APP_DOMAIN` and
+    `APP_TLS_CLUSTER_ISSUER`.
+  - After fake envsubst, asserts check: class, host and TLS host `api.<domain>`, the backend port
+    name, the issuer annotation, the middleware reference equal to the rendered Middleware's
+    `<ns>-<name>@kubernetescrd`, and a permanent https redirect. Two mutants (a wrong middleware
+    ref, a non-permanent redirect) are caught, and an empty domain yields the invalid host `api.`.
+  - CI's tag sed still sets exactly one line in vm-prod's file. A 3-way merge of that file onto
+    `origin/deployment` is clean and keeps the real tag.
+- Not verified here (manual, by the owner): the Ingress, certificate and redirect on the live VPS,
+  Flux reconciling in the live clusters, the first real
   bump on GitHub Actions (GNU sed), the first merge of `master` into `deployment`, and the migration
   steps.
