@@ -22,4 +22,4 @@ spec:
       - kind: ConfigMap
         name: abyssdev-cms-api-develop-config
     substitute:
-      APP_IMAGE_TAG: "80-9380735-arm64"
+      APP_IMAGE_TAG: "81-47e63ce-arm64"
