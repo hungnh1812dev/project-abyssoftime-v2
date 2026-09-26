@@ -24,4 +24,4 @@ spec:
       - kind: ConfigMap
         name: abyssdev-frontend-prod-config
     substitute:
-      APP_IMAGE_TAG: "dev"
+      APP_IMAGE_TAG: "83-3fc89f5-amd64"
