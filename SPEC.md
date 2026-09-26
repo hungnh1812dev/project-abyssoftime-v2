@@ -1,373 +1,275 @@
-# Spec: `/cv-3` — CV page with role-nested projects
+# Spec: cms-api tag bump from CI to the `deployment` branch (replace Flux image automation)
 
-Status: **SHIPPED** — 2026-08-29
-Date: 2026-08-28
-Target apps: `apps/cms-api` (new content type), `apps/frontend` (new route + view)
-Reference design: `new.html` (repo root, untracked scratch file)
+Status: **IN PROGRESS** (see `tasks/todo.md`)
+Date: 2026-09-24
+Target areas: `.github/workflows/ci.yml` (cms-api jobs), `clusters/abyssdev/*`, `apps/cms-api/k8s/flux/`,
+cms-api Flux docs/rules
 
-This spec sits at the monorepo root because it crosses both apps. `apps/frontend/SPEC.md`
-(SHIPPED auth spec) and `apps/cms-api/SPEC.md` (idle) are left untouched.
+This spec sits at the monorepo root because it spans CI, the Flux cluster manifests, and cms-api's
+k8s templates. The `/cv-3` spec that was here is SHIPPED and has been replaced.
 
 ---
 
 ## Objective
 
-Add a third CV presentation at `/cv-3`, backed by a **new content type whose projects live inside
-each role** instead of in a flat top-level list. The reference file `new.html` groups every project
-card under the role that produced it; the current content model cannot express that relationship,
-so the model changes first and the page follows.
+GitHub Actions becomes the only thing that writes the cms-api image tag. It writes it only on the
+**`deployment` branch**, which is the only branch Flux reads. Flux image automation, which currently
+scans GHCR in the cluster and commits the tag itself, is removed. The existing `master` CI stays as
+it is: it builds, tests and pushes to GHCR, and it gains exactly one extra job. Flux on each cluster
+polls `deployment` and reconciles whenever anything there changes, whether that's the tag or any
+other file.
+
+```
+push master ─▶ CI build/test (unchanged) ─▶ GHCR push <run>-<sha7> (+ <run>-<sha7>-init)
+                                                  │
+                                                  ▼
+                      cms-api-bump-tag: commit "deploy image <tag>" to `deployment`
+                      (sed on the APP_IMAGE_TAG line in both cluster files; master untouched)
+                                                  │
+   vm-dev (local VM) ─┐                           ▼
+   vm-prod (VPS) ─────┴─▶  Flux GitRepository polls `deployment` every 1m
+                           Flux Kustomization reconciles on new revision (+ every 3m drift check)
+                                                  ▼
+                           Deployment rolls to <tag> (app) + <tag>-init (migrations)
+
+manifest changes: master ──(owner merges master into deployment)──▶ deployment ─▶ Flux
+```
 
 ### User stories
 
-- **As the CV owner**, I open `/cv-3` and see each job role followed by the project cards belonging
-  to that role, so a reader can tell which work came from which position.
-- **As the CV owner**, I add a role with no projects and the page renders that role cleanly, with no
-  empty Projects heading and no stray spacing.
-- **As the CV owner**, I print `/cv-3` to PDF and get the same clean light-on-white output `/cv`
-  produces today.
-- **As a content editor**, I enter the nested structure in cms-admin without touching code.
+- **As the owner**, after a `master` push that changes cms-api, a `github-actions[bot]` commit lands
+  on `deployment` about a minute after the GHCR push. It sets `APP_IMAGE_TAG` to the new tag in both
+  `vm-dev` and `vm-prod`. `master` gets no bot commit, and no extra CI run starts.
+- **As the owner**, both clusters run the new app and init images within about 5 minutes of that
+  commit. I run no `kubectl` or `flux` command.
+- **As the owner**, I change a manifest (for example resources, probes or a cluster file) on `master`
+  and then merge `master` into `deployment`. Flux applies it within about 5 minutes.
+- **As the owner**, if two cms-api builds race, `deployment` ends up on the newest tag. An older run
+  never overwrites a newer tag.
+- **As the owner**, I roll back by pushing a commit to `deployment` that sets `APP_IMAGE_TAG` to an
+  older tag. It holds until the next cms-api build; there's no automation to suspend.
 
 ### Non-goals
 
-- Changing `/cv`, `/cv-2`, `src/views/cv`, `src/views/cv-elegant`, or `content-types/cv-page.json`
-  in any way. They keep working exactly as they do today.
-- Migrating existing `cv-page` entries into the new content type. Content is re-entered manually.
-- `apps/frontend-v2`.
-- Adding `/cv-3` to the CMS-driven header navigation.
+- Changing any existing `master` CI job, beyond exposing the tag the publish job already computes.
+- Syncing `master` into `deployment` automatically. The owner merges by hand when manifests change.
+- Deploying cms-admin or frontend through Flux. They stay on Render and Vercel.
+- Promotion gates such as dev first and then prod, or a manual approval step. One commit bumps both
+  clusters.
+- Uninstalling the image-reflector and image-automation controllers. Leaving them idle is harmless.
+- Any change to Secret or ConfigMap contents.
 
 ---
 
 ## Decisions
 
-Answers given during spec intake, with the trade-off each one settles.
-
-| Question | Chosen | Alternative rejected | Why |
+| Question | Chosen | Rejected | Why |
 | --- | --- | --- | --- |
-| Route | New route `/cv-3` | Replace `/cv-2` | `/cv-2` and `src/views/cv-elegant` stay untouched, so nothing already working can regress. |
-| Data source | New content type `cv-page-new` in cms-api | Reuse `cv-page`; match `role.projects` text against project names | Name-string matching breaks silently when a name is edited on one side only. A real nested component cannot drift. |
-| Top-level projects | Nested only | Nested plus a top-level list | Matches `new.html` exactly. Personal side projects have no home in this model; accepted. |
-| Section layouts | Fork `src/views/cv-elegant` components | Fork `src/views/cv` components | The new content type is a copy of `cv-page`, which is the shape cv-elegant already reads. Forking `/cv` would need a per-section adapter layer for grouped skills and data-carried section names. |
-| Frame | From `src/views/cv` | From cv-elegant | Explicit request: outer wrapper, print rules, and CV container come from `/cv`. |
-| References | Rendered | Omitted | `cv-page` already carries `references` and `/cv-2` renders them, so the data exists. My earlier "omit" question was asked on the wrong premise and is superseded. |
-| Theme | Tailwind theme tokens, dark mode kept | `new.html`'s fixed light palette | Consistent with both existing CV pages and required for the print CSS token override to work. |
-| Content bootstrap | Frontend mock + manual entry in cms-admin | Seed script copying `cv-page` rows | A one-time manual entry is cheaper than a migration script that runs once and is then dead code. |
+| Who writes the tag | CI only | Keep Flux image automation too | Two writers to one line make conflicting commits. CI already knows the exact tag it pushed. |
+| Where CI writes it | Direct push to the `deployment` branch | Push to `master` / open a PR | Owner's choice (T3). `master` stays clean and unprotected-branch concerns go away. The workflow never runs on `deployment` pushes, so there's structurally no CI loop. |
+| What Flux reads | `deployment` only (`gotk-sync.yaml` `ref.branch`) | `master` | A tag written to `deployment` must be what the clusters run. |
+| Environments | One commit bumps `vm-dev` and `vm-prod` | Per-branch images | Both clusters pull the same GHCR repo; they differ only by host and ConfigMap. |
+| Edit tool | `sed` + `grep` read-back (no `sed -i`) | `yq` | Owner's choice: no extra tool. Writing through a temp file behaves the same with GNU sed (runner) and BSD sed (macOS), so the exact CI script is dry-run locally. The read-back check makes a missed pattern fail loudly. |
+| Push races | Reset to `origin/deployment`, re-apply, push; 3 attempts; never lower the run number | `git pull --rebase` | Re-applying on a fresh tip can't conflict. The run-number check stops an older run from rolling back a newer tag. |
+
+The full comparison tables go in `apps/cms-api/docs/documents/cms-api-flux-deployment-techstack.md`
+during the docs step, as `docs/workflow.md` requires.
 
 ---
 
-## Assumptions
+## Target state
 
-1. `new.html` governs **section order and the experience/projects rendering only**. Header, summary,
-   skills, education, languages, and references keep the cv-elegant layout, per the request.
-2. `/cv-3` mirrors `/cv`'s route shape: an index page plus a `[documentId]` child route, with the
-   company dropdown in the action bar.
-3. `/cv-3` is not in the CMS nav. `resolveRule` returns no rule for it, and `isRoleAllowed("")` is
-   true, so the page is public — the same footing `/cv-2` has today. Prefix matching does not make
-   the `/cv` rule apply, because `matches("/cv", "/cv-3")` requires the next character to be `/`.
-4. Contact details and section titles keep coming from the existing `cv-contact` and `common-text`
-   content types, shared with both existing CV pages. No new keys are required beyond what
-   `src/mocks/cv-common-text.ts` already lists.
-5. Component nesting three levels deep (`experiences → roles → projects`) is supported by the sync
-   engine — `collectComponentPaths` in `apps/cms-api/src/modules/content-type/application/sync/schema-differ.ts`
-   recurses without a depth limit, and the resulting table name is 49 characters, under Postgres's
-   63-character identifier cap. This is **unverified at runtime and in the cms-admin form UI**; see
-   Risks.
+### CI (`.github/workflows/ci.yml`)
 
----
+- **`cms-api-ghcr-publish`** gains `outputs: tag: ${{ steps.tag.outputs.tag }}`, and nothing else
+  changes in it.
+- **The new job `cms-api-bump-tag`** has `needs: [cms-api-ghcr-publish]` and the same `master` +
+  `push` guard. So it runs only when cms-api changed and the images were pushed.
+  1. Check out `deployment`.
+  2. Validate that `TAG` matches `^[0-9]+-[0-9a-f]{7}$`.
+  3. Up to 3 attempts:
+     1. `git fetch origin deployment` and `git reset --hard origin/deployment`.
+     2. For each cluster file:
+        - Fail with "merge master into deployment first" if the file is missing.
+        - Skip the file if its current tag's run number is at least ours.
+        - Otherwise `sed` the whole `APP_IMAGE_TAG:` line to `APP_IMAGE_TAG: "<tag>"`, which also
+          drops any old `$imagepolicy` marker. Then `grep` that it matches exactly once.
+     3. If nothing changed, exit 0.
+     4. Commit `chore(cms-api): deploy image <tag>` as `github-actions[bot]`, then
+        `git push origin HEAD:deployment`.
+  4. Permissions: `contents: write` only.
+  5. `concurrency: cms-api-bump-tag`, with `cancel-in-progress: false`.
+  6. No third-party actions and no extra tools.
+- **No CI loop.** `on.push.branches` is `develop`/`staging`/`master`, so a push to `deployment` never
+  triggers this workflow. Pushes made with `GITHUB_TOKEN` don't trigger workflows either.
 
-## Scope A — `apps/cms-api`: the `cv-page-new` content type
+### Flux, both clusters (`clusters/abyssdev/{vm-dev,vm-prod}/`)
 
-One new file, `content-types/cv-page-new.json`. No code, no Prisma migration. `ContentTypeSyncService`
-creates the tables on the next boot.
+| File | vm-dev (local VM) | vm-prod (VPS) |
+| --- | --- | --- |
+| `flux-system/gotk-sync.yaml` `ref.branch` | `master` → **`deployment`** | `master` → **`deployment`** |
+| `flux-system/gotk-sync.yaml` path | `./clusters/abyssdev/vm-dev` | **Fix:** → `./clusters/abyssdev/vm-prod` |
+| `kustomization.yaml` | exists | **New:** `flux-system/` + the app file |
+| App Flux Kustomization | `abyssdev-apps-develop.yaml` | **New:** `abyssdev-apps-prod.yaml` |
+| Kustomization name | `abyssdev-cms-api-sync-develop` | `abyssdev-cms-api-sync-prod` |
+| `substituteFrom` ConfigMap | `abyssdev-cms-api-develop-config` | `abyssdev-cms-api-prod-config` |
+| `APP_IMAGE_TAG` on `master` | placeholder `"dev"`, no marker | same |
 
-It is a copy of `content-types/cv-page.json` with four changes:
+Reconcile loop, the same on both clusters:
+- `GitRepository flux-system`: `interval: 1m`, branch `deployment`.
+- App `Kustomization`: `interval: 3m`, `prune: true`, `wait: true`, `timeout: 5m`.
 
-1. The top-level `projects` component is **removed**.
-2. `role.projects` changes from a `text` field to a **repeatable `project` component**, carrying the
-   same fields the old top-level `project` component had.
-3. `experience` gains a `period` text field, so the company header can show a date range the way
-   `new.html` does. Without it there is no company-level period anywhere in the data.
-4. The top-level `company` field is renamed to `name` — it labels the CV entry itself (e.g. "Senior
-   Backend Engineer CV"), not an employer; `experience.company` (the per-job employer) is unaffected.
+### cms-api templates (`apps/cms-api/k8s/flux/`)
 
-Everything else — `position`, `isMain`, `summary`, `skills`, `educations`, `languages`,
-`references`, and every field inside them — is byte-identical to `cv-page.json`.
+- Delete `image-repository.yaml`, `image-policy.yaml` and `image-update.yaml`, and remove them from
+  `kustomization.yaml`. Deleting files needs the owner's OK.
+- `deployment.yaml` and `service.yaml` stay unchanged. Both images already come from
+  `${APP_IMAGE_TAG}`.
 
-Resulting structure:
+### Owner-run steps (agent never runs these)
 
-```
-cv-page-new (collection, draftToPublish: true)
-├─ position       text
-├─ isMain         boolean
-├─ name           text
-├─ summary        richtext
-├─ skills[]       { level, skill }
-├─ experiences[]  { company, location, period
-│                   └─ roles[]     { position, period, teamSize, techStack, responsibilities
-│                                     └─ projects[]  { name, teamSize, role, liveLink,
-│                                                      responsitoryLink, techStack,
-│                                                      responsibilities } } }
-├─ educations[]   { degree, institution, period, location, description }
-├─ languages[]    { language, level }
-└─ references[]   { name, phone, role }
-```
-
-`listFields`: `["position", "isMain", "name"]`.
-
-### Generated GraphQL names
-
-Derived by `apps/cms-api/src/modules/graphql/domain/naming.ts` from the slug:
-
-| Purpose | Name |
-| --- | --- |
-| Object type | `CvPageNew` |
-| Single query | `cvPageNew(documentId: ID!)` |
-| List query | `cvPageNews(where: …)` |
-
-`cvPageNews` is an awkward plural. The slug is a deliberate follow of the name you gave; say the word
-and `cv-page-v2` (`cvPageV2` / `cvPageV2s`) replaces it before any content is entered. After content
-exists, a slug change is a delete-and-recreate.
+1. **Merge this work into `master`, then merge `master` into `deployment`.** Expect one conflict on
+   vm-dev's `APP_IMAGE_TAG` line (`deployment` has `"75-4bef740" # {"$imagepolicy"…}`). Resolve it to
+   `APP_IMAGE_TAG: "75-4bef740"`, with no marker. Set vm-prod's tag to the same value.
+2. **Point each cluster at `deployment`.** The in-cluster `GitRepository` still tracks `master`, and
+   vm-prod also still reads the broken path. Re-bootstrap each cluster with
+   `--branch=deployment --path=clusters/abyssdev/<cluster>`, or patch:
+   ```bash
+   kubectl -n flux-system patch gitrepository flux-system --type merge -p '{"spec":{"ref":{"branch":"deployment"}}}'
+   # vm-prod only:
+   kubectl -n flux-system patch kustomization flux-system --type merge -p '{"spec":{"path":"./clusters/abyssdev/vm-prod"}}'
+   ```
+3. Create `abyssdev-cms-api-prod-config` and the prod Secret on the VPS from the templates.
+4. `deployment` must accept pushes from GitHub Actions. That means no protection rule, or one with an
+   Actions bypass.
+5. After T4 reaches `deployment`, `prune: true` removes the old `ImageRepository`/`ImagePolicy`/
+   `ImageUpdateAutomation` objects.
 
 ---
 
-## Scope B — `apps/frontend`: the `/cv-3` page
+## Fix: per-arch images (found after the first live deploy)
 
-### Files added
+The first live deploy failed on the M1 VM with `init exec /usr/local/bin/docker-entrypoint.sh: exec
+format error`. CI built **amd64-only** images on `ubuntu-latest`. The Intel VPS runs them, but the
+arm64 VM (Apple Silicon) can't.
 
-```
-src/app/[locale]/(main)/cv-3/page.tsx              index, main CV
-src/app/[locale]/(main)/cv-3/[documentId]/page.tsx per-company CV
-src/views/cv-new/CvNewPage.tsx                     server component, fetches + composes
-src/views/cv-new/CvNewPageContent.tsx              the frame: container, nav, sections, action bar
-src/views/cv-new/CvNewPage.module.css              print rules
-src/views/cv-new/cv-new.types.ts
-src/views/cv-new/cv-new.queries.ts
-src/views/cv-new/cv-new.service.ts
-src/views/cv-new/header/CvNewHeader.tsx
-src/views/cv-new/header/CvNewHeader.module.css
-src/views/cv-new/shared/CvNewSection.tsx
-src/views/cv-new/summary/CvNewSummary.tsx
-src/views/cv-new/experience/CvNewExperience.tsx    ← the only section rebuilt from new.html
-src/views/cv-new/skills/CvNewSkills.tsx
-src/views/cv-new/education/CvNewEducation.tsx
-src/views/cv-new/languages/CvNewLanguages.tsx
-src/views/cv-new/references/CvNewReferences.tsx
-src/views/cv-new/footer/CvNewCompanyDropdown.tsx
-src/mocks/cv-page-new.ts
-src/mocks/cv-new-main.ts
-src/mocks/cv-new-list.ts
-```
-
-### Files modified
-
-```
-src/mocks/mock-all.ts    register "cv-new-main", "cv-new-list"
-```
-
-Nothing else in the repo is touched.
-
-### Section order and layout source
-
-| # | Section | id | Layout comes from |
+| Question | Chosen | Rejected | Why |
 | --- | --- | --- | --- |
-| 1 | Header | — | cv-elegant header, unchanged |
-| 2 | About Me | `about-me` | cv-elegant summary, unchanged |
-| 3 | Work Experience & Key Projects | `experience` | **rebuilt from `new.html`** |
-| 4 | Technical Skills | `skills` | cv-elegant skills, unchanged |
-| 5 | Education | `education` | cv-elegant education, unchanged |
-| 6 | Languages | `languages` | cv-elegant languages, unchanged |
-| 7 | References | `references` | cv-elegant references, unchanged |
+| How to build arm64 | Native runners: matrix `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64) | QEMU + buildx | The repo is public, so arm64 runners are free. Native builds are fast and avoid Bun-under-QEMU crash reports. |
+| One multi-arch tag, or separate per-arch images | **Separate: 4 images per release** (owner's choice) | Multi-arch manifest lists via `imagetools create` | No merge job. Each cluster's file names exactly the arch it runs, visible in Git. |
 
-There is no standalone Projects section. Skills moving below Experience and References moving to the
-bottom is the whole of the reordering versus `/cv-2`.
-
-### The frame
-
-Taken from `src/views/cv/CvPageContent.tsx` and `src/views/cv/CvPage.module.css`, with one structural
-adjustment: the cv-elegant header is a full-bleed dark bar, so horizontal padding sits on an **inner
-content wrapper** rather than on the outer container.
-
-- Outer: `relative mx-auto max-w-[800px] bg-background text-foreground/90`
-- Header: full-bleed, immediately inside the outer container
-- Inner: `px-5 py-6 sm:px-8 sm:py-8`, holding sections 2 through 7
-- Anchor nav: `/cv`'s nav strip, hidden below `sm` and hidden in print, linking to the six section ids
-- Action bar: `CvNewCompanyDropdown` plus the existing `PrintButton`, reused from `src/views/cv/footer/PrintButton.tsx`
-
-### Print CSS
-
-`CvNewPage.module.css` starts from `/cv`'s rules — `@page { margin: 8mm 14mm }`, `.printHide`, the
-forced light-mode CSS-variable block, `font-size: 12.5px`, `line-height: 1.3` — with two edits:
-
-- **Add** `print-color-adjust: exact` on the header, so the dark header bar survives printing. Taken
-  from `CvElegantHeader.module.css`.
-- **Drop** `/cv`'s rule that appends `attr(href)` under header links. The cv-elegant header already
-  prints full URLs as visible text, so keeping it would double them.
-
-### Experience section, rebuilt from `new.html`
-
-Per company: a header strip carrying company name, location, and the new `period` field, on a muted
-background with a left accent border.
-
-Per role, inside its company:
-
-1. Role title line — position and period.
-2. `responsibilities` richtext, rendered through `HTMLParser` as a bullet list.
-3. `techStack` chips, when present.
-4. **Project cards**, one per entry in `role.projects`:
-   - name, plus role and `Team of N` when `teamSize > 1`
-   - `responsibilities` richtext bullets
-   - a tech line
-   - live and repository links, when present
-   - muted card background with a left accent border, matching `new.html`'s `.project-card`
-
-`new.html`'s fixed navy and blue map onto the existing theme tokens (`muted`, `border`, `foreground/NN`)
-so both themes and the print override keep working.
-
-**A role with no projects renders steps 1 through 3 and stops.** No heading, no empty container, no
-extra margin. This is an explicit acceptance criterion, not a side effect.
-
-### Data layer
-
-`cv-new.types.ts` mirrors `cv-elegant.types.ts` with `projects` moved onto `role` and removed from the
-document root, plus `period` on the experience entry.
-
-`cv-new.service.ts` copies the cv-elegant service exactly — `graphqlApi.fetch`, `registerService`,
-`unifyFetch`, `selectKey: "cvPageNews.items"`, `next: { revalidate: 300, tags: ["cv"] }` — with keys
-`cv-new.main`, `cv-new.list`, `cv-new.by-id`.
-
-One known defect is **not** inherited: `CvElegantCompanyDropdown` reads `item.companyName` while
-`GET_CV_ELEGANT_LIST` selects `company`, so its labels are blank. `CvNewCompanyDropdown` uses
-`name` on both sides — the document-root field the dropdown labels its entries with (see Scope A,
-change 4: renamed from `company` to `name`, since it labels the CV entry itself, not an employer).
-The existing cv-elegant bug is out of scope and stays as it is.
-
----
+Target state:
+- **Tags:** `<run>-<sha7>-<arch>` (app) and `<run>-<sha7>-<arch>-init` (init), with `<arch>` in
+  `amd64`/`arm64`. `deployment.yaml` is unchanged: `${APP_IMAGE_TAG}` and `${APP_IMAGE_TAG}-init`,
+  where `APP_IMAGE_TAG` includes the arch.
+- **`cms-api-ghcr-publish`** is a 2-way matrix. Each leg builds both targets natively and pushes
+  `-<arch>-init` first, then `-<arch>`. It keeps `outputs.tag` (the arch-less `<run>-<sha7>`).
+- **`cms-api-ghcr-cleanup`** (new) runs after publish, with the same opt-in, and keeps 20 versions
+  (4 per release = 5 releases). It's a separate job so the matrix doesn't run the cleanup twice.
+- **`cms-api-bump-tag`** writes `<tag>-arm64` to vm-dev and `<tag>-amd64` to vm-prod. Its run-number
+  check accepts an optional `-amd64`/`-arm64` suffix, so an old arch-less tag like `79-d16e564` is
+  replaced.
 
 ## Commands
 
-Frontend, from `apps/frontend`:
+```bash
+# Render templates offline (no cluster contact)
+kubectl kustomize apps/cms-api/k8s/flux
+kubectl kustomize clusters/abyssdev/vm-dev
+kubectl kustomize clusters/abyssdev/vm-prod
 
-```
-bun run dev      # next dev --turbopack, port 4000
-bun run lint     # never `bunx eslint .` — it pegs the CPU for minutes
-bun test src     # unit tests
-bun run build    # production build, the type-check gate
-```
+# Substitution check with fake values, matching Flux's postBuild
+kubectl kustomize apps/cms-api/k8s/flux \
+  | APP_NAME=a APP_SERVICE_NAME=s APP_NAMESPACE=n APP_ENV=e APP_PORT=3000 \
+    APP_IMAGE_REPO=ghcr.io/x/y APP_IMAGE_TAG=57-a1b2c3d \
+    envsubst '${APP_NAME} ${APP_SERVICE_NAME} ${APP_NAMESPACE} ${APP_ENV} ${APP_PORT} ${APP_IMAGE_REPO} ${APP_IMAGE_TAG}'
 
-cms-api, from `apps/cms-api`:
-
-```
-bun run start:dev   # boot syncs content-types/*.json into Postgres; a bad JSON aborts boot loudly
-bun run lint
-bun run test
-```
-
-End-to-end, from `apps/frontend`:
-
-```
-bunx playwright test e2e/cv-3-layout.test.ts
+# Owner-only, live checks after the bot commit
+flux get sources git
+flux get kustomizations
+kubectl -n <full-namespace> get deploy <full-app-name> -o jsonpath='{..image}'
 ```
 
----
+## Project Structure
 
-## Project structure and code style
+```
+.github/workflows/ci.yml                    → cms-api-ghcr-publish (+ tag output), new cms-api-bump-tag
+clusters/abyssdev/vm-dev/                   → local VM cluster: flux-system/ + abyssdev-apps-develop.yaml
+clusters/abyssdev/vm-prod/                  → VPS cluster: flux-system/ + abyssdev-apps-prod.yaml (new)
+apps/cms-api/k8s/flux/                      → shared app templates (Deployment, Service), ${APP_*} only
+apps/cms-api/k8s/README.md                  → owner runbook (update)
+apps/cms-api/docs/documents/cms-api-flux-deployment*.md → docs + techstack table (update)
+apps/cms-api/docs/rules/k8s-secrets.md      → fix stale paths (k8s/flux/app/, kustomization.flux.yaml)
+```
 
-- **Views own their data.** Every view directory carries its own `*.types.ts`, `*.queries.ts`, and
-  `*.service.ts`. `cv-new` follows this and does not import from `cv-elegant`.
-- **Cross-view reuse is limited to** `@/views/cv/contact.types`, `@/views/cv/common-text.types`,
-  `@/views/cv/contact.service`, `@/views/cv/common-text.service`, and
-  `@/views/cv/footer/PrintButton` — the same set cv-elegant already reuses.
-- **Server components by default.** Only the dropdown carries `"use client"`.
-- Tailwind utilities inline; CSS Modules only for `@media print`.
-- Section titles come from `commonText.text[...]` with an English literal fallback, as cv-elegant does.
-- Richtext always goes through `HTMLParser`, never `dangerouslySetInnerHTML`.
-- Optional arrays are guarded before `.map`. `references` and `projects` return `null` when empty.
-- Import ordering follows the existing eslint config; `bun run lint` is the arbiter.
+## Code Style
 
----
+Match the existing manifests and CI:
+- A header comment on each file says what it does and why.
+- `${APP_*}` placeholders only in `apps/cms-api/k8s/flux/**`.
+- Bash in CI uses `set -euo pipefail` and `::error::` annotations on every failure path.
+- Portable `sed`: write to `"$f.tmp"` and `mv`, never `sed -i`.
 
-## Testing strategy
+## Testing Strategy
 
-There are no component tests anywhere in `apps/frontend` — the nine existing unit tests all cover
-`src/lib` logic, and page-level verification is done with Playwright. This spec follows that,
-rather than introducing a component-test setup for one page.
+There is no unit-test framework for YAML or CI here. Verification is offline and scripted, and the
+scripts live in the session scratchpad:
 
-| Level | What | How |
-| --- | --- | --- |
-| Type | The new view compiles against the new types | `bun run build` |
-| Lint | Style and import order | `bun run lint` |
-| Backend | Content type syncs, tables are created at depth 3 | `bun run start:dev`, then inspect `components_cv_page_new__experience__role__project` |
-| Backend | GraphQL exposes the nested shape | Query `cvPageNews` and confirm `experiences.roles.projects` resolves |
-| E2E | Layout, section order, empty-projects role | `e2e/cv-3-layout.test.ts`, modeled on `e2e/cv-spacing.test.ts` — full-page screenshot plus per-section captures |
-| Manual | Print output | Print `/cv-3` to PDF in light and dark theme, confirm both produce light-on-white |
-| Manual | Content entry | Create one `cv-page-new` entry in cms-admin, including a role with zero projects |
-
-The mock file must include **at least one role with an empty `projects` array**, so the empty case is
-exercised on every local run rather than only when someone remembers to test it.
-
----
+- `kubectl kustomize` renders `apps/cms-api/k8s/flux` and both cluster dirs without error.
+- The rendered app output contains no `image.toolkit.fluxcd.io` kinds (after T4).
+- A PyYAML assert script checks:
+  - The cluster app Kustomizations mirror each other, have no `$imagepolicy` marker, and use the
+    right ConfigMaps and intervals.
+  - Both `gotk-sync.yaml` track `deployment`, and vm-prod's path is fixed.
+  - In `ci.yml`, only the publish job's `outputs` and the new job differ from the baseline, and the
+    new job's `needs`, guard, permissions, concurrency, checkout ref and push target are correct.
+- A bump dry-run extracts the job's `run` block from `ci.yml` and runs it with local bash and BSD sed
+  against a throwaway bare origin that has `deployment` and `master`. It checks:
+  - Both files are bumped with a +2/-2 diff, and the marker is dropped.
+  - The commit message and author are correct, and other files are untouched.
+  - An older tag and a re-run are both no-ops.
+  - A push race is rejected once, retried, and keeps the concurrent commit.
+  - A bad tag and a missing file fail loudly.
+  - `master` is never written.
+- **Manual (owner):** a real `master` push produces one bot commit on `deployment`, no extra CI run,
+  and both clusters report the new image.
 
 ## Boundaries
 
-**Always**
+- **Always:** keep project values out of `apps/cms-api/k8s/flux/**` (placeholders only); verify
+  offline; give the owner exact commands for any cluster action; update docs and rules for the
+  areas touched.
+- **Ask first:**
+  - Deleting the three image-* manifests.
+  - Editing the generated `gotk-sync.yaml`. The path fix and the `deployment` branch switch are
+    already approved.
+  - Committing (Yes/No with the file list and message; no `Co-Authored-By`).
+  - Pushing to or merging into `deployment` or `master`.
+- **Never:**
+  - Run `kubectl`, `helm` or `flux` against a real cluster, including `--dry-run=client`.
+  - Read or touch `apps/cms-api/k8s/secret.yaml`, `apps/cms-api/k8s/configmap.yaml` or any `.env*`.
+  - Edit `gotk-components.yaml`.
+  - Give CI any cluster credentials.
+  - Change existing `master` CI jobs beyond the publish `outputs`.
 
-- Add the content type as JSON only. No Prisma migration, no new NestJS module.
-- Keep `/cv` and `/cv-2` byte-identical. Any diff outside the file lists above is a defect.
-- Register every new mock in `src/mocks/mock-all.ts`.
-- Run `bun run lint` and `bun run build` before calling a task done.
+## Success Criteria
 
-**Ask first**
+1. A `master` push that changes cms-api ends with one `github-actions[bot]` commit on `deployment`.
+   It sets `APP_IMAGE_TAG` in both cluster files to the `<run>-<sha7>` just pushed to GHCR. `master`
+   gets no new commit.
+2. No workflow run is started by that commit.
+3. A bump from an older run never replaces a newer tag, and a push race is retried rather than
+   failing.
+4. Both clusters' Flux `GitRepository` tracks `deployment`, and vm-prod has a working path and an
+   app Kustomization that mirrors vm-dev.
+5. No `image.toolkit.fluxcd.io` objects are rendered from this repo anymore.
+6. Both clusters use `GitRepository interval: 1m` and app `Kustomization interval: 3m`, `prune: true`.
+7. The docs (`cms-api-flux-deployment.md`, `-techstack.md`, `k8s/README.md`, `k8s-secrets.md`)
+   describe this same-repo, `deployment`-branch flow, with no separate GitOps repo and no image
+   automation.
+8. Owner-verified: after the bot commit, both clusters run the new tag within about 5 minutes.
 
-- Any edit to `content-types/cv-page.json`, `src/views/cv`, or `src/views/cv-elegant`.
-- Renaming the `cv-page-new` slug once content has been entered against it.
-- Adding `/cv-3` to the CMS header navigation.
-- Deleting any file.
+## Open Questions
 
-**Never**
-
-- Read, create, or edit any `.env*` file except reading `.env.example`.
-- Delete or rewrite `apps/frontend/SPEC.md`.
-- Commit `new.html`. It is a scratch reference; it stays untracked or gets removed once `/cv-3` ships.
-- Introduce a name-string link between a role and its projects. The nesting is the whole point.
-
----
-
-## Acceptance criteria
-
-1. `content-types/cv-page-new.json` exists; `bun run start:dev` boots without error and creates the
-   document table plus four component tables, including the depth-3 project table.
-2. cms-admin renders a form for `cv-page-new` allowing projects to be added inside a role, and an
-   entry saved there is readable back through GraphQL.
-3. `/en/cv-3` renders seven sections in the order Header, About Me, Work Experience & Key Projects,
-   Technical Skills, Education, Languages, References.
-4. Each project card appears under the role it belongs to. No standalone Projects section exists.
-5. A role whose `projects` array is empty renders its title, responsibilities, and tech stack, with no
-   projects markup and no extra vertical gap.
-6. `/en/cv-3/<documentId>` renders a per-company CV; an unknown id yields a 404.
-7. The company dropdown lists other entries with visible, correct company labels and navigates to
-   `/{locale}/cv-3/{documentId}`.
-8. Printing `/cv-3` produces light-on-white output with the header bar's background intact, no anchor
-   nav, and no action bar — in both light and dark theme.
-9. `/cv` and `/cv-2` render exactly as before; `git diff` touches no file outside the lists above.
-10. `bun run lint` and `bun run build` both pass clean.
-
----
-
-## Risks
-
-| Risk | Impact | Resolution |
-| --- | --- | --- |
-| Three-level component nesting has never been exercised. `docs/adding-a-content-type.md` states components nest arbitrarily deep, but notes the real seeds only go two levels. | Blocks the whole approach | **Resolved, lower than scoped.** The planning pass (`tasks/plan.md`) read the sync/write/read/GraphQL-schema code first and found every layer already recurses with no depth limit — table naming, `schema-differ.ts`, `component-io.service.ts`, `schema-builder.service.ts`. T2 (2026-08-29) confirmed this at runtime: all 8 tables created, `CvPageNewRole.projects: [CvPageNewProject!]!` exposed, a nested round-trip through the live API preserved the full company → role → project chain. The only genuinely unverified piece was cms-admin's form renderer (see next row). |
-| cms-admin's form UI may not render a repeatable component inside a repeatable component. cms-admin lives in a sibling repository outside this project, so I cannot inspect it. | Content cannot be entered by hand | **Resolved.** T3 (2026-08-29, browser automation against the running admin) confirmed the "Add entry" control nests correctly three levels deep, every field validated (catching along the way that `techStack` needs valid JSON array syntax, not comma-separated text), and a saved nested document reloaded with its structure intact. Checkpoint A went GO. |
-| The new content type starts empty, so `/cv-3` shows nothing against a live API until content is entered. | Cosmetic, local only | **Resolved.** T14 (2026-08-29) entered the real CV content (restructured from `new.html`) via cms-admin and published it as the `isMain: true` entry; `/en/cv-3` now renders live data. A second non-main entry was also entered so the company dropdown has a real target. |
-| `cvPageNews` as a list query name. | Readability only | **Kept as-is** — see Open question below, now resolved. |
-| *(found during T14, not scoped up front)* `graphqlApi.fetch`'s dev mock-fallback never engaged for a legitimate empty GraphQL result, only for hard errors, and assumed an envelope shape most CV mocks don't have. | `/cv-3` (and `/cv-2`) crashed instead of falling back to mocks against an empty dev DB | Fixed in `apps/frontend/src/api/graphqlApi.ts`, with a new test. |
-| *(found during T14)* `cvPageNews(where: { isMain: { ne: true } })` silently excludes rows where `isMain` is `NULL` (standard SQL three-valued logic on the raw `<>` the `$ne` operator compiles to) — a `cv-page-new` document whose `isMain` switch was never touched defaults to `NULL`, not `false`, so it can never appear in the "other companies" list. | A newly created non-main CV entry never shows up in the dropdown until someone notices and explicitly sets it to `false` | **Not fixed at the SQL layer** — `apps/cms-api/docs/documents/document.md:106` documents the NULL-excluding behavior as intentional API contract (no `$null`/`IS NULL` operator exists "in this version"), so changing it would be an unscoped, cross-cutting behavior change outside this spec. Worked around within the existing contract: cms-admin content authors must explicitly toggle a document's `isMain` switch (even to leave it off) rather than leaving it untouched, if that document needs to be filterable by `ne: true`. Worth a follow-up spec of its own if this bites again elsewhere. |
-
----
-
-## Open question
-
-**Resolved 2026-08-29, kept `cv-page-new` / `cvPageNews`.** The slug question was never revisited before
-content was entered against it in T14, and per this spec's own terms ("after content is entered, changing
-it means deleting and recreating the type") a rename is no longer free. `cvPageNews` stays an awkward
-plural; it costs nothing beyond that.
+1. **Stale `apps/cms-api/SPEC.md`** (the old Flux DRAFT, shipped via PRs #63/#64). Can it be reduced
+   to a pointer in this work's clean-up step?

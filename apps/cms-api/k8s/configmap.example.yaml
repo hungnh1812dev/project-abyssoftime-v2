@@ -1,0 +1,34 @@
+# cms-api project-info ConfigMap template: the ${APP_*} values Flux substitutes into k8s/flux/*
+# (via postBuild.substituteFrom, which only reads flux-system). Placeholders only; never commit real
+# values. Created by hand on each cluster before its first Flux deploy:
+#   cp k8s/configmap.example.yaml k8s/configmap.yaml   # gitignored; fill in name + values
+#   kubectl apply --server-side -f k8s/configmap.yaml
+# metadata.name (<app-name>-<app-service-name>-<app-env>-config) must match the substituteFrom
+# ConfigMap in that cluster's app Kustomization, clusters/abyssdev/<cluster>/abyssdev-apps-*.yaml.
+# Derived names: namespace <APP_NAMESPACE>-<APP_ENV>, app <APP_NAME>-<APP_SERVICE_NAME>-<APP_ENV>.
+# Quote every value (e.g. "3000"): ConfigMap data must be strings. After a change, re-apply and run
+# `flux reconcile kustomization <app-kustomization>` (e.g. abyssdev-cms-api-sync-prod).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: <app-name>-<app-service-name>-<app-env>-config
+  namespace: flux-system
+data:
+  # Application / product name
+  APP_NAME: "<app-name>"
+  # Service within the application
+  APP_SERVICE_NAME: "<app-service-name>"
+  # Base namespace (the app runs in <APP_NAMESPACE>-<APP_ENV>)
+  APP_NAMESPACE: "<app-namespace>"
+  # Environment, e.g. prod
+  APP_ENV: "<app-env>"
+  # Container + Service port; also set as the app's PORT
+  APP_PORT: "<port>"
+  # Image repository without a tag (app image <repo>:<tag>, init image <repo>:<tag>-init)
+  APP_IMAGE_REPO: "<registry/owner/repo/image>"
+  # ── Only where the `ingress` component is enabled (vm-prod); leave out elsewhere ──
+  # Set both BEFORE merging master into deployment, or the Flux apply fails (host "api.").
+  # Bare domain, no scheme or subdomain. cms-api is served at api.<APP_DOMAIN>.
+  APP_DOMAIN: "<example.com>"
+  # cert-manager ClusterIssuer that issues the TLS certificate
+  APP_TLS_CLUSTER_ISSUER: "<cluster-issuer-name>"

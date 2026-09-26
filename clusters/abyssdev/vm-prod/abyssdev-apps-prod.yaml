@@ -1,0 +1,30 @@
+# cms-api on vm-prod (VPS): applies ../../../apps/cms-api/k8s/flux with ${APP_*} from the prod
+# ConfigMap. APP_IMAGE_TAG is written by CI on the `deployment` branch (the only branch Flux reads):
+# after each GHCR push, the cms-api-bump-tag job commits the new tag there, and Flux applies it on
+# its next poll. On master it stays a placeholder. Keep this file's layout in sync with vm-dev's
+# abyssdev-apps-develop.yaml: CI rewrites the `APP_IMAGE_TAG:` line in both with sed.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: abyssdev-cms-api-sync-prod
+  namespace: flux-system
+spec:
+  interval: 3m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./apps/cms-api/k8s/flux
+  # vm-prod only: the public Traefik Ingress (<path>/ingress, a kustomize Component). Needs
+  # APP_DOMAIN (served at api.<domain>) and APP_TLS_CLUSTER_ISSUER in the ConfigMap below before
+  # this reaches the cluster.
+  components:
+    - ingress
+  prune: true
+  wait: true
+  timeout: 5m
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: abyssdev-cms-api-prod-config
+    substitute:
+      APP_IMAGE_TAG: "81-47e63ce-amd64"
