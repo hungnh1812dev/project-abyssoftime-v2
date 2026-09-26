@@ -14,6 +14,10 @@ The first Flux version used Flux image automation and a separate GitOps repo. Bo
 CI job that commits the tag to this repo's `deployment` branch. The tables below record both the
 current choice and why the earlier one was dropped.
 
+On 2026-09-26 the local arm64 cluster (vm-dev) was retired and all three apps moved to the VPS only
+(see [VPS only](#clusters-vps-only-chosen-2026-09-26-vs-keep-vm-dev) and the tables after it).
+Sections that were decided with vm-dev in mind are marked **Superseded** and kept as history.
+
 ## Delivery: Flux GitOps (chosen) vs. helmfile by hand (previous) vs. Argo CD vs. CI pushes to the cluster
 
 | Criteria | Flux (chosen) | helmfile by hand (previous) | Argo CD | CI runs `kubectl apply` |
@@ -87,9 +91,9 @@ The user is on a free GitHub account. According to GitHub's billing docs, GitHub
 for public packages, and container image storage is "currently free". Private packages on other
 registries get 500MB on Free.
 
-| Criteria | `<run_number>-<sha7>` + `delete-package-versions` keeping 20 (chosen) | `latest` / `latest-init` only | Unique tags, no cleanup |
+| Criteria | `<run_number>-<sha7>` + `delete-package-versions` keeping 10 (chosen) | `latest` / `latest-init` only | Unique tags, no cleanup |
 | --- | --- | --- | --- |
-| Storage over time | Bounded: 20 versions (4 per release: 2 archs × app + init) | **Unbounded**: each re-push leaves the old image as an untagged version | Unbounded |
+| Storage over time | Bounded: 10 versions (2 per release: app + init, amd64). It kept twice as many while vm-dev's arm64 images existed | **Unbounded**: each re-push leaves the old image as an untagged version | Unbounded |
 | Tag bump / auto-deploy | Works | Breaks: the tag never changes, so there's nothing to deploy | Works |
 | Rollback | The last 5 releases | None (only whatever is `latest`) | Any release |
 | Risk | The first run deletes the pre-Flux `latest` images, hence the opt-in `CMS_API_GHCR_CLEANUP` variable. Needs the Admin role on the package | Manual `rollout restart` per release | None |
@@ -135,10 +139,14 @@ container that runs it. The Dockerfile target is still `migrator`.
 | --- | --- | --- | --- |
 | Conflicts | Impossible: the edit is re-done on the fresh tip | Can conflict on the tag line itself | — |
 | Out-of-order runs | Run-number guard: never replaces a tag with a lower run number | Would overwrite a newer tag | Would overwrite a newer tag |
-| Serialisation | `concurrency: cms-api-bump-tag` (queued, never cancelled) | Same | Same |
+| Serialisation | One concurrency group per app (`cms-api-bump-tag`, …), `cancel-in-progress: false` | Same | Same |
 | **Verdict** | **Chosen**: simple, conflict-free, and safe against an older run finishing last | Rejected: a conflict fails the deploy | Rejected: a race loses the deploy |
 
-## CPU architectures: separate per-arch images from native runners (chosen) vs. multi-arch lists vs. QEMU vs. amd64 only (previous)
+## CPU architectures: separate per-arch images from native runners vs. multi-arch lists vs. QEMU vs. amd64 only
+
+**Superseded 2026-09-26:** with vm-dev retired, every image is amd64 only again (one job on
+`ubuntu-latest`, 2 images per release), keeping the `-amd64` suffix. The table below is the decision
+made while two clusters existed.
 
 The clusters run on different CPUs: vm-dev is an arm64 VM on Apple Silicon, and vm-prod is an amd64
 VPS. The first live deploy used amd64-only images, and the arm64 VM's init container failed with
@@ -173,6 +181,10 @@ The `TRUST_PROXY: "1"` default still holds, because Traefik is the single hop in
 
 ## Enabling the Ingress on vm-prod only: kustomize Component (chosen) vs. overlay directories vs. a second Flux Kustomization vs. Ingress in the base
 
+**Superseded 2026-09-26 for new apps:** with vm-dev retired there's nothing to keep internal, so
+cms-admin and frontend put their Ingress straight in their base. cms-api keeps its Component (moving
+it would be churn with no gain). The table below is the original decision.
+
 Both clusters apply the same `apps/cms-api/k8s/flux` path. vm-dev (a local VM) must stay internal,
 and CI rewrites one `APP_IMAGE_TAG:` line in each cluster file with sed.
 
@@ -194,3 +206,40 @@ and CI rewrites one `APP_IMAGE_TAG:` line in each cluster file with sed.
 | Key missing or empty | Host renders as `api.` → invalid → Flux apply fails visibly | Host renders empty → a host-less Ingress that answers for **every** hostname |
 | Serving cms-api on a different subdomain | Edit the manifest | Change the ConfigMap |
 | **Verdict** | **Chosen (user decision)**: matches the planned subdomains and turns a missing key into a loud failure | Replaced: its failure mode silently exposes a catch-all |
+
+## Clusters: VPS only (chosen, 2026-09-26) vs. keep vm-dev
+
+| Criteria | VPS only (vm-prod), vm-dev retired (chosen) | Keep vm-dev for cms-api only | Keep vm-dev for all apps |
+| --- | --- | --- | --- |
+| Images per release | 2 for cms-api (amd64) | 4 for cms-api, 1 per new app | 4 for cms-api, 2 per new app |
+| Per-cluster config | One API URL, one domain, one arch | Mixed: cms-api on two clusters, the new apps on one | cms-admin needs a different baked API URL per cluster |
+| Where "staging" runs | Render (cms-api, cms-admin) and Vercel (frontend), on `staging` pushes | Same, plus vm-dev | Same, plus vm-dev |
+| CI and docs complexity | Smallest: no matrix, one target per bump | Matrix kept for one app | Matrix and per-cluster builds everywhere |
+| **Verdict** | **Chosen (user decision)**: one cluster means one arch and one API URL, and the hosted platforms already cover staging | Rejected: keeps the arm64 matrix alive for one app | Rejected: per-cluster images for a static SPA |
+
+## Tag-bump logic: one shared script (chosen) vs. an inline copy per app
+
+| Criteria | `.github/scripts/bump-flux-tag.sh <app> <tag> <file>:<arch>…` (chosen) | The inline block copied into each app's job |
+| --- | --- | --- |
+| Copies of the retry, guard and read-back logic | 1 | 3 (about 50 lines each) |
+| A fix to the bump | One edit, tested once | Three edits that can drift apart |
+| Visible in `ci.yml` | Only the call (a few lines) | The whole block |
+| Extra wiring | The job also checks out the script from the commit being built | None |
+| **Verdict** | **Chosen**: one tested copy for three apps | Rejected: triplicated logic |
+
+## Where the bump job gets the script: the commit being built (chosen) vs. the `deployment` checkout
+
+| Criteria | Sparse checkout of `.github/scripts` at `github.sha`, plus `deployment` in `./deployment` (chosen) | Only the `deployment` checkout, running its copy of the script |
+| --- | --- | --- |
+| Works before `master` is merged into `deployment` | Yes | No: the script (or a new app's version of it) isn't on `deployment` yet, so the first bump fails |
+| Script version used | The one that matches the image just built | Whatever was last merged into `deployment` |
+| **Verdict** | **Chosen**: a bump never depends on a manual merge | Rejected: breaks the first bump after any script change |
+
+## Bump concurrency: one group per app (chosen) vs. one shared group
+
+| Criteria | `<app>-bump-tag` groups (chosen) | One shared `flux-bump-tag` group |
+| --- | --- | --- |
+| Queued bumps of other apps | Never dropped | GitHub keeps only **one pending** job per group, and a newer pending job cancels the older one, so a shared group can silently drop another app's bump |
+| Cross-app push races | Possible, handled by the reset-and-reapply retry (different files, no conflicts) | None |
+| **Verdict** | **Chosen**: no silent drops; the retry already covers races | Rejected: can lose a deploy |
+

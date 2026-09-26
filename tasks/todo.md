@@ -1,7 +1,7 @@
 # Todo: cms-admin + frontend on Flux (VPS only), vm-dev retired
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS**. 11 of 15 tasks done (Phase 3 complete).
+Status: **DONE**. 15 of 15 tasks done. The live checks (spec criterion 9) are left to the owner.
 
 Each checkbox update ships in the same commit as that phase's work. All verification is offline:
 never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.env*` (except
@@ -313,11 +313,11 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
   - lint is clean for both apps. Tests: frontend 82, cms-admin 471.
   - The frontend build passes in the clean-copy and Docker builds. The local working copy fails
     (existing issue, see T8).
-- [ ] Commit: the owner confirms the file list and message (Yes/No, no `Co-Authored-By`).
+- [x] Commit: the owner confirmed. Commit `7f81e62` feat(frontend).
 
 ## Phase 4: Docs, review and clean-up (workflow steps 4–7)
 
-- [ ] **T12: Update the cms-api docs and rules for VPS only and staging on hosted platforms.** (M)
+- [x] **T12: Update the cms-api docs and rules for VPS only and staging on hosted platforms.** (M)
   - Files:
     - `apps/cms-api/docs/documents/cms-api-flux-deployment.md`
     - `apps/cms-api/docs/documents/cms-api-flux-deployment-techstack.md` (add the `vps-only` rows)
@@ -331,9 +331,20 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
       and delete it only on a yes.
   - Verify: `grep -rn 'vm-dev\|arm64' apps/cms-api/docs apps/cms-api/k8s` shows only the history
     line.
+  - Done:
+    - `check_t12.sh` passes 8/8.
+    - vm-dev and arm64 remain only in retirement notes, in the "if arm64 comes back" guidance, and in
+      the techstack's decisions now marked **Superseded 2026-09-26**.
+    - The techstack gained 4 tables: VPS only, the shared script, where the job gets the script, and
+      per-app concurrency.
+    - The deployment doc and README gained a "Retiring vm-dev" owner step (merge, then
+      `flux uninstall` on the VM).
+    - `k8s-secrets.md` had nothing stale.
+    - The owner approved deleting the stray `apps/abyssdev-cms-api-prod/` (6 files), and it's
+      deleted.
   - Deps: T3
 
-- [ ] **T13: Add the cms-admin and frontend deployment docs and techstack tables.** (M)
+- [x] **T13: Add the cms-admin and frontend deployment docs and techstack tables.** (M)
   - Files:
     - `apps/cms-admin/docs/documents/cms-admin-flux-deployment{,-techstack}.md` (new)
     - `apps/frontend/docs/documents/frontend-flux-deployment{,-techstack}.md` (new)
@@ -345,22 +356,69 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
     - The techstack tables come from the SPEC decisions.
     - The ENTRYPOINTs link to the new docs.
   - Verify: every spec decision row appears in a techstack file, and every link resolves.
+  - Done:
+    - `check_t13.py` passes 23/23: both docs cover their required items (16 and 22), the techstacks
+      have 5 and 7 verdict tables, both ENTRYPOINTs link the docs, all relative links resolve, and
+      there's no unverified size claim.
+    - The shared decisions stay in cms-api's techstack, and each app techstack links to it.
+    - The frontend doc explains why `https://<domain>` also needs to be in cms-api's
+      `CORS_ORIGINS`: the browser calls `CMS_HEALTH_URL` directly. It also describes the DNS
+      cutover.
   - Deps: T7, T11
 
-- [ ] **T14: Five-axis review** (correctness, readability, architecture, security, performance) of
+- [x] **T14: Five-axis review** (correctness, readability, architecture, security, performance) of
   the whole diff against the spec. (S)
   - Acceptance: findings are fixed, or accepted by the owner.
   - Verify: re-run every asserts, renders and dry-run script, plus the image smoke runs.
+  - Done (review of `dde7296..HEAD` plus the working tree):
+    - **Correctness, fixed:** frontend readiness `timeoutSeconds` 5 → **8**. `checkApiHealth` aborts
+      its cms-api call at 5s, so with a 5s probe a *hanging* cms-api made the pod NotReady and took
+      the whole site out of rotation.
+    - **Correctness, hardened:** explicit `HOSTNAME: "0.0.0.0"` in the frontend Deployment. The
+      image already sets it and Docker keeps it, but containerd couldn't be checked offline.
+      Kubernetes `env` wins regardless. The bundled Next 16.3 docs confirm the standalone server
+      binds to `PORT`/`HOSTNAME`.
+    - **Correctness, docs:** the Render and Vercel jobs now run on `staging` but still use the
+      `Production` environment. Both app docs now say a `master`-only branch rule would reject them,
+      like cms-api's.
+    - **Checked, no issue:**
+      - `/_next/image` works in the image (a remote JPEG returns 200, and the musl `sharp` is
+        present; SVG 400 is Next's default).
+      - The two-checkout bump layout: the sparse root checkout runs first, then `deployment` in a
+        subfolder, so neither cleans the other.
+    - **Security:**
+      - No secrets reach the images or CI build args.
+      - Bump jobs have `contents: write` only, and publish jobs have `packages: write`.
+      - `.env*` is excluded from both build contexts, and the frontend runs as non-root.
+      - cms-admin's nginx runs as root and there's no pod `securityContext`. That's a listed
+        non-goal (hardening follow-up).
+    - **Architecture and readability:** consistent naming and headers across the 3 apps, and one
+      bump script.
+    - **Performance:** readiness calls cms-api `/health` every 10s, which is negligible.
+    - **Known, not changed:** the workflow-level `ci-${ref}` concurrency with `cancel-in-progress`
+      can cancel an in-flight bump when a newer `master` push arrives. That already existed for
+      cms-api. The newer run bumps a higher tag anyway, and the reset-and-retry leaves no partial
+      state.
+    - Full regression passes: parity 8, T3 4, images 14 + 17 + 8, templates 44 and 47, the Flux guard
+      at 6 rejected and 2 valid, cluster 18 and 18, Secret 11, CI 26 and 26, bumps 6, 7 and 7, docs
+      8 and 23. lint is clean for both apps, with 82 and 471 tests passing.
   - Deps: T12, T13
 
-- [ ] **T15: Reduce root `SPEC.md` to a minimal pointer and set the todo status to DONE.** (XS)
+- [x] **T15: Reduce root `SPEC.md` to a minimal pointer and set the todo status to DONE.** (XS)
   - Files: `SPEC.md`, `tasks/todo.md` (optionally archive it into `tasks/archive.md`)
   - Acceptance:
     - SPEC.md only points at the three apps' deployment docs: no feature detail and no summary.
     - The owner-run steps live in the docs, not in SPEC.md.
   - Verify: SPEC.md has no content that isn't in `docs/documents/*`.
+  - Done:
+    - SPEC.md is now a 6-line "No active spec" pointer to `CLAUDE.md` and each app's `SPEC.md` and
+      `docs/ENTRYPOINT.md`, the same form as `apps/cms-api/SPEC.md`.
+    - Everything it held is in the three apps' `*-flux-deployment{,-techstack}.md`, including the
+      owner-run steps.
   - Deps: T14
 
 ### Checkpoint 4
-- [ ] All spec success criteria 1–8 are verified offline. Criterion 9 is left to the owner.
+- [x] All spec success criteria 1–8 are verified offline (see T14's full regression). Criterion 9
+  is left to the owner: both sites live on the VPS with valid TLS, and admin login and refresh
+  working.
 - [ ] Commit: the owner confirms the file list and message (Yes/No, no `Co-Authored-By`).
