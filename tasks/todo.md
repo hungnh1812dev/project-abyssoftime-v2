@@ -1,7 +1,7 @@
 # Todo: cms-admin + frontend on Flux (VPS only), vm-dev retired
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS**. 3 of 15 tasks done (Phase 1 complete).
+Status: **IN PROGRESS**. 7 of 15 tasks done (Phase 2 complete).
 
 Each checkbox update ships in the same commit as that phase's work. All verification is offline:
 never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.env*` (except
@@ -73,11 +73,11 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
 ### Checkpoint 1
 - [x] `kubectl kustomize clusters/abyssdev/vm-prod` renders. The parity and bump dry-runs and the
   `ci.yml` asserts pass: parity 8/8, bump 5/5, T3 4/4. T2's job-set check is superseded by T3's.
-- [ ] Commit: the owner confirms the file list and message (Yes/No, no `Co-Authored-By`).
+- [x] Commit: the owner confirmed. Commits `e76092e` (spec and plan) and `98f29e5` (Phase 1).
 
 ## Phase 2: `cms-admin-flux`
 
-- [ ] **T4: The cms-admin image bakes in `VITE_API_URL` and serves `/healthz`.** (S)
+- [x] **T4: The cms-admin image bakes in `VITE_API_URL` and serves `/healthz`.** (S)
   - Files: `apps/cms-admin/Dockerfile`, `apps/cms-admin/nginx.conf`
   - Acceptance:
     - The builder has `ARG VITE_API_URL`, and the build fails with a clear message if it's empty.
@@ -90,9 +90,17 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
       the arg fails.
     - In the smoke run, `/healthz` returns 200, `/content/foo` returns `index.html`, and
       `grep -r api.example.com` finds the value in the built JS.
+  - Done:
+    - Checks pass 14/14: 8 static and 6 Docker, run on the local arm64 daemon.
+    - A build without the arg fails at the `test -n` step with the intended message.
+    - lint is clean, 471 tests pass, and the build succeeds.
+    - Also added `.env*` to `apps/cms-admin/.dockerignore`, because Vite would bake any `.env`
+      values into the bundle.
+    - `VITE_API_URL` must be the bare origin (`https://api.<domain>`): the app appends `/api/v1`
+      and `/health`.
   - Deps: T2
 
-- [ ] **T5: Add the cms-admin `k8s/flux` templates (Deployment, Service, Ingress, Middleware).** (M)
+- [x] **T5: Add the cms-admin `k8s/flux` templates (Deployment, Service, Ingress, Middleware).** (M)
   - Files:
     - `apps/cms-admin/k8s/flux/{kustomization,deployment,service,ingress,middleware}.yaml` (new)
   - Acceptance:
@@ -106,9 +114,14 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
     - The envsubst output with fake values parses and contains no `${`.
     - The assert script: no literal `abyssdev` or domain appears, the host is
       `admin.${APP_DOMAIN}`, and the Middleware name matches the annotation.
+  - Done:
+    - The reusable assert `assert_templates.py <app>` passes 42/42: render, envsubst, kinds,
+      names and labels, the image, int ports, the named-port Service, TLS and host, issuer,
+      Middleware reference, probes, resources and no Secret.
+    - The Service targets the named port `http` instead of a number.
   - Deps: T4
 
-- [ ] **T6: Wire cms-admin into vm-prod and add the ConfigMap template.** (S)
+- [x] **T6: Wire cms-admin into vm-prod and add the ConfigMap template.** (S)
   - Files:
     - `clusters/abyssdev/vm-prod/abyssdev-cms-admin-prod.yaml` (new)
     - `clusters/abyssdev/vm-prod/kustomization.yaml`
@@ -126,9 +139,11 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
     - The assert script compares against cms-api's file: the fields match, except name, path,
       ConfigMap, components and tag.
     - `git check-ignore apps/cms-admin/k8s/configmap.yaml` matches.
+  - Done: the reusable `assert_cluster.py <app>` passes 18/18. The T5 templates still pass 42/42,
+    and the cms-api bump still passes 5/5.
   - Deps: T5
 
-- [ ] **T7: Add the cms-admin CI jobs: GHCR publish, cleanup and bump.** (S)
+- [x] **T7: Add the cms-admin CI jobs: GHCR publish, cleanup and bump.** (S)
   - Files: `.github/workflows/ci.yml`
   - Acceptance:
     - **`cms-admin-ghcr-publish`**:
@@ -147,11 +162,19 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
       and variable checks are correct.
     - Bump dry-run for cms-admin: only its file changes, and the message is
       `chore(cms-admin): deploy image <tag>`.
+  - Done:
+    - The reusable `assert_ci_app.py <app>` passes 26/26 against the Phase 1 `ci.yml` baseline.
+    - The reusable `bump_apps.sh cms-admin cms-api` passes 7/7: own file +1/-1, message and
+      author, master untouched, re-run and older run no-ops, missing file fails, and a race with a
+      cms-api bump lands both.
+    - `cms-admin-ghcr-publish` pushes straight from `build-push-action`. With a single image there's
+      no init-first ordering to keep.
   - Deps: T1, T6
 
 ### Checkpoint 2
-- [ ] The cms-admin image smoke run, the renders, the asserts and the bump dry-run all pass. The
-  cms-admin lint, test and build pass.
+- [x] The cms-admin image smoke run, the renders, the asserts and the bump dry-run all pass. The
+  cms-admin lint, test and build pass. Results: parity 8/8, T3 4/4, image 14/14, templates 42/42,
+  cluster 18/18, CI 26/26, bump cms-admin 7/7 and cms-api 6/6. lint is clean and 471 tests pass.
 - [ ] Commit: the owner confirms the file list and message (Yes/No, no `Co-Authored-By`).
 
 ## Phase 3: `frontend-flux`
@@ -193,6 +216,9 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
       literal `AUTH_TRUST_HOST: "true"`, liveness `tcpSocket`, readiness `httpGet /api/health`
       with `timeoutSeconds: 5`, requests 100m/192Mi and limits 500m/512Mi.
     - Ingress: host and TLS `${APP_DOMAIN}` (bare).
+    - **Fail closed on an empty `APP_DOMAIN`** (found during T5): unlike `admin.`/`api.`, a bare
+      `${APP_DOMAIN}` becomes host `""`, which Kubernetes accepts as a **catch-all** rule. Guard it
+      with Flux's `${APP_DOMAIN:?...}` form, or an equivalent, so the apply fails instead.
   - Verify:
     - `kubectl kustomize apps/frontend/k8s/flux` renders.
     - The envsubst check passes.
