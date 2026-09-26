@@ -32,3 +32,6 @@ dist-ssr
 
 # personal notes
 account.md
+
+# Filled-in k8s ConfigMap (template: k8s/configmap.example.yaml)
+k8s/configmap.yaml

@@ -3,3 +3,5 @@ kind: Kustomization
 resources:
   - flux-system/
   - abyssdev-apps-prod.yaml
+  - abyssdev-cms-admin-prod.yaml
+  - abyssdev-frontend-prod.yaml
