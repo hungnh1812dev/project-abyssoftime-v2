@@ -1,63 +1,75 @@
-# Spec: cms-api tag bump from CI to the `deployment` branch (replace Flux image automation)
+# Spec: cms-admin + frontend on Flux (VPS only), vm-dev retired
 
-Status: **IN PROGRESS** (see `tasks/todo.md`)
-Date: 2026-09-24
-Target areas: `.github/workflows/ci.yml` (cms-api jobs), `clusters/abyssdev/*`, `apps/cms-api/k8s/flux/`,
-cms-api Flux docs/rules
+Status: **DRAFT**, awaiting owner approval
+Date: 2026-09-26
+Target areas: `.github/workflows/ci.yml`, `.github/scripts/` (new), `clusters/abyssdev/*`,
+`apps/cms-admin/{Dockerfile,nginx.conf,k8s/}`, `apps/frontend/{Dockerfile,.dockerignore,next.config.mjs,k8s/}`,
+Flux/deploy docs of all three apps
 
-This spec sits at the monorepo root because it spans CI, the Flux cluster manifests, and cms-api's
-k8s templates. The `/cv-3` spec that was here is SHIPPED and has been replaced.
+This spec sits at the monorepo root because it spans CI, the Flux cluster manifests and all three
+apps. The CI tag-bump spec that was here has shipped, and its details now live in
+`apps/cms-api/docs/documents/cms-api-flux-deployment*.md`.
 
 ---
 
 ## Objective
 
-GitHub Actions becomes the only thing that writes the cms-api image tag. It writes it only on the
-**`deployment` branch**, which is the only branch Flux reads. Flux image automation, which currently
-scans GHCR in the cluster and commits the tag itself, is removed. The existing `master` CI stays as
-it is: it builds, tests and pushes to GHCR, and it gains exactly one extra job. Flux on each cluster
-polls `deployment` and reconciles whenever anything there changes, whether that's the tag or any
-other file.
+`master` deploys **all three apps to the VPS only (vm-prod)** through the same flow cms-api already
+uses: build, then GHCR, then a bot commit on `deployment`, then Flux. `staging` deploys to the hosted
+platforms: cms-api and cms-admin to Render, frontend to Vercel. The local arm64 VM cluster (vm-dev) is
+retired, so every image is amd64 only.
 
 ```
-push master ─▶ CI build/test (unchanged) ─▶ GHCR push <run>-<sha7> (+ <run>-<sha7>-init)
-                                                  │
-                                                  ▼
-                      cms-api-bump-tag: commit "deploy image <tag>" to `deployment`
-                      (sed on the APP_IMAGE_TAG line in both cluster files; master untouched)
-                                                  │
-   vm-dev (local VM) ─┐                           ▼
-   vm-prod (VPS) ─────┴─▶  Flux GitRepository polls `deployment` every 1m
-                           Flux Kustomization reconciles on new revision (+ every 3m drift check)
-                                                  ▼
-                           Deployment rolls to <tag> (app) + <tag>-init (migrations)
+push staging ─▶ CI ─▶ Render (cms-api, cms-admin) + Vercel (frontend)          [hosted "staging"]
 
-manifest changes: master ──(owner merges master into deployment)──▶ deployment ─▶ Flux
+push master  ─▶ CI build/test ─▶ <app>-ghcr-publish (amd64) ─▶ <app>-bump-tag
+                                                                   │ commit APP_IMAGE_TAG
+                                                                   ▼ in the app's vm-prod file
+                                         `deployment` branch ─▶ Flux on vm-prod (VPS)
+                                                                   ▼
+                     Traefik + cert-manager:   <domain> → frontend
+                                               admin.<domain> → cms-admin
+                                               api.<domain> → cms-api (exists)
 ```
 
 ### User stories
 
-- **As the owner**, after a `master` push that changes cms-api, a `github-actions[bot]` commit lands
-  on `deployment` about a minute after the GHCR push. It sets `APP_IMAGE_TAG` to the new tag in both
-  `vm-dev` and `vm-prod`. `master` gets no bot commit, and no extra CI run starts.
-- **As the owner**, both clusters run the new app and init images within about 5 minutes of that
-  commit. I run no `kubectl` or `flux` command.
-- **As the owner**, I change a manifest (for example resources, probes or a cluster file) on `master`
-  and then merge `master` into `deployment`. Flux applies it within about 5 minutes.
-- **As the owner**, if two cms-api builds race, `deployment` ends up on the newest tag. An older run
-  never overwrites a newer tag.
-- **As the owner**, I roll back by pushing a commit to `deployment` that sets `APP_IMAGE_TAG` to an
-  older tag. It holds until the next cms-api build; there's no automation to suspend.
+- **As the owner**, a `master` push that changes cms-admin or frontend leads to a
+  `github-actions[bot]` commit on `deployment` that sets that app's `APP_IMAGE_TAG` in its vm-prod
+  file. The VPS runs the new image within about 5 minutes, and I run no `kubectl` or `flux`.
+- **As a visitor**, `https://<domain>` serves the frontend and `https://admin.<domain>` serves
+  cms-admin. Both have valid TLS and redirect http to https.
+- **As an admin user**, cms-admin on `admin.<domain>` logs in and works against
+  `https://api.<domain>`, including the silent refresh.
+- **As the owner**, a `staging` push deploys cms-admin to Render and frontend to Vercel. A `master`
+  push no longer touches Render or Vercel.
+- **As the owner**, cms-api builds only amd64 and bumps only vm-prod. Nothing in the repo refers to
+  vm-dev anymore.
 
 ### Non-goals
 
-- Changing any existing `master` CI job, beyond exposing the tag the publish job already computes.
-- Syncing `master` into `deployment` automatically. The owner merges by hand when manifests change.
-- Deploying cms-admin or frontend through Flux. They stay on Render and Vercel.
-- Promotion gates such as dev first and then prod, or a manual approval step. One commit bumps both
-  clusters.
-- Uninstalling the image-reflector and image-automation controllers. Leaving them idle is harmless.
-- Any change to Secret or ConfigMap contents.
+- Turning off the Render or Vercel projects. They remain the staging targets.
+- A staging cluster, promotion gates or approvals.
+- Runtime-configurable cms-admin (`config.js`). The API URL is baked in at build time.
+- Changing cms-api's ingress, its Component pattern or its app code.
+- Hardening the images, such as non-root nginx or read-only rootfs. That's a follow-up.
+- Changing Secret or ConfigMap contents on the cluster. The owner does that from the templates.
+
+---
+
+## Capability map
+
+The three modules are small and follow one pattern, so they share this single spec, with one section
+each, instead of separate `SPEC-<id>.md` files.
+
+| Module id | Responsibility | Depends on |
+| --- | --- | --- |
+| `vps-only` | Retire vm-dev. cms-api goes amd64 only. Move the bump script into `.github/scripts/bump-flux-tag.sh`. Move the Render and Vercel jobs to `staging` | — |
+| `cms-admin-flux` | cms-admin image, GHCR publish and bump, `k8s/flux` templates, vm-prod Kustomization, `admin.<domain>` ingress | `vps-only` |
+| `frontend-flux` | frontend Dockerfile (standalone), GHCR publish and bump, `k8s/flux` templates, vm-prod Kustomization, `<domain>` ingress | `vps-only` |
+
+Build order: `vps-only` first, then `cms-admin-flux` and `frontend-flux`, which are independent of
+each other.
 
 ---
 
@@ -65,211 +77,277 @@ manifest changes: master ──(owner merges master into deployment)──▶ de
 
 | Question | Chosen | Rejected | Why |
 | --- | --- | --- | --- |
-| Who writes the tag | CI only | Keep Flux image automation too | Two writers to one line make conflicting commits. CI already knows the exact tag it pushed. |
-| Where CI writes it | Direct push to the `deployment` branch | Push to `master` / open a PR | Owner's choice (T3). `master` stays clean and unprotected-branch concerns go away. The workflow never runs on `deployment` pushes, so there's structurally no CI loop. |
-| What Flux reads | `deployment` only (`gotk-sync.yaml` `ref.branch`) | `master` | A tag written to `deployment` must be what the clusters run. |
-| Environments | One commit bumps `vm-dev` and `vm-prod` | Per-branch images | Both clusters pull the same GHCR repo; they differ only by host and ConfigMap. |
-| Edit tool | `sed` + `grep` read-back (no `sed -i`) | `yq` | Owner's choice: no extra tool. Writing through a temp file behaves the same with GNU sed (runner) and BSD sed (macOS), so the exact CI script is dry-run locally. The read-back check makes a missed pattern fail loudly. |
-| Push races | Reset to `origin/deployment`, re-apply, push; 3 attempts; never lower the run number | `git pull --rebase` | Re-applying on a fresh tip can't conflict. The run-number check stops an older run from rolling back a newer tag. |
+| Clusters | vm-prod only. Delete vm-dev for every app | Keep vm-dev for cms-api | Owner's choice. One cluster means one arch and one API URL, so there are no per-cluster images. |
+| Staging | Render and Vercel jobs run on `staging` | Keep them on `master` as well | Owner's choice. `master` means the VPS. Hosted platforms become staging, as cms-api's Render job already is. |
+| cms-admin API URL | Repo variable → Docker build arg `VITE_API_URL` | Runtime `config.js`, or a same-origin nginx proxy | Owner's choice. With one cluster it needs no app code change. The URL isn't secret. |
+| cms-admin nginx proxies | Remove the `/api` and `/auth` proxy blocks (dead docker-compose leftovers). Add `/healthz` | Leave them | Owner's choice. They point at `http://api:8080`, which doesn't exist. The probes need a cheap endpoint. |
+| frontend image | Next `output: "standalone"` on a `node:24-alpine` runner. Build stage on `oven/bun` | Full `next start` image, or a Bun runtime | The standalone image is about 5–10× smaller. Node is Next's supported server runtime. Bun stays the package manager. |
+| Enabling standalone | Only when `NEXT_OUTPUT=standalone` is set, and only the Dockerfile sets it | Always on | Leaves the Vercel (staging) build exactly as it is today. |
+| Build-time secrets | frontend gets only the placeholder `AUTH_SECRET`, as a builder-stage `ARG`. Real secrets go in a runtime Secret | Real secret as a build arg | Build args are visible in image history. `auth.ts` only needs a value to exist during `next build`, the same as the existing `frontend-build` job. |
+| Arch suffix | Keep `<run>-<sha7>-amd64` for all apps | Drop the suffix | No tag format churn. The bump regex and the cms-api history already use it, and it's future-proof if arm64 returns. |
+| Bump logic | One script `.github/scripts/bump-flux-tag.sh`, called by a bump job for each app | Copy the inline script 3×, or one combined job | No triplication. A combined job would have to `needs:` publish jobs that are skipped by change detection. |
+| Bump concurrency | One group per app (`<app>-bump-tag`) | One shared group | A GitHub concurrency group holds only **one** pending job, and a new pending job cancels the older one. A shared group could silently drop a different app's bump. Cross-app races are already handled by the retry loop (different files, re-applied on a fresh tip). |
+| Tag file per app | New files `abyssdev-cms-admin-prod.yaml` and `abyssdev-frontend-prod.yaml`. cms-api keeps `abyssdev-apps-prod.yaml` | One multi-doc file | The bump `sed` rewrites **every** `APP_IMAGE_TAG:` line in a file. Renaming cms-api's file is churn with no gain. |
+| Ingress for new apps | Directly in each app's base `k8s/flux` | Opt-in Component, as cms-api has | The Component existed so vm-dev could stay ClusterIP. With only vm-prod left it's extra indirection. cms-api is left as it is (non-goal). |
+| Container ports | Image facts, hardcoded: cms-admin 80 (nginx), frontend 3000 (`PORT` in the Dockerfile) | `${APP_PORT}` from the ConfigMap | These aren't project values, and it means fewer ConfigMap keys to get wrong. |
 
-The full comparison tables go in `apps/cms-api/docs/documents/cms-api-flux-deployment-techstack.md`
-during the docs step, as `docs/workflow.md` requires.
+During the docs step, these tables go into `apps/cms-admin/docs/documents/cms-admin-flux-deployment-techstack.md`
+and `apps/frontend/docs/documents/frontend-flux-deployment-techstack.md`, as `docs/workflow.md`
+requires. cms-api's techstack gets the `vps-only` rows.
 
 ---
 
 ## Target state
 
-### CI (`.github/workflows/ci.yml`)
+### Module `vps-only`
 
-- **`cms-api-ghcr-publish`** gains `outputs: tag: ${{ steps.tag.outputs.tag }}`, and nothing else
-  changes in it.
-- **The new job `cms-api-bump-tag`** has `needs: [cms-api-ghcr-publish]` and the same `master` +
-  `push` guard. So it runs only when cms-api changed and the images were pushed.
-  1. Check out `deployment`.
-  2. Validate that `TAG` matches `^[0-9]+-[0-9a-f]{7}$`.
-  3. Up to 3 attempts:
-     1. `git fetch origin deployment` and `git reset --hard origin/deployment`.
-     2. For each cluster file:
-        - Fail with "merge master into deployment first" if the file is missing.
-        - Skip the file if its current tag's run number is at least ours.
-        - Otherwise `sed` the whole `APP_IMAGE_TAG:` line to `APP_IMAGE_TAG: "<tag>"`, which also
-          drops any old `$imagepolicy` marker. Then `grep` that it matches exactly once.
-     3. If nothing changed, exit 0.
-     4. Commit `chore(cms-api): deploy image <tag>` as `github-actions[bot]`, then
-        `git push origin HEAD:deployment`.
-  4. Permissions: `contents: write` only.
-  5. `concurrency: cms-api-bump-tag`, with `cancel-in-progress: false`.
-  6. No third-party actions and no extra tools.
-- **No CI loop.** `on.push.branches` is `develop`/`staging`/`master`, so a push to `deployment` never
-  triggers this workflow. Pushes made with `GITHUB_TOKEN` don't trigger workflows either.
+- **Delete `clusters/abyssdev/vm-dev/`** (all 5 files). Deleting needs the owner's OK.
+- **`cms-api-ghcr-publish`**: remove the matrix and run on `ubuntu-latest` with `ARCH=amd64`. Tags
+  stay `<tag>-amd64` and `<tag>-amd64-init`, and `outputs.tag` is unchanged.
+- **`cms-api-ghcr-cleanup`**: `min-versions-to-keep: 20` → **10** (2 per release × 5 releases).
+- **`.github/scripts/bump-flux-tag.sh`** (new) holds the current inline bump logic, generalised:
+  - Usage: `bump-flux-tag.sh <app> <tag> <cluster-file>:<arch> [...]`.
+  - Commit message: `chore(<app>): deploy image <tag>`.
+  - Behaviour otherwise stays byte-for-byte what it is today: tag regex, run-number guard, portable
+    `sed` via a temp file, `grep` read-back, 3 attempts on a fresh `origin/deployment`, and a loud
+    failure when a file is missing.
+- **Every `<app>-bump-tag` job** checks out the script from the commit being built (`github.sha`,
+  sparse `.github/scripts`) and `deployment` into `./deployment`, then runs
+  `../.github/scripts/bump-flux-tag.sh` there. This way a bump never depends on master having been
+  merged into `deployment`.
+- **`cms-api-bump-tag`**: calls the script with only
+  `clusters/abyssdev/vm-prod/abyssdev-apps-prod.yaml:amd64`. Concurrency group `cms-api-bump-tag`
+  (unchanged).
+- **`deploy-cms-admin`, `deploy-frontend`**: guard `refs/heads/master` → `refs/heads/staging`.
+  Nothing else changes.
 
-### Flux, both clusters (`clusters/abyssdev/{vm-dev,vm-prod}/`)
+### Module `cms-admin-flux`
 
-| File | vm-dev (local VM) | vm-prod (VPS) |
-| --- | --- | --- |
-| `flux-system/gotk-sync.yaml` `ref.branch` | `master` → **`deployment`** | `master` → **`deployment`** |
-| `flux-system/gotk-sync.yaml` path | `./clusters/abyssdev/vm-dev` | **Fix:** → `./clusters/abyssdev/vm-prod` |
-| `kustomization.yaml` | exists | **New:** `flux-system/` + the app file |
-| App Flux Kustomization | `abyssdev-apps-develop.yaml` | **New:** `abyssdev-apps-prod.yaml` |
-| Kustomization name | `abyssdev-cms-api-sync-develop` | `abyssdev-cms-api-sync-prod` |
-| `substituteFrom` ConfigMap | `abyssdev-cms-api-develop-config` | `abyssdev-cms-api-prod-config` |
-| `APP_IMAGE_TAG` on `master` | placeholder `"dev"`, no marker | same |
+- **`apps/cms-admin/Dockerfile`**: builder stage gains `ARG VITE_API_URL`, which is required: the
+  build fails if it's empty. It's passed to `bun run build`. Runner unchanged.
+- **`apps/cms-admin/nginx.conf`**: keep the SPA fallback and add `location = /healthz { return 200; }`.
+  Remove the proxy blocks.
+- **`apps/cms-admin/k8s/flux/`** (new): `kustomization.yaml`, `deployment.yaml`, `service.yaml`,
+  `ingress.yaml`, `middleware.yaml`.
+  - `${APP_*}` placeholders only. Naming follows cms-api:
+    `${APP_NAME}-${APP_SERVICE_NAME}-${APP_ENV}` in `${APP_NAMESPACE}-${APP_ENV}`.
+  - Deployment: 1 replica, `containerPort: 80` named `http`, liveness and readiness `httpGet /healthz`,
+    requests 10m/32Mi and limits 200m/128Mi. No Secret.
+  - Ingress: host `admin.${APP_DOMAIN}`, TLS secret `<full-app-name>-tls`, issuer
+    `${APP_TLS_CLUSTER_ISSUER}`, https-redirect Middleware. An empty `APP_DOMAIN` gives the host
+    `admin.`, which the API server rejects, so it fails closed.
+- **`apps/cms-admin/k8s/configmap.example.yaml`** (new) with keys `APP_NAME`, `APP_SERVICE_NAME`,
+  `APP_NAMESPACE`, `APP_ENV`, `APP_IMAGE_REPO`, `APP_DOMAIN` and `APP_TLS_CLUSTER_ISSUER`. Add the
+  filled `k8s/configmap.yaml` to `apps/cms-admin/.gitignore`.
+- **`clusters/abyssdev/vm-prod/abyssdev-cms-admin-prod.yaml`** (new): Kustomization
+  `abyssdev-cms-admin-sync-prod`.
+  - `path: ./apps/cms-admin/k8s/flux`, ConfigMap `abyssdev-cms-admin-prod-config`, and
+    `APP_IMAGE_TAG: "dev"`.
+  - `interval: 3m`, `prune`, `wait` and `timeout: 5m`, the same layout as cms-api's.
+  - Listed in `clusters/abyssdev/vm-prod/kustomization.yaml`.
+- **CI** (`master` + `push`, needs `cms-admin-build`):
+  - **`cms-admin-ghcr-publish`**: amd64, fails without `vars.CMS_ADMIN_IMAGE_REPO` and
+    `vars.CMS_ADMIN_API_URL`, and pushes `<tag>-amd64`. Outputs `tag`.
+  - **`cms-admin-ghcr-cleanup`**: opt-in via `vars.CMS_ADMIN_GHCR_CLEANUP`, keeps 5.
+  - **`cms-admin-bump-tag`**: script with `abyssdev-cms-admin-prod.yaml:amd64`, group
+    `cms-admin-bump-tag`, `contents: write`.
 
-Reconcile loop, the same on both clusters:
-- `GitRepository flux-system`: `interval: 1m`, branch `deployment`.
-- App `Kustomization`: `interval: 3m`, `prune: true`, `wait: true`, `timeout: 5m`.
+### Module `frontend-flux`
 
-### cms-api templates (`apps/cms-api/k8s/flux/`)
-
-- Delete `image-repository.yaml`, `image-policy.yaml` and `image-update.yaml`, and remove them from
-  `kustomization.yaml`. Deleting files needs the owner's OK.
-- `deployment.yaml` and `service.yaml` stay unchanged. Both images already come from
-  `${APP_IMAGE_TAG}`.
+- **`apps/frontend/next.config.mjs`**: `output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined`.
+- **`apps/frontend/Dockerfile`** (new):
+  - `deps`/`builder` on `oven/bun:1-alpine`.
+  - Build args: `GRAPHQL_URL`, required, because `next.config` bakes it into `CMS_HEALTH_URL`, and the
+    placeholder `AUTH_SECRET`.
+  - `runner` on `node:24-alpine`, which copies `.next/standalone`, `.next/static` and `public`, sets
+    `PORT=3000` and `HOSTNAME=0.0.0.0`, runs as the non-root `node` user, and starts with
+    `CMD ["node","server.js"]`.
+- **`apps/frontend/.dockerignore`** (new) must exclude `.env*` (a real `.env.local` is in that dir),
+  `.next`, `.vercel`, `node_modules`, `e2e`, `*.md` and `.git`.
+- **`apps/frontend/k8s/flux/`** (new): the same 5 files as cms-admin.
+  - Deployment: `containerPort: 3000`, `envFrom` Secret `<full-app-name>-secrets`, literal
+    `env AUTH_TRUST_HOST: "true"` (Auth.js v5 behind Traefik), liveness `tcpSocket`, readiness
+    `httpGet /api/health` with `timeoutSeconds: 5`. That endpoint always returns 200 and reports
+    cms-api health in the body. Requests 100m/192Mi, limits 500m/512Mi.
+  - Ingress: host `${APP_DOMAIN}` (bare).
+- **`apps/frontend/k8s/{configmap,secret}.example.yaml`** (new).
+  - ConfigMap keys: as cms-admin.
+  - Secret keys: `AUTH_SECRET`, `CMS_API_URL`, `GRAPHQL_URL`, `GRAPHQL_TOKEN`, `STRAPI_API_TOKEN`,
+    `REVALIDATE_SECRET` and `NEXT_ENV=production`.
+  - For `CMS_API_URL` and `GRAPHQL_URL`, the comments recommend the in-cluster cms-api Service URL.
+  - Add the filled files to `apps/frontend/.gitignore`.
+- **`clusters/abyssdev/vm-prod/abyssdev-frontend-prod.yaml`** (new): Kustomization
+  `abyssdev-frontend-sync-prod` with ConfigMap `abyssdev-frontend-prod-config`, listed in the cluster
+  `kustomization.yaml`.
+- **CI**: `frontend-ghcr-publish` (vars `FRONTEND_IMAGE_REPO` and `FRONTEND_GRAPHQL_URL`),
+  `frontend-ghcr-cleanup` (opt-in `FRONTEND_GHCR_CLEANUP`, keeps 5) and `frontend-bump-tag` (group
+  `frontend-bump-tag`), mirroring cms-admin.
 
 ### Owner-run steps (agent never runs these)
 
-1. **Merge this work into `master`, then merge `master` into `deployment`.** Expect one conflict on
-   vm-dev's `APP_IMAGE_TAG` line (`deployment` has `"75-4bef740" # {"$imagepolicy"…}`). Resolve it to
-   `APP_IMAGE_TAG: "75-4bef740"`, with no marker. Set vm-prod's tag to the same value.
-2. **Point each cluster at `deployment`.** The in-cluster `GitRepository` still tracks `master`, and
-   vm-prod also still reads the broken path. Re-bootstrap each cluster with
-   `--branch=deployment --path=clusters/abyssdev/<cluster>`, or patch:
-   ```bash
-   kubectl -n flux-system patch gitrepository flux-system --type merge -p '{"spec":{"ref":{"branch":"deployment"}}}'
-   # vm-prod only:
-   kubectl -n flux-system patch kustomization flux-system --type merge -p '{"spec":{"path":"./clusters/abyssdev/vm-prod"}}'
-   ```
-3. Create `abyssdev-cms-api-prod-config` and the prod Secret on the VPS from the templates.
-4. `deployment` must accept pushes from GitHub Actions. That means no protection rule, or one with an
-   Actions bypass.
-5. After T4 reaches `deployment`, `prune: true` removes the old `ImageRepository`/`ImagePolicy`/
-   `ImageUpdateAutomation` objects.
+1. **DNS**: A records for `<domain>` and `admin.<domain>` pointing at the VPS. If `<domain>` is
+   currently Vercel production, this is the cutover, and Vercel staging needs its own hostname.
+2. **Repo variables**: `CMS_ADMIN_IMAGE_REPO`, `CMS_ADMIN_API_URL` (`https://api.<domain>`),
+   `FRONTEND_IMAGE_REPO` and `FRONTEND_GRAPHQL_URL`. Optionally, the two `*_GHCR_CLEANUP` variables.
+3. **GHCR**: after the first publish, make the `cms-admin` and `frontend` packages public, the same as
+   cms-api, or the VPS can't pull them (the templates have no `imagePullSecrets`). For cleanup, give
+   the repo the Admin role under "Manage Actions access".
+4. **On the VPS**, from the templates: the `abyssdev-cms-admin-prod-config` and
+   `abyssdev-frontend-prod-config` ConfigMaps, and the frontend Secret.
+5. **cms-api Secret**: add `https://<domain>` and `https://admin.<domain>` to its CORS origins.
+6. Merge into `master`, then merge `master` into `deployment`. Resolve conflicts so that
+   `deployment` keeps its real cms-api tag, and delete vm-dev's files there too.
+7. **VM**: `flux uninstall` on the old vm-dev cluster, or just shut it down.
 
 ---
-
-## Fix: per-arch images (found after the first live deploy)
-
-The first live deploy failed on the M1 VM with `init exec /usr/local/bin/docker-entrypoint.sh: exec
-format error`. CI built **amd64-only** images on `ubuntu-latest`. The Intel VPS runs them, but the
-arm64 VM (Apple Silicon) can't.
-
-| Question | Chosen | Rejected | Why |
-| --- | --- | --- | --- |
-| How to build arm64 | Native runners: matrix `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64) | QEMU + buildx | The repo is public, so arm64 runners are free. Native builds are fast and avoid Bun-under-QEMU crash reports. |
-| One multi-arch tag, or separate per-arch images | **Separate: 4 images per release** (owner's choice) | Multi-arch manifest lists via `imagetools create` | No merge job. Each cluster's file names exactly the arch it runs, visible in Git. |
-
-Target state:
-- **Tags:** `<run>-<sha7>-<arch>` (app) and `<run>-<sha7>-<arch>-init` (init), with `<arch>` in
-  `amd64`/`arm64`. `deployment.yaml` is unchanged: `${APP_IMAGE_TAG}` and `${APP_IMAGE_TAG}-init`,
-  where `APP_IMAGE_TAG` includes the arch.
-- **`cms-api-ghcr-publish`** is a 2-way matrix. Each leg builds both targets natively and pushes
-  `-<arch>-init` first, then `-<arch>`. It keeps `outputs.tag` (the arch-less `<run>-<sha7>`).
-- **`cms-api-ghcr-cleanup`** (new) runs after publish, with the same opt-in, and keeps 20 versions
-  (4 per release = 5 releases). It's a separate job so the matrix doesn't run the cleanup twice.
-- **`cms-api-bump-tag`** writes `<tag>-arm64` to vm-dev and `<tag>-amd64` to vm-prod. Its run-number
-  check accepts an optional `-amd64`/`-arm64` suffix, so an old arch-less tag like `79-d16e564` is
-  replaced.
 
 ## Commands
 
 ```bash
-# Render templates offline (no cluster contact)
-kubectl kustomize apps/cms-api/k8s/flux
-kubectl kustomize clusters/abyssdev/vm-dev
+# Offline renders (no cluster contact)
+kubectl kustomize apps/cms-admin/k8s/flux
+kubectl kustomize apps/frontend/k8s/flux
 kubectl kustomize clusters/abyssdev/vm-prod
 
-# Substitution check with fake values, matching Flux's postBuild
-kubectl kustomize apps/cms-api/k8s/flux \
-  | APP_NAME=a APP_SERVICE_NAME=s APP_NAMESPACE=n APP_ENV=e APP_PORT=3000 \
-    APP_IMAGE_REPO=ghcr.io/x/y APP_IMAGE_TAG=57-a1b2c3d \
-    envsubst '${APP_NAME} ${APP_SERVICE_NAME} ${APP_NAMESPACE} ${APP_ENV} ${APP_PORT} ${APP_IMAGE_REPO} ${APP_IMAGE_TAG}'
+# Substitution check with fake values (mirrors Flux postBuild)
+kubectl kustomize apps/frontend/k8s/flux \
+  | APP_NAME=a APP_SERVICE_NAME=frontend APP_NAMESPACE=n APP_ENV=prod APP_IMAGE_REPO=ghcr.io/x/y \
+    APP_IMAGE_TAG=90-a1b2c3d-amd64 APP_DOMAIN=example.com APP_TLS_CLUSTER_ISSUER=le \
+    envsubst '${APP_NAME} ${APP_SERVICE_NAME} ${APP_NAMESPACE} ${APP_ENV} ${APP_IMAGE_REPO} ${APP_IMAGE_TAG} ${APP_DOMAIN} ${APP_TLS_CLUSTER_ISSUER}'
 
-# Owner-only, live checks after the bot commit
-flux get sources git
-flux get kustomizations
-kubectl -n <full-namespace> get deploy <full-app-name> -o jsonpath='{..image}'
+# Local image builds + smoke runs (local Docker only)
+docker build --build-arg VITE_API_URL=https://api.example.com -t cms-admin:local apps/cms-admin
+docker run --rm -p 8081:80 cms-admin:local   # curl -f localhost:8081/healthz && curl -f localhost:8081/some/route
+docker build --build-arg GRAPHQL_URL=http://localhost:5000/graphql -t frontend:local apps/frontend
+docker run --rm -p 3001:3000 -e AUTH_SECRET=x -e AUTH_TRUST_HOST=true frontend:local   # curl -f localhost:3001/api/health
+
+# App checks for touched apps
+(cd apps/cms-admin && bun run lint && bun run test && bun run build)
+(cd apps/frontend && bun run lint && bun run test && bun run build)   # Vercel-style build, no NEXT_OUTPUT
+
+# Bump script
+bash -n .github/scripts/bump-flux-tag.sh && shellcheck .github/scripts/bump-flux-tag.sh
 ```
 
 ## Project Structure
 
 ```
-.github/workflows/ci.yml                    → cms-api-ghcr-publish (+ tag output), new cms-api-bump-tag
-clusters/abyssdev/vm-dev/                   → local VM cluster: flux-system/ + abyssdev-apps-develop.yaml
-clusters/abyssdev/vm-prod/                  → VPS cluster: flux-system/ + abyssdev-apps-prod.yaml (new)
-apps/cms-api/k8s/flux/                      → shared app templates (Deployment, Service), ${APP_*} only
-apps/cms-api/k8s/README.md                  → owner runbook (update)
-apps/cms-api/docs/documents/cms-api-flux-deployment*.md → docs + techstack table (update)
-apps/cms-api/docs/rules/k8s-secrets.md      → fix stale paths (k8s/flux/app/, kustomization.flux.yaml)
+.github/workflows/ci.yml                 → per-app ghcr-publish / ghcr-cleanup / bump-tag jobs; Render+Vercel on staging
+.github/scripts/bump-flux-tag.sh         → shared bump logic (new)
+clusters/abyssdev/vm-prod/               → the only cluster: flux-system/ + one app Kustomization file per app
+clusters/abyssdev/vm-dev/                → deleted
+apps/<app>/k8s/flux/                     → Flux templates, ${APP_*} placeholders only
+apps/<app>/k8s/*.example.yaml            → ConfigMap/Secret templates; filled copies gitignored
+apps/<app>/docs/documents/<app>-flux-deployment{,-techstack}.md → docs (docs step)
 ```
 
 ## Code Style
 
-Match the existing manifests and CI:
-- A header comment on each file says what it does and why.
-- `${APP_*}` placeholders only in `apps/cms-api/k8s/flux/**`.
-- Bash in CI uses `set -euo pipefail` and `::error::` annotations on every failure path.
-- Portable `sed`: write to `"$f.tmp"` and `mv`, never `sed -i`.
+Match the existing cms-api manifests and CI. Every file opens with a header comment that says what it
+does and why, only `${APP_*}` placeholders appear in the templates, and bash uses `set -euo pipefail`
+with `::error::` on each failure path:
+
+```yaml
+# cms-admin on vm-prod (VPS): applies ../../../apps/cms-admin/k8s/flux with ${APP_*} from the prod
+# ConfigMap. APP_IMAGE_TAG is written by CI (cms-admin-bump-tag) on the `deployment` branch; on master
+# it stays a placeholder. Exactly one `APP_IMAGE_TAG:` line: CI rewrites it with sed.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: abyssdev-cms-admin-sync-prod
+  namespace: flux-system
+spec:
+  interval: 3m
+  ...
+    substitute:
+      APP_IMAGE_TAG: "dev"
+```
+
+Portable `sed` (temp file + `mv`, never `sed -i`), no third-party actions beyond those already used in
+`ci.yml`, and Prettier on changed `.ts`/`.mjs` files.
 
 ## Testing Strategy
 
-There is no unit-test framework for YAML or CI here. Verification is offline and scripted, and the
-scripts live in the session scratchpad:
+There's no test framework for YAML or CI, so verification is offline and scripted, with the scripts
+in the session scratchpad:
 
-- `kubectl kustomize` renders `apps/cms-api/k8s/flux` and both cluster dirs without error.
-- The rendered app output contains no `image.toolkit.fluxcd.io` kinds (after T4).
-- A PyYAML assert script checks:
-  - The cluster app Kustomizations mirror each other, have no `$imagepolicy` marker, and use the
-    right ConfigMaps and intervals.
-  - Both `gotk-sync.yaml` track `deployment`, and vm-prod's path is fixed.
-  - In `ci.yml`, only the publish job's `outputs` and the new job differ from the baseline, and the
-    new job's `needs`, guard, permissions, concurrency, checkout ref and push target are correct.
-- A bump dry-run extracts the job's `run` block from `ci.yml` and runs it with local bash and BSD sed
-  against a throwaway bare origin that has `deployment` and `master`. It checks:
-  - Both files are bumped with a +2/-2 diff, and the marker is dropped.
-  - The commit message and author are correct, and other files are untouched.
-  - An older tag and a re-run are both no-ops.
-  - A push race is rejected once, retried, and keeps the concurrent commit.
+- **Renders**: all three `kubectl kustomize` commands above succeed. The envsubst output parses, and
+  no `${` is left in it.
+- **PyYAML assert script**:
+  - `clusters/abyssdev/vm-dev` is gone, and no file in the repo mentions `vm-dev` except history
+    notes in docs.
+  - Each vm-prod app file has exactly one `APP_IMAGE_TAG:` line, the right ConfigMap name, and
+    `interval: 3m`, `prune`, `wait` and `timeout: 5m`.
+  - The cluster `kustomization.yaml` lists all 3 app files.
+  - Ingress hosts are `admin.${APP_DOMAIN}` and `${APP_DOMAIN}`.
+  - Templates contain no literal project values such as `abyssdev` or a domain.
+- **`ci.yml` diff check** (PyYAML, against the baseline):
+  - Only the jobs this spec names change.
+  - Each new job has the right `needs`, `master` + `push` guard, permissions, concurrency group and
+    required-variable checks.
+  - The Render and Vercel jobs are guarded on `staging`.
+- **Bump dry-run**: the same harness as the last spec, with a throwaway bare origin and BSD sed.
+  It runs the script for cms-api, cms-admin and frontend and checks:
+  - Each run touches only its own file with a +1/-1 diff and writes the right commit message.
+  - An older tag and a re-run are no-ops.
+  - Two apps racing both land.
   - A bad tag and a missing file fail loudly.
-  - `master` is never written.
-- **Manual (owner):** a real `master` push produces one bot commit on `deployment`, no extra CI run,
-  and both clusters report the new image.
+- **Images**: both build locally. cms-admin serves `/healthz` 200, an SPA deep link returns
+  `index.html`, and the built JS contains the `VITE_API_URL` value. frontend serves `/api/health`
+  200, runs as uid 1000, and the image has no `.env*` file (`docker run --rm frontend:local ls -a`).
+- **Regression**: `bun run lint`, `bun run test` and `bun run build` pass for cms-admin and frontend.
+  The frontend build **without** `NEXT_OUTPUT` produces no `.next/standalone`, so Vercel is
+  unchanged.
+- **Manual (owner)**:
+  - A `master` push produces one bot commit per changed app, and the pods run the new tag.
+  - `https://<domain>` and `https://admin.<domain>` load with valid certs, and admin login and
+    refresh work.
+  - A `staging` push deploys to Render and Vercel.
 
 ## Boundaries
 
-- **Always:** keep project values out of `apps/cms-api/k8s/flux/**` (placeholders only); verify
-  offline; give the owner exact commands for any cluster action; update docs and rules for the
-  areas touched.
+- **Always:** placeholders only in `apps/*/k8s/flux/**`; verify offline; give the owner exact
+  commands for anything that touches the cluster, DNS or GitHub settings; update the docs and rules
+  of every app touched (cms-api's docs lose vm-dev and arm64).
 - **Ask first:**
-  - Deleting the three image-* manifests.
-  - Editing the generated `gotk-sync.yaml`. The path fix and the `deployment` branch switch are
-    already approved.
-  - Committing (Yes/No with the file list and message; no `Co-Authored-By`).
-  - Pushing to or merging into `deployment` or `master`.
+  - Deleting `clusters/abyssdev/vm-dev/` or any other file.
+  - Editing the generated `gotk-sync.yaml` (not expected).
+  - Committing: a Yes/No question with the file list and message, and no `Co-Authored-By`.
+  - Pushing to or merging into `master` or `deployment`.
+  - Adding a new third-party action.
 - **Never:**
   - Run `kubectl`, `helm` or `flux` against a real cluster, including `--dry-run=client`.
-  - Read or touch `apps/cms-api/k8s/secret.yaml`, `apps/cms-api/k8s/configmap.yaml` or any `.env*`.
-  - Edit `gotk-components.yaml`.
+  - Read or touch any `.env*` other than `.env.example`, or any filled `k8s/secret.yaml` or
+    `k8s/configmap.yaml`.
+  - Put a real secret in a build arg or an image.
   - Give CI any cluster credentials.
-  - Change existing `master` CI jobs beyond the publish `outputs`.
+  - Edit `gotk-components.yaml`.
 
 ## Success Criteria
 
-1. A `master` push that changes cms-api ends with one `github-actions[bot]` commit on `deployment`.
-   It sets `APP_IMAGE_TAG` in both cluster files to the `<run>-<sha7>` just pushed to GHCR. `master`
-   gets no new commit.
-2. No workflow run is started by that commit.
-3. A bump from an older run never replaces a newer tag, and a push race is retried rather than
-   failing.
-4. Both clusters' Flux `GitRepository` tracks `deployment`, and vm-prod has a working path and an
-   app Kustomization that mirrors vm-dev.
-5. No `image.toolkit.fluxcd.io` objects are rendered from this repo anymore.
-6. Both clusters use `GitRepository interval: 1m` and app `Kustomization interval: 3m`, `prune: true`.
-7. The docs (`cms-api-flux-deployment.md`, `-techstack.md`, `k8s/README.md`, `k8s-secrets.md`)
-   describe this same-repo, `deployment`-branch flow, with no separate GitOps repo and no image
-   automation.
-8. Owner-verified: after the bot commit, both clusters run the new tag within about 5 minutes.
+1. A `master` push that changes cms-admin or frontend produces one `github-actions[bot]` commit on
+   `deployment` that sets `APP_IMAGE_TAG: "<run>-<sha7>-amd64"` in only that app's vm-prod file.
+2. `kubectl kustomize clusters/abyssdev/vm-prod` renders all three app Kustomizations. After
+   envsubst, the app templates render a Deployment, Service, Ingress and Middleware for each new
+   app, with hosts `<domain>` and `admin.<domain>`.
+3. cms-api publishes amd64 only (2 images per release), cleanup keeps 10, and the bump writes only
+   vm-prod. `clusters/abyssdev/vm-dev/` no longer exists.
+4. `deploy-cms-admin` and `deploy-frontend` run only on `staging` pushes.
+5. The frontend image contains no `.env*` files and no real secrets, runs as non-root and serves
+   `/api/health`. The Vercel-style build is unchanged.
+6. The cms-admin image serves `/healthz` and SPA deep links, and it has no nginx proxy to `api:8080`.
+7. All three bump jobs share one script and have their own concurrency groups. The dry-run harness
+   passes every case above.
+8. The docs describe the VPS-only, `staging`-hosted flow for all three apps.
+9. Owner-verified: both sites are live on the VPS with valid TLS, and admin login and refresh work
+   against `api.<domain>`.
 
 ## Open Questions
 
-1. **Stale `apps/cms-api/SPEC.md`** (the old Flux DRAFT, shipped via PRs #63/#64). Can it be reduced
-   to a pointer in this work's clean-up step?
+1. **The bare `<domain>` today**: is it Vercel production? If so, step 1 above is a production
+   cutover, so pick a time and a hostname for Vercel staging.
+2. **Stray `apps/abyssdev-cms-api-prod/`**: a copy of the old cms-api templates, including the
+   deleted image-automation files, committed on 2026-09-24 and not referenced by any cluster. Delete
+   it in this work, with your OK, or leave it?
+3. **frontend `CMS_API_URL`/`GRAPHQL_URL`**: use the in-cluster cms-api Service (recommended: no
+   hairpin through Traefik) or `https://api.<domain>`? It only affects the Secret template comment.
