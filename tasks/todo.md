@@ -1,7 +1,7 @@
 # Todo: cms-admin + frontend on Flux (VPS only), vm-dev retired
 
 Spec: [`SPEC.md`](../SPEC.md) · Plan: [`tasks/plan.md`](plan.md)
-Status: **IN PROGRESS**. 7 of 15 tasks done (Phase 2 complete).
+Status: **IN PROGRESS**. 11 of 15 tasks done (Phase 3 complete).
 
 Each checkbox update ships in the same commit as that phase's work. All verification is offline:
 never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.env*` (except
@@ -175,11 +175,12 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
 - [x] The cms-admin image smoke run, the renders, the asserts and the bump dry-run all pass. The
   cms-admin lint, test and build pass. Results: parity 8/8, T3 4/4, image 14/14, templates 42/42,
   cluster 18/18, CI 26/26, bump cms-admin 7/7 and cms-api 6/6. lint is clean and 471 tests pass.
-- [ ] Commit: the owner confirms the file list and message (Yes/No, no `Co-Authored-By`).
+- [x] Commit: the owner confirmed. Commit `feat(cms-admin): deploy to the VPS with Flux at
+  admin.<APP_DOMAIN>`.
 
 ## Phase 3: `frontend-flux`
 
-- [ ] **T8: The frontend standalone image (Dockerfile, .dockerignore, opt-in standalone).** (M, highest risk)
+- [x] **T8: The frontend standalone image (Dockerfile, .dockerignore, opt-in standalone).** (M, highest risk)
   - Files:
     - `apps/frontend/Dockerfile` (new)
     - `apps/frontend/.dockerignore` (new)
@@ -205,9 +206,24 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
       - `docker history` has no real secret.
     - Fallback if the alpine builder fails: use the `oven/bun:1` Debian builder and record it in
       the spec's Decisions.
+  - Done:
+    - The static checks pass 17/17 (an earlier note miscounted them as 18).
+    - The Docker checks pass 9/9 on the alpine Bun builder, with no fallback needed.
+      - A build without the arg fails at the `test -n` step with the intended message.
+      - `/api/health` returns 200 and `/en` returns 200.
+      - The container runs as uid 1000, and there's no `.env*` under `/app`.
+      - `AUTH_SECRET` isn't in the image env, and the image is 332MB.
+    - A clean scratch copy (no `.env*`, `node_modules` or `.next`; `bun install --frozen-lockfile`):
+      - The plain build passes and creates no `.next/standalone`.
+      - The `NEXT_OUTPUT=standalone` build creates `server.js`.
+    - lint is clean, 82 tests pass, and Prettier is clean.
+    - **Local `bun run build` in the owner's working copy fails before this change as well**
+      (Turbopack PostCSS `__turbopack_context__.a is not a function`, with the original
+      `next.config.mjs`). That's stale local `.next`/`node_modules` state: clean builds pass. Not
+      fixed here, and left to the owner.
   - Deps: T2
 
-- [ ] **T9: Add the frontend `k8s/flux` templates.** (M)
+- [x] **T9: Add the frontend `k8s/flux` templates.** (M)
   - Files:
     - `apps/frontend/k8s/flux/{kustomization,deployment,service,ingress,middleware}.yaml` (new)
   - Acceptance:
@@ -224,9 +240,20 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
     - The envsubst check passes.
     - The assert script: host is `${APP_DOMAIN}`, the Secret name is correct, and no literal
       project values appear.
+  - Done:
+    - `assert_templates.py` now uses Flux-like substitution (`${VAR}`, `:=`, `:-`) and checks for
+      null or empty hosts. frontend passes 46/46 and cms-admin 44/44.
+    - Guard change: the spec's `${APP_DOMAIN:?...}` is **not supported** by Flux (fluxcd/pkg/envsubst
+      README). An empty plain `${APP_DOMAIN}` gives a YAML-null host, which drops the rule host and
+      leaves a catch-all. The host now uses `${APP_DOMAIN:=APP_DOMAIN-is-not-set}`: an unset or empty
+      value gives an invalid DNS name, and the API server rejects it. `IsDNS1123Subdomain` was read in
+      the kubernetes/apimachinery source.
+    - Verified with the real fluxcd/pkg/envsubst (scratchpad `flux_domain_guard.sh`), for
+      non-strict and strict modes and for a missing, empty or set domain. cms-admin's `admin.` form
+      is already rejected when empty.
   - Deps: T8
 
-- [ ] **T10: Wire frontend into vm-prod and add the ConfigMap and Secret templates.** (M)
+- [x] **T10: Wire frontend into vm-prod and add the ConfigMap and Secret templates.** (M)
   - Files:
     - `clusters/abyssdev/vm-prod/abyssdev-frontend-prod.yaml` (new)
     - `clusters/abyssdev/vm-prod/kustomization.yaml`
@@ -242,9 +269,17 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
     - `kubectl kustomize clusters/abyssdev/vm-prod` renders all three.
     - The assert script: each app file has exactly one `APP_IMAGE_TAG:` line and the fields match.
     - `git check-ignore` matches both filled paths.
+  - Done:
+    - `assert_cluster.py frontend` passes 18/18, and the new `assert_secret_frontend.py` passes
+      11/11.
+    - The cluster renders all 3 app syncs, and each vm-prod app file has exactly one
+      `APP_IMAGE_TAG:` line.
+    - Secret template: required `AUTH_SECRET`, `CMS_API_URL`, `GRAPHQL_URL` (`<cms-api-url>/graphql`,
+      Nest's default path) and `REVALIDATE_SECRET`, plus `NEXT_ENV: "production"`.
+      `GRAPHQL_TOKEN` and `STRAPI_API_TOKEN` are optional and commented out.
   - Deps: T9, T6
 
-- [ ] **T11: Add the frontend CI jobs: GHCR publish, cleanup and bump.** (S)
+- [x] **T11: Add the frontend CI jobs: GHCR publish, cleanup and bump.** (S)
   - Files: `.github/workflows/ci.yml`
   - Acceptance:
     - The jobs mirror T7, with these differences:
@@ -257,11 +292,27 @@ never run `kubectl apply`, `flux` or `helm` against a cluster, and never read `.
     - The `ci.yml` assert passes.
     - Bump dry-run: frontend alone works, and a cms-admin + frontend race both land, each touching
       only its own file.
+  - Done:
+    - `assert_ci_app.py frontend` passes 26/26, and cms-admin still passes 26/26.
+    - `bump_apps.sh frontend cms-admin` passes 7/7, including a race with cms-admin.
+    - The three bump groups are distinct: `cms-api-bump-tag`, `cms-admin-bump-tag` and
+      `frontend-bump-tag`.
+    - The only build arg is `GRAPHQL_URL`. No secret is passed, because `AUTH_SECRET` is the
+      Dockerfile's placeholder default.
   - Deps: T1, T10
 
 ### Checkpoint 3
-- [ ] The frontend image smoke run, the renders, the asserts and the full bump dry-run (3 apps) all
+- [x] The frontend image smoke run, the renders, the asserts and the full bump dry-run (3 apps) all
   pass. The frontend lint, test and build pass, and the Vercel-style build is unchanged.
+  - Results: parity 8/8, T3 4/4.
+  - Images: cms-admin 14/14, frontend 17/17 static and 8/8 Docker.
+  - Templates 44/44 and 46/46. The Flux envsubst guard rejects all 6 empty or missing cases and
+    passes both valid ones.
+  - Cluster 18/18 twice, Secret 11/11, CI 26/26 twice.
+  - Bump cms-api 6/6, cms-admin 7/7 and frontend 7/7.
+  - lint is clean for both apps. Tests: frontend 82, cms-admin 471.
+  - The frontend build passes in the clean-copy and Docker builds. The local working copy fails
+    (existing issue, see T8).
 - [ ] Commit: the owner confirms the file list and message (Yes/No, no `Co-Authored-By`).
 
 ## Phase 4: Docs, review and clean-up (workflow steps 4–7)

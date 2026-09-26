@@ -169,7 +169,11 @@ requires. cms-api's techstack gets the `vps-only` rows.
     `env AUTH_TRUST_HOST: "true"` (Auth.js v5 behind Traefik), liveness `tcpSocket`, readiness
     `httpGet /api/health` with `timeoutSeconds: 5`. That endpoint always returns 200 and reports
     cms-api health in the body. Requests 100m/192Mi, limits 500m/512Mi.
-  - Ingress: host `${APP_DOMAIN}` (bare).
+  - Ingress: bare host `${APP_DOMAIN:=APP_DOMAIN-is-not-set}` in both `tls` and `rules`. Flux's
+    envsubst has no `${var:?}` form. A plain `${APP_DOMAIN}` that's empty substitutes to YAML null,
+    which drops the rule host and leaves a catch-all rule, and the TLS host becomes `[null]`. With the
+    default form, an unset or empty value gives an uppercase, invalid DNS name, so the API server
+    rejects the Ingress. This was verified with fluxcd/pkg/envsubst in non-strict and strict modes.
 - **`apps/frontend/k8s/{configmap,secret}.example.yaml`** (new).
   - ConfigMap keys: as cms-admin.
   - Secret keys: `AUTH_SECRET`, `CMS_API_URL`, `GRAPHQL_URL`, `GRAPHQL_TOKEN`, `STRAPI_API_TOKEN`,
