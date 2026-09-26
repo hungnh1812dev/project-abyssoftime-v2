@@ -1,0 +1,11 @@
+# cms-admin's k8s resources, applied by vm-prod's app Flux Kustomization
+# (clusters/abyssdev/vm-prod/abyssdev-cms-admin-prod.yaml). Every ${APP_*} placeholder is substituted
+# by Flux (postBuild) from the <full-app-name>-config ConfigMap, plus APP_IMAGE_TAG, which CI writes
+# into the cluster file on the `deployment` branch after each GHCR push. No project values live here.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+  - middleware.yaml
+  - ingress.yaml

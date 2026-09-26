@@ -1,0 +1,13 @@
+# Never send local env files (a real .env.local lives here) or build/tool output to the Docker build.
+.env*
+.next
+.vercel
+node_modules
+e2e
+test-results
+coverage
+*.md
+.git
+.gitignore
+Dockerfile
+.dockerignore

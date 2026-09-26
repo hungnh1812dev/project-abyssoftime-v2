@@ -46,6 +46,10 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# Filled-in k8s Secret/ConfigMap (templates: k8s/*.example.yaml)
+k8s/secret.yaml
+k8s/configmap.yaml
+
 # temp directory
 .temp
 .tmp
