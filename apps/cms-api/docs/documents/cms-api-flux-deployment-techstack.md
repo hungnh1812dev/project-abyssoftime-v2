@@ -154,3 +154,43 @@ VPS. The first live deploy used amd64-only images, and the arm64 VM's init conta
 | Moving a cluster to another CPU | Change its entry in `TARGETS` | Nothing | Nothing | — |
 | **Verdict** | **Chosen (user decision)**: simplest artifacts, the arch is explicit per cluster, and there's no merge step | Rejected: an extra job and indirection that isn't needed with one fixed arch per cluster | Rejected: slow and flaky | Replaced: can't run on the arm64 VM |
 
+
+## Ingress controller: Traefik (k3s bundled, chosen) vs. ingress-nginx vs. F5 NGINX Ingress vs. Gateway API
+
+vm-prod needs one public HTTPS host for cms-api, and later two more (the bare domain for the
+frontend, `admin.` for cms-admin), on a single-node k3s VPS.
+
+| Criteria | Traefik, bundled with k3s (chosen) | ingress-nginx (community) | F5 NGINX Ingress Controller | Gateway API (on Traefik) |
+| --- | --- | --- | --- | --- |
+| Install on k3s | Nothing: k3s ships it, with its CRDs and a ServiceLB on 80/443 | Disable Traefik, then install and upgrade it yourself | Disable Traefik, then install and upgrade it yourself | Extra CRDs + enabling the provider in Traefik |
+| Maintenance status (2026) | Maintained, and updated with k3s | **Retired upstream in March 2026**: no more security fixes | Maintained (vendor) | Maintained |
+| http → https redirect | A `Middleware` CRD (`redirectScheme`), referenced by annotation | Annotation | Annotation / CRD | `HTTPRoute` filter |
+| cert-manager HTTP-01 | `ingressClassName: traefik` | `ingressClassName: nginx` | Supported | Needs cert-manager's Gateway API support turned on |
+| Objects per app | Ingress + Middleware | Ingress | Ingress | Gateway (shared) + HTTPRoute per app |
+| **Verdict** | **Chosen (user decision)**: already running, maintained, no cluster changes | Rejected: retired and not installed; running an unpatched edge proxy on the internet isn't worth it | Rejected: replaces a working controller for no gain at this size | Rejected for now: more moving parts for three hosts; worth revisiting if routing grows |
+
+The `TRUST_PROXY: "1"` default still holds, because Traefik is the single hop in front of the pod.
+
+## Enabling the Ingress on vm-prod only: kustomize Component (chosen) vs. overlay directories vs. a second Flux Kustomization vs. Ingress in the base
+
+Both clusters apply the same `apps/cms-api/k8s/flux` path. vm-dev (a local VM) must stay internal,
+and CI rewrites one `APP_IMAGE_TAG:` line in each cluster file with sed.
+
+| Criteria | Component + `spec.components` (chosen) | `base/` + `prod/` overlay dirs | Second Flux Kustomization for the Ingress | Ingress in the base, disabled on vm-dev |
+| --- | --- | --- | --- | --- |
+| Change to vm-dev | None: its file and render stay byte-identical | Path changes, and files move to `base/` | None | Needs a way to switch it off on vm-dev (there isn't a clean one) |
+| Change to vm-prod's file | +2 lines (`components`), away from the tag line | `path:` changes | A new file + its own `substituteFrom` + `dependsOn` | None |
+| Reconcile loops | One | One | Two, with ordering between them | One |
+| Existing files moved | None | Deployment and Service move | None | None |
+| Local testing | `kubectl kustomize` of a throwaway kustomization with `components:` | `kubectl kustomize prod/` | Two renders | One render |
+| Adding it to another cluster later | Add `components: [ingress]` | Add an overlay dir | Copy the extra file | — |
+| **Verdict** | **Chosen**: the smallest diff, vm-dev untouched, one loop, and CI sed and merges unaffected | Rejected: moves working files and edits both cluster paths for one extra object | Rejected: a second loop and duplicated config for two objects | Rejected: would expose vm-dev, or needs per-cluster patching anyway |
+
+## Hostname key: bare `APP_DOMAIN` + fixed `api.` prefix (chosen) vs. full `APP_HOST`
+
+| Criteria | `APP_DOMAIN`, host `api.${APP_DOMAIN}` (chosen) | `APP_HOST`, the full host (first draft) |
+| --- | --- | --- |
+| Fits the subdomain plan (bare domain → frontend, `api.` → cms-api, `admin.` → cms-admin) | Yes: one domain value; each app adds its own prefix | Each app's ConfigMap repeats the full host |
+| Key missing or empty | Host renders as `api.` → invalid → Flux apply fails visibly | Host renders empty → a host-less Ingress that answers for **every** hostname |
+| Serving cms-api on a different subdomain | Edit the manifest | Change the ConfigMap |
+| **Verdict** | **Chosen (user decision)**: matches the planned subdomains and turns a missing key into a loud failure | Replaced: its failure mode silently exposes a catch-all |

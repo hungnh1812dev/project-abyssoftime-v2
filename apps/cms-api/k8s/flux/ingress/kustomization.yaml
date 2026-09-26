@@ -1,0 +1,10 @@
+# Opt-in public Ingress for cms-api, as a kustomize Component so the base (../kustomization.yaml)
+# stays ClusterIP-only. A cluster enables it with `spec.components: [ingress]` in its app Flux
+# Kustomization (today only vm-prod: clusters/abyssdev/vm-prod/abyssdev-apps-prod.yaml). Needs the
+# extra ConfigMap keys APP_DOMAIN (host api.<domain>) and APP_TLS_CLUSTER_ISSUER, plus Traefik and
+# cert-manager on the cluster.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - middleware.yaml
+  - ingress.yaml
