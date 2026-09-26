@@ -1,35 +1,37 @@
 # cms-api deployment runbook (k3s + Flux)
 
-Step-by-step setup for deploying cms-api with Flux to two k3s clusters, **vm-dev** (a local VM) and
-**vm-prod** (a VPS), from zero to the first deploy. For the design, gotchas and day-2 details, see
+Step-by-step setup for deploying cms-api with Flux to the k3s cluster **vm-prod** (a VPS), from
+zero to the first deploy. (A second cluster, vm-dev on a local arm64 VM, was retired on 2026-09-26.)
+cms-admin and frontend deploy to the same cluster the same way; their runbooks are in their own
+`docs/documents/*-flux-deployment.md`. For the design, gotchas and day-2 details, see
 [docs/documents/cms-api-flux-deployment.md](../docs/documents/cms-api-flux-deployment.md).
 
 ```
-push to master ──▶ GitHub Actions ──▶ GHCR  <run>-<sha> + <run>-<sha>-init
+push to master ──▶ GitHub Actions ──▶ GHCR  <run>-<sha>-amd64 + <run>-<sha>-amd64-init
                         │
                         └─ cms-api-bump-tag ──▶ commits APP_IMAGE_TAG to the `deployment` branch
-                                                              ▲
-vm-dev / vm-prod (k3s + Flux) ── pulls `deployment` ──────────┘   every 1m (outbound, read-only key)
+                           (.github/scripts/bump-flux-tag.sh)         ▲
+vm-prod (k3s + Flux) ── pulls `deployment` ───────────────────────────┘   every 1m (outbound, read-only key)
       └─ applies Deployment: init (migrations) → app
 ```
 
-GitHub never connects to the clusters. Every connection goes out from the VM or VPS. Flux reads only
+GitHub never connects to the cluster. Every connection goes out from the VPS. Flux reads only
 the `deployment` branch. `master` builds images, and it reaches Flux when you merge `master` into
 `deployment`.
 
 Placeholders used below:
 
-| Placeholder | Meaning | vm-dev | vm-prod |
-| --- | --- | --- | --- |
-| `<cluster>` | Cluster folder, `clusters/abyssdev/<cluster>` | `vm-dev` | `vm-prod` |
-| `<app-env>` | Environment | `develop` | `prod` |
-| `<config-name>` | ConfigMap name, fixed by the cluster file | `abyssdev-cms-api-develop-config` | `abyssdev-cms-api-prod-config` |
-| `<app-kustomization>` | App Flux Kustomization | `abyssdev-cms-api-sync-develop` | `abyssdev-cms-api-sync-prod` |
-| `<app-name>`, `<app-service-name>`, `<app-namespace>` | Your values in the ConfigMap | — | — |
-| `<full-app-name>` | `<app-name>-<app-service-name>-<app-env>` (Deployment, Service) | — | — |
-| `<full-namespace>` | `<app-namespace>-<app-env>` | — | — |
-| `<owner>` | Your GitHub user | — | — |
-| `<domain>` | Bare site domain; cms-api is served at `api.<domain>` (step 8) | — | yours |
+| Placeholder | Meaning | Value |
+| --- | --- | --- |
+| `<cluster>` | Cluster folder, `clusters/abyssdev/<cluster>` | `vm-prod` |
+| `<app-env>` | Environment | `prod` |
+| `<config-name>` | ConfigMap name, fixed by the cluster file | `abyssdev-cms-api-prod-config` |
+| `<app-kustomization>` | App Flux Kustomization | `abyssdev-cms-api-sync-prod` |
+| `<app-name>`, `<app-service-name>`, `<app-namespace>` | Your values in the ConfigMap | — |
+| `<full-app-name>` | `<app-name>-<app-service-name>-<app-env>` (Deployment, Service) | — |
+| `<full-namespace>` | `<app-namespace>-<app-env>` | — |
+| `<owner>` | Your GitHub user | — |
+| `<domain>` | Bare site domain; cms-api is served at `api.<domain>` (step 8) | yours |
 
 ---
 
@@ -42,11 +44,11 @@ Settings → Secrets and variables → Actions → **Variables** tab → New rep
 | Variable | Value | Required | What it does |
 | --- | --- | --- | --- |
 | `CMS_API_IMAGE_REPO` | `ghcr.io/<owner>/project-abyssoftime-v2/cms-api` (**lowercase**) | Yes | Where CI pushes images. If it isn't set, the publish job fails straight away |
-| `CMS_API_GHCR_CLEANUP` | `true` | No. Set it **only after step 7** | Keeps the newest 20 image versions (5 releases × 4 images) and deletes older ones |
+| `CMS_API_GHCR_CLEANUP` | `true` | No. Set it **only after step 7** | Keeps the newest 10 image versions (5 releases × 2 images) and deletes older ones |
 | `CMS_API_APP_PORT` | — | **Delete it** | No longer used |
 
 `CMS_API_RENDER_DEPLOY_HOOK` (in the `Production` environment) is unrelated: it's the `staging` →
-Render deploy. Leave it as it is.
+Render deploy (`staging` deploys to the hosted platforms, `master` to the VPS). Leave it as it is.
 
 No secrets are needed. CI uses the built-in `GITHUB_TOKEN`: `packages: write` to publish, and
 `contents: write` to push the tag to `deployment`. Nothing about the clusters is stored in GitHub.
@@ -70,24 +72,23 @@ git push origin deployment
 ```
 
 `deployment` must accept pushes from GitHub Actions. That means no branch protection or ruleset on
-it, or a rule with a bypass for GitHub Actions. Otherwise `cms-api-bump-tag` fails.
+it, or a rule with a bypass for GitHub Actions. Otherwise `cms-api-bump-tag` fails (so do the
+cms-admin and frontend bump jobs, which push the same way).
 
 ### 1.3 Build the first images
 
-Merge or push to `master` with a change under `apps/cms-api/`. The two **CMS API Deploy - GHCR
-(amd64 / arm64)** jobs each build natively and push two tags, so 4 images in total:
+Merge or push to `master` with a change under `apps/cms-api/`. The **CMS API Deploy - GHCR** job
+builds on `ubuntu-latest` and pushes two amd64 tags:
 
 ```
-ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>-amd64-init   # vm-prod (Intel VPS)
+ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>-amd64-init
 ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>-amd64
-ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>-arm64-init   # vm-dev (M1 VM)
-ghcr.io/<owner>/project-abyssoftime-v2/cms-api:<run_number>-<sha7>-arm64
 ```
 
-Then **CMS API Deploy - Bump Flux tag** (`cms-api-bump-tag`) commits
-`chore(cms-api): deploy image <run_number>-<sha7>` to `deployment`. That commit sets vm-dev to
-`…-arm64` and vm-prod to `…-amd64`. If it fails with "merge master
-into deployment first", do step 1.2.
+Then **CMS API Deploy - Bump Flux tag** (`cms-api-bump-tag`) runs `.github/scripts/bump-flux-tag.sh`,
+which commits `chore(cms-api): deploy image <run_number>-<sha7>` to `deployment`. That commit sets
+vm-prod's `APP_IMAGE_TAG` to `…-amd64`. If it fails with "merge master into deployment first", do
+step 1.2.
 
 ### 1.4 Package settings (github.com → your profile → Packages → `cms-api` → Package settings)
 
@@ -117,7 +118,7 @@ afterwards.
 
 ## 3. VM / VPS: k3s and the Flux CLI
 
-Do this on each cluster: the local VM for vm-dev, and the VPS for vm-prod.
+Do this on the VPS.
 
 ### 3.1 k3s
 
@@ -146,17 +147,17 @@ flux check --pre           # all checks must pass
 
 ### 3.3 Network
 
-- **Outbound** from the VM or VPS: `github.com` (SSH 22 for git, 443), `ghcr.io` and
+- **Outbound** from the VPS: `github.com` (SSH 22 for git, 443), `ghcr.io` and
   `pkg-containers.githubusercontent.com` (443, images). Also whatever the app needs, such as your
   Postgres host (`DB_HOST`) and your storage and email providers.
-- **Inbound:** nothing is needed for deploys. vm-prod serves cms-api publicly, so it needs 80 and 443
-  open (step 8). vm-dev needs nothing.
+- **Inbound:** nothing is needed for deploys. vm-prod serves the apps publicly, so it needs 80 and
+  443 open (step 8).
 
 ---
 
 ## 4. Install Flux (bootstrap)
 
-On each cluster:
+On the VPS:
 
 ```bash
 export GITHUB_TOKEN=<the fine-grained token from step 2>
@@ -205,7 +206,7 @@ flux get sources git        # flux-system  Ready=True, revision deployment@sha1:
 
 ## 5. Cluster inputs: namespace, Secret and ConfigMap
 
-These two objects hold everything that isn't in code. Create them on each cluster **before** step
+These two objects hold everything that isn't in code. Create them on the cluster **before** step
 6. Otherwise Flux fails on the missing ConfigMap.
 
 Get the templates onto the machine where you run `kubectl`, from a clone of this repo or with
@@ -227,7 +228,7 @@ Fill in `configmap.yaml`, quoting every value:
 
 ```yaml
 metadata:
-  name: <config-name>                     # abyssdev-cms-api-develop-config / abyssdev-cms-api-prod-config
+  name: <config-name>                     # abyssdev-cms-api-prod-config
   namespace: flux-system                  # must stay flux-system
 data:
   APP_NAME: "<app-name>"
@@ -236,13 +237,12 @@ data:
   APP_ENV: "<app-env>"
   APP_PORT: "3000"
   APP_IMAGE_REPO: "ghcr.io/<owner>/project-abyssoftime-v2/cms-api"   # same as CMS_API_IMAGE_REPO
-  # vm-prod only (the Ingress, step 8):
+  # The Ingress (step 8):
   APP_DOMAIN: "<domain>"                  # bare domain; cms-api is served at api.<domain>
   APP_TLS_CLUSTER_ISSUER: "<issuer-name>" # e.g. letsencrypt-prod
 ```
 
-The name must match `substituteFrom` in `clusters/abyssdev/<cluster>/abyssdev-apps-*.yaml`. Leave
-the two vm-prod keys out on vm-dev.
+The name must match `substituteFrom` in `clusters/abyssdev/vm-prod/abyssdev-apps-prod.yaml`.
 
 ### 5.3 Secret: runtime config and secrets (`<full-namespace>`)
 
@@ -282,10 +282,12 @@ The manifests are already in this repo. There's nothing to copy:
 ```
 clusters/abyssdev/<cluster>/
 ├── flux-system/                   ← created by bootstrap, don't edit
-├── kustomization.yaml             ← flux-system/ + the app file
-└── abyssdev-apps-<env>.yaml       ← app Kustomization: path ./apps/cms-api/k8s/flux, <config-name>, APP_IMAGE_TAG
+├── kustomization.yaml             ← flux-system/ + one app file per app
+├── abyssdev-apps-prod.yaml        ← cms-api's app Kustomization: path ./apps/cms-api/k8s/flux, <config-name>, APP_IMAGE_TAG
+├── abyssdev-cms-admin-prod.yaml   ← cms-admin (see its own deployment doc)
+└── abyssdev-frontend-prod.yaml    ← frontend (see its own deployment doc)
 apps/cms-api/k8s/flux/             ← Deployment + Service, ${APP_*} only
-└── ingress/                       ← Ingress + https redirect (Component, vm-prod only, step 8)
+└── ingress/                       ← Ingress + https redirect (Component, enabled by vm-prod, step 8)
 ```
 
 Once `deployment` contains them (step 1.2) and has a real tag (1.3 or 6.1), Flux applies them on
@@ -294,8 +296,8 @@ its next poll.
 ### 6.1 Switching from Flux image automation (one time)
 
 Earlier, Flux image automation committed tags to `deployment`. The first time you merge `master`
-into `deployment` after this change, vm-dev's `APP_IMAGE_TAG` line conflicts. Keep the real tag and
-drop the trailing comment, and set vm-prod's line to the same tag:
+into `deployment` after this change, the cluster file's `APP_IMAGE_TAG` line conflicts. Keep the real
+tag and drop the trailing comment:
 
 ```yaml
       APP_IMAGE_TAG: "75-4bef740"
@@ -303,7 +305,14 @@ drop the trailing comment, and set vm-prod's line to the same tag:
 
 After the merge, `prune: true` removes the old image-automation objects from the cluster.
 
-### 6.2 Switching from the old helmfile deploy (one time)
+### 6.2 Retiring vm-dev (one time, 2026-09-26)
+
+`clusters/abyssdev/vm-dev/` was deleted from `master`. When you merge `master` into `deployment`,
+take that deletion and keep `deployment`'s real tag in vm-prod's cluster file. Then run
+`flux uninstall` on the old VM, or shut it down. Until then its Flux sync fails with "path not
+found", and nothing on the VM is deleted by that failure.
+
+### 6.3 Switching from the old helmfile deploy (one time)
 
 If cms-api still runs from Helm, remove it just before or after the merge above. Flux can't take
 over the Helm-made Deployment, because its selector labels differ and selectors can't change.
@@ -327,8 +336,8 @@ curl localhost:3000/health
 ```
 
 Then test the automatic path: push a cms-api change to `master`. Within a few minutes you should see
-a `chore(cms-api): deploy image <tag>` commit on `deployment`, no extra CI run, and a new pod on both
-clusters.
+a `chore(cms-api): deploy image <tag>` commit on `deployment`, no extra CI run, and a new pod on
+vm-prod.
 
 Once this works, you can turn on GHCR cleanup: set `CMS_API_GHCR_CLEANUP=true` (step 1.1).
 
@@ -337,17 +346,17 @@ Once this works, you can turn on GHCR cleanup: set `CMS_API_GHCR_CLEANUP=true` (
 ## 8. Expose cms-api to the internet (vm-prod)
 
 vm-prod serves cms-api at **`https://api.<domain>`** through the Traefik that comes with k3s. The
-bare `<domain>` is for the frontend and `admin.<domain>` is for cms-admin; neither is deployed yet.
-The Ingress lives in `apps/cms-api/k8s/flux/ingress/` and only vm-prod's cluster file turns it on
-(`components: [ingress]`). vm-dev stays internal.
+bare `<domain>` is the frontend and `admin.<domain>` is cms-admin, both on the same cluster (see their
+deployment docs). The Ingress lives in `apps/cms-api/k8s/flux/ingress/`, and vm-prod's cluster file
+turns it on (`components: [ingress]`).
 
 Do 8.1–8.4 **before** merging `master` into `deployment`. Otherwise the Flux apply fails: with no
 `APP_DOMAIN`, the host renders as `api.`, and the API server rejects it.
 
 ### 8.1 DNS and firewall
 
-- An `A` (and `AAAA`, if the VPS has IPv6) record for `api.<domain>` pointing at the VPS. Records
-  for `<domain>` and `admin.<domain>` can wait until those apps ship.
+- An `A` (and `AAAA`, if the VPS has IPv6) record for `api.<domain>` pointing at the VPS, plus
+  `<domain>` and `admin.<domain>` for the frontend and cms-admin.
 - Inbound TCP **80 and 443** open on the VPS (provider firewall and `ufw`, if used). Port 80 has to
   stay open: Let's Encrypt validates over it, and Traefik redirects it to https.
 
@@ -406,8 +415,8 @@ kubectl apply --server-side -f configmap.yaml
 ### 8.4 CORS
 
 Browsers call cms-api from the other subdomains, so `CORS_ORIGINS` in vm-prod's `secret.yaml` has to
-list them. Add each app once it's live, e.g. `"https://<domain>,https://admin.<domain>"`. Then
-re-apply and `rollout restart` (see Everyday commands).
+list them: `"https://<domain>,https://admin.<domain>"`. Then re-apply and `rollout restart` (see
+Everyday commands).
 
 ### 8.5 Deploy and verify
 
@@ -457,12 +466,12 @@ Everything Flux-related that you might tune:
 
 | Setting | Where | Default here | Notes |
 | --- | --- | --- | --- |
-| Branch Flux reads | `clusters/abyssdev/<cluster>/flux-system/gotk-sync.yaml` (GitRepository `ref.branch`) | `deployment` | Change it in-cluster too (step 4) |
+| Branch Flux reads | `clusters/abyssdev/vm-prod/flux-system/gotk-sync.yaml` (GitRepository `ref.branch`) | `deployment` | Change it in-cluster too (step 4) |
 | Git poll | same file, GitRepository `interval` | 1m | Created by bootstrap |
-| App reconcile / drift fix | `clusters/abyssdev/<cluster>/abyssdev-apps-*.yaml` `spec.interval` | 3m | Also runs right after each new revision |
+| App reconcile / drift fix | `clusters/abyssdev/vm-prod/abyssdev-apps-prod.yaml` `spec.interval` | 3m | Also runs right after each new revision |
 | Rollout health timeout | same file, `wait: true`, `timeout` | 5m | Ready only once pods are healthy |
-| Deployed tag | `APP_IMAGE_TAG` line in the same file, **on `deployment`** | set by `cms-api-bump-tag` (`<run>-<sha7>-<arch>`) | On `master` it's a placeholder. Keep it on one line (CI edits it with `sed`) |
-| Public Ingress on/off | same file, `spec.components: [ingress]` | vm-prod on, vm-dev off | Needs the step 8 prerequisites on that cluster first |
+| Deployed tag | `APP_IMAGE_TAG` line in the same file, **on `deployment`** | set by `cms-api-bump-tag` via `.github/scripts/bump-flux-tag.sh` (`<run>-<sha7>-amd64`) | On `master` it's a placeholder. Keep it on one line (CI edits it with `sed`) |
+| Public Ingress on/off | same file, `spec.components: [ingress]` | on | Needs the step 8 prerequisites first |
 
 Nothing else needs configuring for Flux: no webhooks, no inbound ports, and no extra secrets in
 Flux. The only inbound ports are 80 and 443, for vm-prod's public Ingress.
@@ -481,11 +490,11 @@ kubectl -n <full-namespace> rollout restart deploy/<full-app-name>
 vi configmap.yaml && kubectl apply --server-side -f configmap.yaml
 flux reconcile kustomization <app-kustomization>
 
-# Roll back / pin a tag: set APP_IMAGE_TAG to an older <run>-<sha7>-<arch> in both cluster files on
+# Roll back / pin a tag: set APP_IMAGE_TAG to an older <run>-<sha7>-amd64 in vm-prod's cluster file on
 # `deployment`, commit, push. It holds until the next cms-api build on master.
 flux reconcile kustomization <app-kustomization> --with-source
 
-# Pause all deploys on one cluster
+# Pause cms-api deploys
 flux suspend kustomization <app-kustomization>
 ```
 
@@ -504,7 +513,7 @@ Rolling back doesn't undo database migrations.
 | New tag on `deployment`, but the cluster doesn't change | Flux still reads `master` or an old path | `flux get sources git` should show `deployment@…`; otherwise patch or re-bootstrap (step 4) |
 | Kustomization: `ConfigMap … not found` | ConfigMap missing, misnamed, or not in `flux-system` | Step 5.2: the name must match the cluster file |
 | Pod `ImagePullBackOff` | Wrong `APP_IMAGE_REPO`, the tag doesn't exist (for example the old `"dev"` placeholder), or the package is private | Check the ConfigMap and the tag on `deployment`, and the package visibility |
-| Pod `Init:CrashLoopBackOff`, and `kubectl logs … -c init` says `exec format error` | The tag's CPU arch doesn't match the node (for example amd64 on the M1 VM, or an old arch-less tag, which is amd64) | vm-dev needs `…-arm64` and vm-prod `…-amd64` on `deployment`. The next `master` build sets both. If a cluster moved to another CPU, change its entry in `cms-api-bump-tag`'s `TARGETS` |
+| Pod `Init:CrashLoopBackOff`, and `kubectl logs … -c init` says `exec format error` | The tag's CPU arch doesn't match the node (for example a leftover `-arm64` tag from the retired vm-dev) | vm-prod needs `…-amd64` on `deployment`; the next `master` build sets it. For an arm64 node, add an arm64 build back to `cms-api-ghcr-publish` and pass `<file>:arm64` to the bump script |
 | Pod `Init:CrashLoopBackOff` | Migrations failed: DB unreachable or wrong `DB_*` | `kubectl logs … -c init`, fix `secret.yaml`, re-apply, restart |
 | App `CrashLoopBackOff` on boot | Env validation: a required key is missing, or an optional key is `""` | `kubectl logs …`, fix `secret.yaml` |
 | Manifest change on `master` not live | `deployment` not updated | Merge `master` into `deployment` |
@@ -521,14 +530,14 @@ Rolling back doesn't undo database migrations.
 - [ ] `deployment` exists, contains `master`, and accepts pushes from GitHub Actions
 - [ ] GHCR package public (+ Admin role for this repo, if you'll use cleanup)
 - [ ] Fine-grained token created (Administration RW, Contents RW, Metadata R)
-- [ ] Per cluster: k3s running, `kubectl get nodes` works, `flux check --pre` passes
-- [ ] Per cluster: `flux bootstrap github … --branch=deployment --path=clusters/abyssdev/<cluster>`
+- [ ] VPS: k3s running, `kubectl get nodes` works, `flux check --pre` passes
+- [ ] VPS: `flux bootstrap github … --branch=deployment --path=clusters/abyssdev/vm-prod`
       (or the two `kubectl patch` commands)
-- [ ] Per cluster: namespace, ConfigMap (`<config-name>` in `flux-system`) and Secret applied with
+- [ ] VPS: namespace, ConfigMap (`<config-name>` in `flux-system`) and Secret applied with
       `--server-side`
-- [ ] `APP_IMAGE_TAG` on `deployment` is a real tag in both cluster files
-- [ ] Old Helm releases uninstalled
-- [ ] `flux get kustomizations` Ready, pod Running, `/health` OK, on both clusters
+- [ ] `APP_IMAGE_TAG` on `deployment` is a real tag in vm-prod's cluster file
+- [ ] Old Helm releases uninstalled; old vm-dev VM `flux uninstall`ed or shut down (step 6.2)
+- [ ] `flux get kustomizations` Ready, pod Running, `/health` OK
 - [ ] A test push to `master` produces a bot commit on `deployment` and a new pod
 - [ ] vm-prod: DNS for `api.<domain>`, ports 80/443, cert-manager + ClusterIssuer, `APP_DOMAIN` +
       `APP_TLS_CLUSTER_ISSUER` in the ConfigMap, all **before** the merge (step 8)

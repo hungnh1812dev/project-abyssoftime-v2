@@ -58,3 +58,6 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+# Filled-in k8s Secret/ConfigMap (templates: k8s/*.example.yaml)
+k8s/secret.yaml
+k8s/configmap.yaml

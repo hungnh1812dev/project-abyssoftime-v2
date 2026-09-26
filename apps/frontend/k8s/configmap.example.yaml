@@ -1,0 +1,33 @@
+# frontend project-info ConfigMap template: the ${APP_*} values Flux substitutes into k8s/flux/*
+# (via postBuild.substituteFrom, which only reads flux-system). Placeholders only; never commit real
+# values. Created by hand on the VPS before the frontend's first Flux deploy:
+#   cp k8s/configmap.example.yaml k8s/configmap.yaml   # gitignored; fill in name + values
+#   kubectl apply --server-side -f k8s/configmap.yaml
+# metadata.name (<app-name>-<app-service-name>-<app-env>-config) must match the substituteFrom
+# ConfigMap in clusters/abyssdev/vm-prod/abyssdev-frontend-prod.yaml.
+# Derived names: namespace <APP_NAMESPACE>-<APP_ENV>, app <APP_NAME>-<APP_SERVICE_NAME>-<APP_ENV>.
+# Runtime settings and secrets are NOT here: they go in the Secret (k8s/secret.example.yaml). The
+# public GraphQL URL for the health check is baked into the image from the FRONTEND_GRAPHQL_URL repo
+# variable. Quote every value: ConfigMap data must be strings. After a change, re-apply and run
+# `flux reconcile kustomization abyssdev-frontend-sync-prod`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: <app-name>-<app-service-name>-<app-env>-config
+  namespace: flux-system
+data:
+  # Application / product name
+  APP_NAME: "<app-name>"
+  # Service within the application
+  APP_SERVICE_NAME: "<app-service-name>"
+  # Base namespace (the app runs in <APP_NAMESPACE>-<APP_ENV>)
+  APP_NAMESPACE: "<app-namespace>"
+  # Environment, e.g. prod
+  APP_ENV: "<app-env>"
+  # Image repository without a tag (image <repo>:<tag>)
+  APP_IMAGE_REPO: "<registry/owner/repo/image>"
+  # Bare domain, no scheme or subdomain. The frontend is served at <APP_DOMAIN> itself.
+  # Set it BEFORE merging master into deployment, or the Flux apply fails (host "APP_DOMAIN-is-not-set").
+  APP_DOMAIN: "<example.com>"
+  # cert-manager ClusterIssuer that issues the TLS certificate
+  APP_TLS_CLUSTER_ISSUER: "<cluster-issuer-name>"

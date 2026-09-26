@@ -8,6 +8,9 @@ const CMS_HEALTH_URL = `${new URL(process.env.GRAPHQL_URL ?? "http://localhost:5
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Only the Docker image (apps/frontend/Dockerfile) sets NEXT_OUTPUT=standalone, so the Vercel build
+  // stays exactly as before.
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   env: {
     CMS_HEALTH_URL,
   },
