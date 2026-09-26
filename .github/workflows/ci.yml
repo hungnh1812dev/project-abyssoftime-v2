@@ -395,28 +395,21 @@ jobs:
       - name: Build
         run: bun run build
 
-  # master → GHCR images for the k3s deployment (staging keeps deploying to Render, see below). The
-  # two clusters run on different CPUs (vm-dev: arm64 VM on Apple Silicon, vm-prod: amd64 VPS), so
-  # every release is 4 images, each built natively on its own runner: <tag>-<arch> (app) and
-  # <tag>-<arch>-init (migrations), <tag> = <run_number>-<sha7>, <arch> = amd64 | arm64. Free arm64
-  # runners need this repo to stay public.
+  # Deploy targets by branch: staging → Render/Vercel, master → VPS. master pushes GHCR images for
+  # the k3s deployment on the VPS (vm-prod, amd64); the Render/Vercel jobs at the bottom run on
+  # staging only. Every release is 2 images: <tag>-amd64 (app) and <tag>-amd64-init
+  # (migrations), <tag> = <run_number>-<sha7>. The arch suffix stays in the tag so the format doesn't
+  # change if another arch is added again.
   cms-api-ghcr-publish:
-    name: CMS API Deploy - GHCR (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
+    name: CMS API Deploy - GHCR
+    runs-on: ubuntu-latest
     environment: Production
     needs: [cms-api-build]
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-    # Arch-less <run_number>-<sha7>, identical in both legs; cms-api-bump-tag appends each cluster's arch.
+    # Arch-less <run_number>-<sha7>; cms-api-bump-tag appends the cluster's arch.
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
 
@@ -455,7 +448,7 @@ jobs:
           target: runner
           push: false
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          tags: ${{ vars.CMS_API_IMAGE_REPO }}:${{ steps.tag.outputs.tag }}-${{ matrix.arch }}
+          tags: ${{ vars.CMS_API_IMAGE_REPO }}:${{ steps.tag.outputs.tag }}-amd64
 
       - name: Build migrator image
         uses: docker/build-push-action@v6
@@ -464,21 +457,21 @@ jobs:
           target: migrator
           push: false
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          tags: ${{ vars.CMS_API_IMAGE_REPO }}:${{ steps.tag.outputs.tag }}-${{ matrix.arch }}-init
+          tags: ${{ vars.CMS_API_IMAGE_REPO }}:${{ steps.tag.outputs.tag }}-amd64-init
 
       # `-init` first, so an app image never exists without its init image (the migrations it needs).
       - name: Push images
         env:
           IMAGE: ${{ vars.CMS_API_IMAGE_REPO }}
           TAG: ${{ steps.tag.outputs.tag }}
-          ARCH: ${{ matrix.arch }}
+          ARCH: amd64
         run: |
           docker push "$IMAGE:$TAG-$ARCH-init"
           docker push "$IMAGE:$TAG-$ARCH"
 
-  # Keep GHCR storage bounded: each release is 4 versions (app + init, amd64 + arm64), so keeping the
-  # newest 20 keeps 5 releases; everything older is deleted, tagged or not. A separate job so the
-  # publish matrix doesn't run it twice. Opt-in via the CMS_API_GHCR_CLEANUP repo variable ('true').
+  # Keep GHCR storage bounded: each release is 2 versions (app + init), so keeping the newest 10 keeps
+  # 5 releases; everything older is deleted, tagged or not. Opt-in via the CMS_API_GHCR_CLEANUP repo
+  # variable ('true').
   # Needs the package's "Manage Actions access" to give this repo the Admin role.
   cms-api-ghcr-cleanup:
     name: CMS API Deploy - GHCR cleanup
@@ -506,14 +499,14 @@ jobs:
           owner: ${{ steps.pkg.outputs.owner }}
           package-name: ${{ steps.pkg.outputs.name }}
           package-type: container
-          min-versions-to-keep: 20
+          min-versions-to-keep: 10
 
-  # Deploys the tag just pushed to GHCR: commits <tag>-<arch> as APP_IMAGE_TAG (app image
-  # <tag>-<arch>, init image <tag>-<arch>-init) in each cluster's app Kustomization on the `deployment`
-  # branch, which is the only branch Flux reads (vm-dev: arm64 local VM, vm-prod: amd64 VPS). master itself is never written. No CI loop:
+  # Deploys the tag just pushed to GHCR: commits <tag>-amd64 as APP_IMAGE_TAG (app image <tag>-amd64,
+  # init image <tag>-amd64-init) in vm-prod's cms-api app Kustomization on the `deployment` branch,
+  # which is the only branch Flux reads. master itself is never written. No CI loop:
   # this workflow only runs on develop/staging/master pushes, and a GITHUB_TOKEN push never triggers
-  # workflows anyway. Plain git + sed, no extra tools. Other manifest changes reach `deployment` by
-  # merging master into it by hand.
+  # workflows anyway. The logic lives in .github/scripts/bump-flux-tag.sh (plain git + sed, shared by
+  # every app's bump job). Other manifest changes reach `deployment` by merging master into it by hand.
   cms-api-bump-tag:
     name: CMS API Deploy - Bump Flux tag
     runs-on: ubuntu-latest
@@ -527,69 +520,274 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      # The bump script comes from the commit that built the image, so it works before master has
+      # been merged into `deployment`; the tag files themselves are edited in a `deployment` checkout.
+      - name: Checkout bump script
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
       - name: Checkout deployment
         uses: actions/checkout@v5
         with:
           ref: deployment
+          path: deployment
 
-      # Each attempt starts from the current origin/deployment and re-applies the edit, so a
-      # concurrent push is retried without rebase conflicts. A file already on a newer run number is
-      # left alone, so an older run finishing last can't roll the clusters back. sed writes via a temp
-      # file (no `sed -i`) so the script behaves the same with GNU and BSD sed.
       - name: Commit APP_IMAGE_TAG to deployment
+        working-directory: deployment
         env:
           TAG: ${{ needs.cms-api-ghcr-publish.outputs.tag }}
+        # <cluster file>:<arch its nodes run>
         run: |
-          set -euo pipefail
-          if ! [[ "$TAG" =~ ^[0-9]+-[0-9a-f]{7}$ ]]; then
-            echo "::error::Unexpected image tag '$TAG' (want <run_number>-<sha7>)"
+          ../.github/scripts/bump-flux-tag.sh cms-api "$TAG" \
+            clusters/abyssdev/vm-prod/abyssdev-apps-prod.yaml:amd64
+
+  # master → one GHCR image per release for cms-admin on the VPS (vm-prod, amd64): <tag>-amd64,
+  # <tag> = <run_number>-<sha7>. cms-admin is a static Vite SPA, so the cms-api origin is baked in at
+  # build time from the CMS_ADMIN_API_URL repo variable (e.g. https://api.<domain>, no path).
+  cms-admin-ghcr-publish:
+    name: CMS Admin Deploy - GHCR
+    runs-on: ubuntu-latest
+    environment: Production
+    needs: [cms-admin-build]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    # Arch-less <run_number>-<sha7>; cms-admin-bump-tag appends the cluster's arch.
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # The image repo (e.g. ghcr.io/<owner>/<repo>/cms-admin, lowercase) and the API URL are repo
+      # variables, not code.
+      - name: Check repo variables
+        env:
+          IMAGE: ${{ vars.CMS_ADMIN_IMAGE_REPO }}
+          API_URL: ${{ vars.CMS_ADMIN_API_URL }}
+        run: |
+          if [ -z "$IMAGE" ]; then
+            echo "::error::Repository variable CMS_ADMIN_IMAGE_REPO is not set"
             exit 1
           fi
-          # <cluster file>:<arch its nodes run>
-          TARGETS=(
-            clusters/abyssdev/vm-dev/abyssdev-apps-develop.yaml:arm64
-            clusters/abyssdev/vm-prod/abyssdev-apps-prod.yaml:amd64
-          )
-          FILES=()
-          for t in "${TARGETS[@]}"; do FILES+=("${t%:*}"); done
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -z "$API_URL" ]; then
+            echo "::error::Repository variable CMS_ADMIN_API_URL is not set"
+            exit 1
+          fi
 
-          for attempt in 1 2 3; do
-            git fetch origin deployment
-            git reset --hard origin/deployment
-            for t in "${TARGETS[@]}"; do
-              f=${t%:*}
-              want="$TAG-${t##*:}"
-              if [ ! -f "$f" ]; then
-                echo "::error::$f is not on the deployment branch; merge master into deployment first"
-                exit 1
-              fi
-              cur=$(sed -nE 's/^[[:space:]]*APP_IMAGE_TAG:[[:space:]]*"?([^"#[:space:]]*)"?.*/\1/p' "$f")
-              if [[ "$cur" =~ ^([0-9]+)-[0-9a-f]{7}(-(amd64|arm64))?$ ]] && (( BASH_REMATCH[1] >= ${TAG%%-*} )); then
-                echo "$f is already on $cur, not replacing it with $want"
-                continue
-              fi
-              sed -E "s/^([[:space:]]*APP_IMAGE_TAG:).*/\1 \"$want\"/" "$f" > "$f.tmp"
-              mv "$f.tmp" "$f"
-              if [ "$(grep -cE "^[[:space:]]*APP_IMAGE_TAG: \"$want\"$" "$f")" != 1 ]; then
-                echo "::error::$f: APP_IMAGE_TAG was not set to $want"
-                exit 1
-              fi
-            done
+      - name: Compute image tag
+        id: tag
+        run: echo "tag=${{ github.run_number }}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-            if git diff --quiet; then
-              echo "Nothing to commit"
-              exit 0
-            fi
-            git commit -m "chore(cms-api): deploy image $TAG" -- "${FILES[@]}"
-            if git push origin HEAD:deployment; then
-              exit 0
-            fi
-            echo "Push rejected (attempt $attempt), retrying on the new deployment"
-          done
-          echo "::error::Could not push the tag bump to deployment after 3 attempts"
-          exit 1
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/cms-admin
+          push: true
+          build-args: VITE_API_URL=${{ vars.CMS_ADMIN_API_URL }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          tags: ${{ vars.CMS_ADMIN_IMAGE_REPO }}:${{ steps.tag.outputs.tag }}-amd64
+
+  # Keep GHCR storage bounded: one version per release, so keeping the newest 5 keeps 5 releases.
+  # Opt-in via the CMS_ADMIN_GHCR_CLEANUP repo variable ('true'). Needs the package's "Manage Actions
+  # access" to give this repo the Admin role.
+  cms-admin-ghcr-cleanup:
+    name: CMS Admin Deploy - GHCR cleanup
+    runs-on: ubuntu-latest
+    environment: Production
+    needs: [cms-admin-ghcr-publish]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push' && vars.CMS_ADMIN_GHCR_CLEANUP == 'true'
+    permissions:
+      packages: write
+
+    steps:
+      - name: Resolve package name
+        id: pkg
+        env:
+          IMAGE: ${{ vars.CMS_ADMIN_IMAGE_REPO }}
+        run: |
+          # ghcr.io/<owner>/<package...> → owner=<owner>, name=<package...>
+          path="${IMAGE#*/}"
+          echo "owner=${path%%/*}" >> "$GITHUB_OUTPUT"
+          echo "name=${path#*/}" >> "$GITHUB_OUTPUT"
+
+      - name: Delete old image versions
+        uses: actions/delete-package-versions@v5
+        with:
+          owner: ${{ steps.pkg.outputs.owner }}
+          package-name: ${{ steps.pkg.outputs.name }}
+          package-type: container
+          min-versions-to-keep: 5
+
+  # Deploys the cms-admin tag just pushed to GHCR: commits <tag>-amd64 as APP_IMAGE_TAG in vm-prod's
+  # cms-admin app Kustomization on the `deployment` branch, like cms-api-bump-tag (same script, same
+  # no-CI-loop guarantees). Its own concurrency group: a GitHub group holds only one pending job, so a
+  # shared group could cancel another app's queued bump.
+  cms-admin-bump-tag:
+    name: CMS Admin Deploy - Bump Flux tag
+    runs-on: ubuntu-latest
+    needs: [cms-admin-ghcr-publish]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    permissions:
+      contents: write
+    concurrency:
+      group: cms-admin-bump-tag
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout bump script
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout deployment
+        uses: actions/checkout@v5
+        with:
+          ref: deployment
+          path: deployment
+
+      - name: Commit APP_IMAGE_TAG to deployment
+        working-directory: deployment
+        env:
+          TAG: ${{ needs.cms-admin-ghcr-publish.outputs.tag }}
+        run: |
+          ../.github/scripts/bump-flux-tag.sh cms-admin "$TAG" \
+            clusters/abyssdev/vm-prod/abyssdev-cms-admin-prod.yaml:amd64
+
+  # master → one GHCR image per release for the frontend on the VPS (vm-prod, amd64): <tag>-amd64,
+  # <tag> = <run_number>-<sha7>. Next.js standalone build; FRONTEND_GRAPHQL_URL (the public cms-api
+  # GraphQL URL) is baked in as the client-side health-check origin. No secrets are passed: the
+  # Dockerfile's AUTH_SECRET is a build-only placeholder, and the real one comes from the k8s Secret.
+  frontend-ghcr-publish:
+    name: Frontend Deploy - GHCR
+    runs-on: ubuntu-latest
+    environment: Production
+    needs: [frontend-build]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    # Arch-less <run_number>-<sha7>; frontend-bump-tag appends the cluster's arch.
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # The image repo (e.g. ghcr.io/<owner>/<repo>/frontend, lowercase) and the GraphQL URL are repo
+      # variables, not code.
+      - name: Check repo variables
+        env:
+          IMAGE: ${{ vars.FRONTEND_IMAGE_REPO }}
+          GRAPHQL_URL: ${{ vars.FRONTEND_GRAPHQL_URL }}
+        run: |
+          if [ -z "$IMAGE" ]; then
+            echo "::error::Repository variable FRONTEND_IMAGE_REPO is not set"
+            exit 1
+          fi
+          if [ -z "$GRAPHQL_URL" ]; then
+            echo "::error::Repository variable FRONTEND_GRAPHQL_URL is not set"
+            exit 1
+          fi
+
+      - name: Compute image tag
+        id: tag
+        run: echo "tag=${{ github.run_number }}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/frontend
+          push: true
+          build-args: GRAPHQL_URL=${{ vars.FRONTEND_GRAPHQL_URL }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          tags: ${{ vars.FRONTEND_IMAGE_REPO }}:${{ steps.tag.outputs.tag }}-amd64
+
+  # Keep GHCR storage bounded: one version per release, so keeping the newest 5 keeps 5 releases.
+  # Opt-in via the FRONTEND_GHCR_CLEANUP repo variable ('true'). Needs the package's "Manage Actions
+  # access" to give this repo the Admin role.
+  frontend-ghcr-cleanup:
+    name: Frontend Deploy - GHCR cleanup
+    runs-on: ubuntu-latest
+    environment: Production
+    needs: [frontend-ghcr-publish]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push' && vars.FRONTEND_GHCR_CLEANUP == 'true'
+    permissions:
+      packages: write
+
+    steps:
+      - name: Resolve package name
+        id: pkg
+        env:
+          IMAGE: ${{ vars.FRONTEND_IMAGE_REPO }}
+        run: |
+          # ghcr.io/<owner>/<package...> → owner=<owner>, name=<package...>
+          path="${IMAGE#*/}"
+          echo "owner=${path%%/*}" >> "$GITHUB_OUTPUT"
+          echo "name=${path#*/}" >> "$GITHUB_OUTPUT"
+
+      - name: Delete old image versions
+        uses: actions/delete-package-versions@v5
+        with:
+          owner: ${{ steps.pkg.outputs.owner }}
+          package-name: ${{ steps.pkg.outputs.name }}
+          package-type: container
+          min-versions-to-keep: 5
+
+  # Deploys the frontend tag just pushed to GHCR: commits <tag>-amd64 as APP_IMAGE_TAG in vm-prod's
+  # frontend app Kustomization on the `deployment` branch, like cms-api-bump-tag (same script, own
+  # concurrency group so another app's queued bump is never cancelled).
+  frontend-bump-tag:
+    name: Frontend Deploy - Bump Flux tag
+    runs-on: ubuntu-latest
+    needs: [frontend-ghcr-publish]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    permissions:
+      contents: write
+    concurrency:
+      group: frontend-bump-tag
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout bump script
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout deployment
+        uses: actions/checkout@v5
+        with:
+          ref: deployment
+          path: deployment
+
+      - name: Commit APP_IMAGE_TAG to deployment
+        working-directory: deployment
+        env:
+          TAG: ${{ needs.frontend-ghcr-publish.outputs.tag }}
+        run: |
+          ../.github/scripts/bump-flux-tag.sh frontend "$TAG" \
+            clusters/abyssdev/vm-prod/abyssdev-frontend-prod.yaml:amd64
 
   deploy-cms-api:
     name: Deploy CMS API
@@ -614,7 +812,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [cms-admin-build]
     environment: Production
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
 
     steps:
       - name: Debug deploy trigger condition
@@ -638,7 +836,7 @@ jobs:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     needs: [frontend-build]
     environment: Production
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
 
     steps:
       - name: Checkout
