@@ -32,6 +32,11 @@ spec:
             # Auth.js v5 only trusts the request host when told to; behind Traefik it must be.
             - name: AUTH_TRUST_HOST
               value: "true"
+            # Next's standalone server binds to $HOSTNAME. The image sets 0.0.0.0, but container
+            # runtimes also set HOSTNAME (to the pod name); pinning it here makes the bind address
+            # independent of how the runtime orders the two.
+            - name: HOSTNAME
+              value: "0.0.0.0"
           # Liveness only checks the server accepts connections: /api/health calls cms-api, and a slow
           # cms-api must not get the frontend restarted.
           livenessProbe:
@@ -40,12 +45,14 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 20
           # /api/health always returns 200 (cms-api status is in the body), so this gates on the
-          # Next server answering requests; the timeout covers its upstream call.
+          # Next server answering requests. The route aborts its cms-api call after 5s
+          # (src/lib/health/checkApiHealth.ts), so the probe timeout must be longer, or a hanging
+          # cms-api would take the whole site out of rotation.
           readinessProbe:
             httpGet:
               path: /api/health
               port: http
-            timeoutSeconds: 5
+            timeoutSeconds: 8
             periodSeconds: 10
           resources:
             requests:
