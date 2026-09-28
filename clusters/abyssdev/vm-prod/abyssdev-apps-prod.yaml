@@ -27,4 +27,4 @@ spec:
       - kind: ConfigMap
         name: abyssdev-cms-api-prod-config
     substitute:
-      APP_IMAGE_TAG: "81-47e63ce-amd64"
+      APP_IMAGE_TAG: "83-3fc89f5-amd64"
