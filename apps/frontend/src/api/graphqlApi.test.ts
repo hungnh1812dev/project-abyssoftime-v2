@@ -12,33 +12,34 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-describe("graphqlApi.fetch mock fallback (dev)", () => {
-  test("falls back to the registered mock when a successful response selects an empty list", async () => {
+// The mock fallback is switched off (isDev is hard-coded false in graphqlApi.ts/restfulApi.ts), so a
+// failed or empty query throws with the reason instead of returning the registered mock. Restore the
+// "falls back to the registered mock" expectations if isDev goes back to reading NEXT_ENV.
+describe("graphqlApi.fetch with the mock fallback disabled", () => {
+  test("throws, naming the empty field, when a successful response selects an empty list", async () => {
     globalThis.fetch = mock(async () => jsonResponse(200, { data: { cvPageNews: { items: [] } } })) as unknown as typeof fetch;
 
-    const result = await graphqlApi.fetch<unknown[]>({
-      body: { query: "{ cvPageNews { items { name } } }" },
-      selectKey: "cvPageNews.items",
-      mock: "cv-new-main",
-    });
-
-    expect(Array.isArray(result)).toBe(true);
-    expect(result.length).toBeGreaterThan(0);
+    await expect(
+      graphqlApi.fetch<unknown[]>({
+        body: { query: "{ cvPageNews { items { name } } }" },
+        selectKey: "cvPageNews.items",
+        mock: "cv-new-main",
+      }),
+    ).rejects.toThrow("empty result at cvPageNews.items");
   });
 
-  test("falls back to the registered mock on a GraphQL-level error", async () => {
+  test("throws with the GraphQL error message on a GraphQL-level error", async () => {
     globalThis.fetch = mock(async () =>
       jsonResponse(200, { data: null, errors: [{ message: "Authentication required" }] }),
     ) as unknown as typeof fetch;
 
-    const result = await graphqlApi.fetch<unknown[]>({
-      body: { query: "{ cvPageNews { items { name } } }" },
-      selectKey: "cvPageNews.items",
-      mock: "cv-new-main",
-    });
-
-    expect(Array.isArray(result)).toBe(true);
-    expect(result.length).toBeGreaterThan(0);
+    await expect(
+      graphqlApi.fetch<unknown[]>({
+        body: { query: "{ cvPageNews { items { name } } }" },
+        selectKey: "cvPageNews.items",
+        mock: "cv-new-main",
+      }),
+    ).rejects.toThrow("Authentication required");
   });
 
   test("still returns live data untouched when the selected result is non-empty", async () => {
