@@ -21,11 +21,11 @@ covers only what is specific to the frontend. The reasons behind each choice are
 
 | File | Role |
 | --- | --- |
-| `apps/frontend/Dockerfile` | `deps` + `builder` on `oven/bun:1-alpine`, then a `node:24-alpine` runner that starts Next's standalone `server.js` as the non-root `node` user on port 3000 |
+| `apps/frontend/Dockerfile` | `deps` + `builder` on `oven/bun:1-alpine`, then a `node:24-alpine` runner that starts Next's standalone `server.js` as the non-root `node` user on port 4000 |
 | `apps/frontend/.dockerignore` | Keeps **`.env*`** (a real `.env.local` lives in this folder), `.next`, `.vercel`, `node_modules`, `e2e`, `*.md` and `.git` out of the build context |
 | `apps/frontend/next.config.mjs` | `output: "standalone"` only when `NEXT_OUTPUT=standalone`, which only the Dockerfile sets. The Vercel build is unchanged |
 | `apps/frontend/k8s/flux/` | Deployment, Service, Ingress, Middleware, and their `kustomization.yaml`. `${APP_*}` placeholders only |
-| `apps/frontend/k8s/configmap.example.yaml` | ConfigMap template (7 keys). Your filled copy `k8s/configmap.yaml` is gitignored |
+| `apps/frontend/k8s/configmap.example.yaml` | ConfigMap template (8 keys). Your filled copy `k8s/configmap.yaml` is gitignored |
 | `apps/frontend/k8s/secret.example.yaml` | Secret template: runtime config and secrets. Your filled copy `k8s/secret.yaml` is gitignored |
 | `clusters/abyssdev/vm-prod/abyssdev-frontend-prod.yaml` | The app Flux Kustomization `abyssdev-frontend-sync-prod`. Holds the ConfigMap name and the one `APP_IMAGE_TAG:` line CI rewrites on `deployment` |
 | `.github/workflows/ci.yml` → `frontend-ghcr-publish`, `frontend-ghcr-cleanup`, `frontend-bump-tag` | Build and push, opt-in cleanup, and the tag bump (see [CI](#ci)) |
@@ -43,7 +43,7 @@ covers only what is specific to the frontend. The reasons behind each choice are
 - **No secrets in the image.** The runner stage has no `AUTH_SECRET`, and `.dockerignore` keeps every
   `.env*` file out of the build context.
 - **Standalone output.** The runner copies `.next/standalone`, `.next/static` and `public`, and runs
-  `node server.js` with `PORT=3000` and `HOSTNAME=0.0.0.0`. The image is about 330MB.
+  `node server.js` with `PORT=4000` and `HOSTNAME=0.0.0.0`. The image is about 330MB.
 - **Vercel is unaffected.** Without `NEXT_OUTPUT=standalone`, `next build` produces the normal output.
 
 ## What Flux applies
@@ -51,8 +51,9 @@ covers only what is specific to the frontend. The reasons behind each choice are
 Names follow the cms-api naming contract: `<app-name>-<app-service-name>-<app-env>` in
 `<app-namespace>-<app-env>`. With `APP_SERVICE_NAME=frontend` that's `abyssdev-frontend-prod`.
 
-- **Deployment:** 1 replica, container `app` on port **3000** (set in the image, so it's not a
-  ConfigMap key), named `http`.
+- **Deployment:** 1 replica, container `app` on port **`${APP_PORT}`**, named `http`. The
+  container `command` sets `PORT=${APP_PORT}` before `node server.js` (the image's own default is
+  4000).
   - Runtime config comes from the Secret `<full-app-name>-secrets` via `envFrom`.
   - `AUTH_TRUST_HOST: "true"` is set literally in the Deployment. Auth.js v5 only trusts the request
     host when told to, and behind Traefik it has to.
@@ -67,7 +68,7 @@ Names follow the cms-api naming contract: `<app-name>-<app-service-name>-<app-en
     aborts its own cms-api call after 5s, so the probe timeout must stay above 5s: otherwise a
     hanging cms-api would make the pod NotReady and take the whole site out of rotation.
 - **Resources:** requests `100m`/`192Mi`, limits `500m`/`512Mi`.
-- **Service:** ClusterIP on port 3000 → the named port `http`.
+- **Service:** ClusterIP on port `${APP_PORT}` → the named port `http`.
 - **Ingress:** Traefik, host and TLS host **`${APP_DOMAIN:=APP_DOMAIN-is-not-set}`** (the bare
   domain), certificate `<full-app-name>-tls` from the ClusterIssuer in `APP_TLS_CLUSTER_ISSUER`,
   backend by port name.
@@ -157,6 +158,7 @@ ClusterIssuer (cms-api runbook steps 1–5 and 8.2).
    cp apps/frontend/k8s/secret.example.yaml apps/frontend/k8s/secret.yaml         # gitignored
    chmod 600 apps/frontend/k8s/secret.yaml
    # ConfigMap: name abyssdev-frontend-prod-config, APP_SERVICE_NAME "frontend", APP_ENV "prod",
+   #   APP_PORT "4000",
    #   the same APP_NAME / APP_NAMESPACE / APP_DOMAIN / APP_TLS_CLUSTER_ISSUER as cms-api's
    # Secret: name <app-name>-frontend-prod-secrets; copy the values the Vercel project uses today
    kubectl apply --server-side -f apps/frontend/k8s/configmap.yaml -f apps/frontend/k8s/secret.yaml
