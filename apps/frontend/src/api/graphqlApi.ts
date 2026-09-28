@@ -80,7 +80,13 @@ const graphqlFetch = async <T>(options: GraphQLOptions): Promise<T> => {
     }
   }
 
-  throw new Error(`GraphQL request failed for: ${url}`);
+  const reason = json.errors?.length
+    ? json.errors.map((e) => `${e.message}${e.path ? ` (at ${e.path.join(".")})` : ""}`).join("; ")
+    : `empty result${selectKey ? ` at ${selectKey}` : ""}`;
+  // Logged on the server so an SSR/ISR failure shows the GraphQL errors, not just the digest Next
+  // gives the client.
+  console.error("[graphqlApi] request failed", { url, selectKey, reason, errors: json.errors, body });
+  throw new Error(`GraphQL request failed for ${url}: ${reason}`);
 };
 
 // Legacy method — kept until all pages/views switch to service functions
