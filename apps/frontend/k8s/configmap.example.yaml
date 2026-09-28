@@ -24,6 +24,8 @@ data:
   APP_NAMESPACE: "<app-namespace>"
   # Environment, e.g. prod
   APP_ENV: "<app-env>"
+  # Container + Service port; also set as the app's PORT (e.g. "4000", off cms-api's 3000)
+  APP_PORT: "<port>"
   # Image repository without a tag (image <repo>:<tag>)
   APP_IMAGE_REPO: "<registry/owner/repo/image>"
   # Bare domain, no scheme or subdomain. The frontend is served at <APP_DOMAIN> itself.

@@ -21,10 +21,15 @@ spec:
       containers:
         - name: app
           image: ${APP_IMAGE_REPO}:${APP_IMAGE_TAG}
-          # PORT=3000 is set in the image; an image fact, not a project value.
+          # PORT is set here from APP_PORT (overriding the image's 4000 and any PORT in the Secret) so
+          # the app and the Service can't disagree. Not via `env`: Flux substitutes after kustomize
+          # drops the quotes, so `value: "${APP_PORT}"` would reach the API server as an int and be
+          # rejected. Keep the rest in sync with the Dockerfile runner's CMD.
+          command: ["sh", "-c", "PORT=${APP_PORT} exec node server.js"]
+          # Unquoted on purpose: ports must be ints after substitution.
           ports:
             - name: http
-              containerPort: 3000
+              containerPort: ${APP_PORT}
           envFrom:
             - secretRef:
                 name: ${APP_NAME}-${APP_SERVICE_NAME}-${APP_ENV}-secrets
