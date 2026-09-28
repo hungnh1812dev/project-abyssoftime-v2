@@ -34,14 +34,24 @@ export interface GraphQLQueryOptions {
 const DEFAULT_URL = process.env.GRAPHQL_URL ?? "http://localhost:5000/graphql";
 const GRAPHQL_TOKEN = process.env.GRAPHQL_TOKEN;
 const STRAPI_API_TOKEN = process.env.STRAPI_API_TOKEN;
-const isDev = process.env.NEXT_ENV !== "production";
+const isDev = false; // process.env.NEXT_ENV !== "production";
 
 // Primary method — used by services (portfolio interface)
 const graphqlFetch = async <T>(options: GraphQLOptions): Promise<T> => {
-  const { url = DEFAULT_URL, body, headers = {}, selectKey, mock, next, cache } = options;
+  const {
+    url = DEFAULT_URL,
+    body,
+    headers = {},
+    selectKey,
+    mock,
+    next,
+    cache,
+  } = options;
 
   const authToken = GRAPHQL_TOKEN ?? STRAPI_API_TOKEN;
-  const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  const authHeaders: Record<string, string> = authToken
+    ? { Authorization: `Bearer ${authToken}` }
+    : {};
 
   let json: { data?: Record<string, unknown>; errors?: GraphQLError[] };
 
@@ -73,25 +83,44 @@ const graphqlFetch = async <T>(options: GraphQLOptions): Promise<T> => {
   if (isDev && mock) {
     const mockValue = MockView[mock];
     if (mockValue !== undefined) {
-      const envelope = (mockValue as { data?: Record<string, unknown> } | undefined)?.data;
-      const viaEnvelope = envelope && selectKey ? get(envelope, selectKey) : envelope;
+      const envelope = (
+        mockValue as { data?: Record<string, unknown> } | undefined
+      )?.data;
+      const viaEnvelope =
+        envelope && selectKey ? get(envelope, selectKey) : envelope;
       if (viaEnvelope !== undefined) return viaEnvelope as T;
       return mockValue as T;
     }
   }
 
   const reason = json.errors?.length
-    ? json.errors.map((e) => `${e.message}${e.path ? ` (at ${e.path.join(".")})` : ""}`).join("; ")
+    ? json.errors
+        .map((e) => `${e.message}${e.path ? ` (at ${e.path.join(".")})` : ""}`)
+        .join("; ")
     : `empty result${selectKey ? ` at ${selectKey}` : ""}`;
   // Logged on the server so an SSR/ISR failure shows the GraphQL errors, not just the digest Next
   // gives the client.
-  console.error("[graphqlApi] request failed", { url, selectKey, reason, errors: json.errors, body });
+  console.error("[graphqlApi] request failed", {
+    url,
+    selectKey,
+    reason,
+    errors: json.errors,
+    body,
+  });
   throw new Error(`GraphQL request failed for ${url}: ${reason}`);
 };
 
 // Legacy method — kept until all pages/views switch to service functions
 const graphqlQuery = async <T>(options: GraphQLQueryOptions): Promise<T> => {
-  const { query, variables, mock, dataKey, url = DEFAULT_URL, next, cache } = options;
+  const {
+    query,
+    variables,
+    mock,
+    dataKey,
+    url = DEFAULT_URL,
+    next,
+    cache,
+  } = options;
   return graphqlFetch<T>({
     url,
     body: { query, variables },

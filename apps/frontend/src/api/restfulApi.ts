@@ -17,10 +17,19 @@ export interface RestOptions {
   cache?: RequestCache;
 }
 
-const isDev = process.env.NEXT_ENV !== "production";
+const isDev = false; // process.env.NEXT_ENV !== "production";
 
 const restfulFetch = async <T>(options: RestOptions): Promise<T> => {
-  const { url, method = "GET", body, headers, selectKey, mock, next, cache } = options;
+  const {
+    url,
+    method = "GET",
+    body,
+    headers,
+    selectKey,
+    mock,
+    next,
+    cache,
+  } = options;
 
   try {
     const res = await fetch(url, {
@@ -38,7 +47,8 @@ const restfulFetch = async <T>(options: RestOptions): Promise<T> => {
     if (res.ok) {
       const json: unknown = await res.json();
       const result = selectKey ? get(json, selectKey) : json;
-      if (result != null && !(Array.isArray(result) && result.length === 0)) return result as T;
+      if (result != null && !(Array.isArray(result) && result.length === 0))
+        return result as T;
     } else {
       let info: unknown;
       try {
@@ -48,9 +58,14 @@ const restfulFetch = async <T>(options: RestOptions): Promise<T> => {
       }
       // GraphQL validation errors come back as HTTP 400 with `{ errors: [{ message }] }`; Nest errors
       // as `{ message }`. Put them in the message itself: Node's log prints nested objects as [Object].
-      const body = info as { errors?: { message?: string }[]; message?: unknown } | undefined;
-      const detail = body?.errors?.map((e) => e.message).join("; ") ?? (body?.message != null ? String(body.message) : "");
-      const err = new Error(`HTTP ${res.status}: Request failed for ${url}${detail ? ` — ${detail}` : ""}`) as ApiError;
+      const body = info as
+        { errors?: { message?: string }[]; message?: unknown } | undefined;
+      const detail =
+        body?.errors?.map((e) => e.message).join("; ") ??
+        (body?.message != null ? String(body.message) : "");
+      const err = new Error(
+        `HTTP ${res.status}: Request failed for ${url}${detail ? ` — ${detail}` : ""}`,
+      ) as ApiError;
       err.status = res.status;
       if (info !== undefined) err.info = info;
       throw err;
@@ -82,7 +97,9 @@ const restfulFetch = async <T>(options: RestOptions): Promise<T> => {
   }
 
   console.error("[restfulApi] empty response", { method, url, selectKey });
-  throw new Error(`Request failed for: ${url} (empty response${selectKey ? ` at ${selectKey}` : ""})`);
+  throw new Error(
+    `Request failed for: ${url} (empty response${selectKey ? ` at ${selectKey}` : ""})`,
+  );
 };
 
 const restfulApi = { fetch: restfulFetch };
