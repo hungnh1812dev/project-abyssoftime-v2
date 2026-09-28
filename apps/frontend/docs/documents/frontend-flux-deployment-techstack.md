@@ -71,7 +71,8 @@ The frontend's host is the bare domain, so there's no prefix to make an empty va
 
 ## Container port and Ingress placement
 
-Like cms-admin: the port (3000, set in the image) is a literal, not a ConfigMap key, and the Ingress
-sits in the base instead of a Component, because vm-prod is the only cluster. See
-[cms-admin-flux-deployment-techstack.md](../../../cms-admin/docs/documents/cms-admin-flux-deployment-techstack.md)
-for those tables.
+Like cms-api, the port is the ConfigMap key `APP_PORT`, set as `PORT` in the container `command`,
+so it can move off cms-api's 3000 without a rebuild (the image's own default is 4000). Like
+cms-admin, the Ingress sits in the base instead of a Component, because vm-prod is the only cluster.
+See [cms-admin-flux-deployment-techstack.md](../../../cms-admin/docs/documents/cms-admin-flux-deployment-techstack.md)
+for that table.
