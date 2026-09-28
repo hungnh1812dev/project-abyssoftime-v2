@@ -9,6 +9,7 @@ import { getCvNewById } from "@/views/cv-new/cv-new.service";
 
 interface Props {
   params: Promise<{ locale: string; documentId: string }>;
+  searchParams: Promise<{ hideAvatar?: string }>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -16,8 +17,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: `CV — ${documentId}` };
 }
 
-export default async function CvNewChildPage({ params }: Props) {
+export default async function CvNewChildPage({ params, searchParams }: Props) {
   const { documentId } = await params;
+  const { hideAvatar } = await searchParams;
 
   let data: CvNewPageDataType | null;
   let contact: CvContactType;
@@ -31,5 +33,13 @@ export default async function CvNewChildPage({ params }: Props) {
 
   if (!data) notFound();
 
-  return <CvNewPageContent data={data} contact={contact!} commonText={commonText!} cvList={[]} />;
+  return (
+    <CvNewPageContent
+      data={data}
+      contact={contact!}
+      commonText={commonText!}
+      cvList={[]}
+      hideAvatar={hideAvatar === "1" || hideAvatar === "true"}
+    />
+  );
 }

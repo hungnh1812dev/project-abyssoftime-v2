@@ -50,14 +50,6 @@ COPY --chown=abyssdev:abyssdev package.json ./
 
 USER abyssdev
 
-# EXPOSE is build-time metadata, so the port comes from the required APP_PORT build arg (same name
-# as k8s/.env's APP_PORT); it also seeds the runtime PORT that src/main.ts listens on. Pass it from
-# the environment: `APP_PORT=3000 docker build --build-arg APP_PORT ...` (a bare --build-arg
-# reads the shell env var). CI passes the CMS_API_APP_PORT repo variable.
-ARG APP_PORT
-RUN : "${APP_PORT:?APP_PORT build arg is required, e.g. --build-arg APP_PORT=3000}"
-ENV PORT=${APP_PORT}
-EXPOSE ${APP_PORT}
-
 # No HEALTHCHECK — k8s liveness/readiness probes target GET /health instead.
+# Repeated in k8s/flux/app/deployment.yaml's `command` (which sets PORT first) — change both together.
 CMD ["bun", "dist/src/main"]

@@ -1,5 +1,0 @@
-apiVersion: v2
-name: cms-api-secrets
-description: cms-api's runtime Secret, rendered from k8s/.env by helmfile.yaml.gotmpl.
-type: application
-version: 0.1.0

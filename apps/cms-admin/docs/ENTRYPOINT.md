@@ -14,6 +14,8 @@ Index of rule/doc files for this project (`apps/cms-admin`, the CMS admin fronte
 - `/docs/documents/media.md` — `MediaLibrary` (picker modal, used by `form-system.md`'s `MediaInput`) and `MediaLibraryPage` (standalone browse/manage), plus `useMedia` upload/list/delete hooks.
 - `/docs/documents/access-control.md` — Users/Roles/Permissions/Access-Tokens settings pages and their hooks; the client-side `roleLevel` hierarchy (`lib/roles.ts`) vs. the separate API-managed `Role.level` field; access-token scopes as a separate authorization vocabulary from permission slugs.
 - `/docs/documents/locales-and-invites.md` — locale catalog CRUD (`InternationalizePage`, `LocaleSelector`) and the invite create/list/revoke/accept flow (embedded in `access-control.md`'s Users page, not its own settings page).
+- `/docs/documents/cms-admin-flux-deployment.md` — deployment to the vm-prod k3s VPS at `admin.<domain>` via GHCR + Flux + the `deployment` branch (the shared cluster setup is in `apps/cms-api/k8s/README.md`): the `VITE_API_URL` build arg (bare cms-api origin, from the `CMS_ADMIN_API_URL` repo variable), nginx `/healthz` and no proxies, the `k8s/flux/` templates (Deployment, Service, Traefik Ingress + https redirect in the base), the ConfigMap template, the cluster file `abyssdev-cms-admin-prod.yaml`, the CI jobs (`cms-admin-ghcr-publish`/`-ghcr-cleanup`/`-bump-tag`), the owner setup (DNS, repo variables, public GHCR package, ConfigMap, cms-api `CORS_ORIGINS`), and `staging` → Render.
+- `/docs/documents/cms-admin-flux-deployment-techstack.md` — decision tables: build arg vs. runtime `config.js` vs. nginx proxy, removing the dead proxies, the `/healthz` probe, Ingress in the base vs. a Component, the fixed container port.
 
 ## Root docs
 

@@ -8,10 +8,14 @@ export type { CvNewListItemType, CvNewPageDataType } from "./cv-new.types";
 export type { CvContactType } from "@/views/cv/contact.types";
 export type { CommonTextType } from "@/views/cv/common-text.types";
 
-const CvNewPage = async () => {
+interface CvNewPageProps {
+  hideAvatar?: boolean;
+}
+
+const CvNewPage = async ({ hideAvatar }: CvNewPageProps = {}) => {
   const [mainCv, cvList, contact, commonText] = await Promise.all([getMainCvNew(), getCvNewList(), getContact(), getCommonText()]);
 
-  return <CvNewPageContent data={mainCv!} contact={contact!} commonText={commonText!} cvList={cvList} />;
+  return <CvNewPageContent data={mainCv!} contact={contact!} commonText={commonText!} cvList={cvList} hideAvatar={hideAvatar} />;
 };
 
 export default CvNewPage;

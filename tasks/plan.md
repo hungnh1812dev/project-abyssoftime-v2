@@ -1,488 +1,102 @@
-# Plan: `/cv-3` — CV page with role-nested projects
+# Implementation Plan: cms-admin + frontend on Flux (VPS only), vm-dev retired
 
-Spec: [`SPEC.md`](../SPEC.md) (DRAFT, 2026-08-28)
-Status: **NOT STARTED**
-Task list: [`tasks/todo.md`](todo.md)
+Spec: [`SPEC.md`](../SPEC.md) · Tasks: [`tasks/todo.md`](todo.md) · Previous plan: [`tasks/archive.md`](archive.md)
 
----
+## Overview
 
-## Corrections found during planning
+This plan follows the three spec modules in order: first `vps-only`, then `cms-admin-flux` and
+`frontend-flux`. The last two don't depend on each other, but they run one after the other because
+both edit `ci.yml` and `clusters/abyssdev/vm-prod/kustomization.yaml`.
 
-The spec's risk table listed depth-3 component nesting as the one risk that could sink the whole
-approach, unverified in both the API and the admin UI. Reading the code narrows that considerably.
+Each app module is one vertical slice, built from the image outward:
 
-| Layer | File | Handles depth 3? |
-| --- | --- | --- |
-| Table naming | `apps/cms-api/src/modules/content-type/application/schema/table-naming.ts` | Yes. Path segments join with `_`; the result is `components_cv_page_new__experience_role_project`, 47 characters. A truncate-plus-hash fallback covers anything over 63, so length cannot fail. |
-| DDL sync | `.../application/sync/schema-differ.ts` | Yes. `collectComponentPaths` recurses with no depth limit. |
-| Write | `.../document/application/support/component-io.service.ts` | Yes. `saveComponentTree` recurses, linking children by `parent_component_id`. |
-| Read | same file, `hydrateRows` | Yes. Recurses on every nested component field. |
-| GraphQL schema | `.../graphql/application/schema-builder.service.ts` | Yes. `buildComponentTypesFor`'s inner `visit` recurses. |
+1. The image builds and serves its health endpoint locally.
+2. The k8s templates render.
+3. The cluster Kustomization picks the app up.
+4. CI publishes the image and bumps the tag.
 
-So the API side is structurally depth-agnostic, and T2 is a confirmation rather than a gamble. The
-genuinely unknown piece is **cms-admin's form renderer**, which lives in the sibling repository
-`abyssoftime-cms-admin` and is outside this project directory, so it cannot be inspected from here.
-T3 is a manual check in the running admin and it is the real go/no-go.
-
-One naming detail worth recording: GraphQL component type names derive from the component **name**
-only, not its path, so the nested component named `project` becomes `CvPageNewProject`. That is
-collision-free here only because the spec removes the top-level `projects` field. If a top-level
-projects list is ever added back to this type, it must use a different component name.
-
----
+After that come the workflow's clean-up steps (4 to 7 in `docs/workflow.md`): docs, review, and
+reducing SPEC.md to a pointer.
 
 ## Dependency graph
 
 ```
-T1 content-type JSON
-      │
-      ▼
-T2 sync + GraphQL verification (API)
-      │
-      ▼
-T3 cms-admin nested form check  ─────►  CHECKPOINT A  (go / no-go)
-                                              │
-                                              ▼
-                                        T4 types + queries + service
-                                              │
-                                              ▼
-                                        T5 mocks + registration
-                                              │
-                                              ▼
-                                        T6 route + frame + header + summary
-                                              │
-                                        CHECKPOINT B  (first render)
-                                              │
-                                              ▼
-                                        T7 shared section + experience roles
-                                              │
-                                              ▼
-                                        T8 nested project cards + empty case
-                                              │
-                                        CHECKPOINT C  (the core feature)
-                                              │
-                                              ▼
-                                        T9 skills, education, languages, references
-                                              │
-                                              ▼
-                                        T10 anchor nav + action bar + dropdown
-                                              │
-                                              ▼
-                                        T11 per-company [documentId] route
-                                              │
-                                              ▼
-                                        T12 print CSS
-                                              │
-                                              ▼
-                                        T13 e2e layout test
-                                              │
-                                        CHECKPOINT D  (feature complete on mocks)
-                                              │
-                                              ▼
-                                        T14 real content entry + live verification
-                                              │
-                                              ▼
-                                        T15 closeout
+T1 bump script extracted (behaviour-preserving)
+ └─ T2 retire vm-dev (cms-api amd64-only, bump vm-prod only)
+     ├─ T3 Render/Vercel → staging            (independent of T4+, touches ci.yml only)
+     │
+     ├─ T4 cms-admin image ─ T5 cms-admin templates ─ T6 cms-admin cluster wiring ─ T7 cms-admin CI
+     │
+     └─ T8 frontend image ─ T9 frontend templates ─ T10 frontend cluster wiring ─ T11 frontend CI
+                                                     (after T6: same kustomization.yaml)
+T12 cms-api docs ── after T2/T3
+T13 cms-admin + frontend docs ── after T7, T11
+T14 review → T15 SPEC.md reduction + cleanup
 ```
 
-Everything is serial. T4 and T5 could technically start during T2 since they depend only on the
-shape decided in T1, but a failure at T2 or T3 changes that shape, so nothing frontend begins before
-Checkpoint A.
+## Architecture decisions
 
-Each task below is a vertical slice: it ends with something observable in a browser, a database, or
-a test run, not a layer that only makes sense once the next layer lands.
+These are all settled in the spec, and the full tables are in SPEC.md's Decisions section:
 
----
+- **Bump script:** one script, `.github/scripts/bump-flux-tag.sh <app> <tag> <file>:<arch>...`, with a
+  concurrency group per app. T1 extracts it without changing any behaviour, so the dry-run harness can
+  check it against the current inline script before anything else changes.
+- **Arch suffix:** `-amd64` stays on every tag.
+- **Tag files:** one vm-prod app file per app, each with exactly one `APP_IMAGE_TAG:` line.
+- **Ingress:** the new apps put it straight in their base manifests, with no Component.
+- **cms-admin API URL:** a build arg from the `CMS_ADMIN_API_URL` repo variable.
+- **frontend image:** standalone output behind `NEXT_OUTPUT=standalone`, so Vercel builds don't
+  change, on a `node:24-alpine` non-root runner. It gets no real secrets at build time.
+- **Open question 3 default:** the frontend Secret template recommends the in-cluster cms-api Service
+  URL for `CMS_API_URL`/`GRAPHQL_URL`. It's only a comment, so the owner can override it.
 
-## Phase 0 — The data model
+## Phases
 
-### T1 — Add the `cv-page-new` content type
+- **Phase 1 — `vps-only`** (T1–T3), then Checkpoint 1: commit.
+- **Phase 2 — `cms-admin-flux`** (T4–T7), then Checkpoint 2: commit.
+- **Phase 3 — `frontend-flux`** (T8–T11), then Checkpoint 3: commit.
+- **Phase 4 — docs, review and clean-up** (T12–T15), then Checkpoint 4: commit.
 
-**Size**: S
-**Files**: `apps/cms-api/content-types/cv-page-new.json` (new)
+Commits are batched per phase, as the workflow's commit rules require. Each commit needs a Yes/No
+confirmation with the file list and message, and no `Co-Authored-By`.
 
-Copy `content-types/cv-page.json`, then apply exactly four changes:
+## Verification tooling
 
-1. Delete the top-level `projects` component field.
-2. Change `role.projects` from `{ "type": "text" }` to a repeatable component named `project`,
-   carrying the seven fields the old top-level `project` component had: `name`, `teamSize`, `role`,
-   `liveLink`, `responsitoryLink`, `techStack`, `responsibilities`.
-3. Add `{ "name": "period", "type": "text", "width": "50%" }` to the `experience` component.
-4. Rename the top-level `company` field to `name` — it labels the CV entry itself, not an employer;
-   `experience.company` (the per-job employer) is unaffected.
+Everything runs locally. The scripts live in the session scratchpad and are never committed.
 
-`listFields`: `["position", "isMain", "name"]`.
-
-**Acceptance criteria**
-- The JSON differs from `cv-page.json` only in those four ways.
-- `slug` is `cv-page-new`, `kind` is `collection`, `draftToPublish` is `true`.
-
-**Verification**
-```
-cd apps/cms-api && bun run start:dev
-```
-Boot completes without a validation abort. A malformed file fails boot loudly, so a clean start is
-the check.
-
----
-
-### T2 — Verify the schema and GraphQL at depth 3
-
-**Size**: S
-**Files**: none. Verification only.
-
-**Acceptance criteria**
-- Eight tables exist: `documents_cv_page_new` plus component tables for `skill`, `experience`,
-  `experience_role`, `experience_role_project`, `education`, `language`, `reference`.
-- The GraphQL schema exposes `cvPageNews` and `cvPageNew`, and `CvPageNewRole` has a
-  `projects: [CvPageNewProject]` field.
-- A document written through the API round-trips with its nested projects intact.
-
-**Verification**
-```
-psql "$DATABASE_URL" -c "\dt components_cv_page_new*"
-```
-Then against `POST http://localhost:3000/graphql` with `Authorization: Bearer <api token>`:
-introspect `CvPageNewRole`, create one entry with a role holding two projects and a second role
-holding none, publish it, and read it back through `cvPageNews`. Both roles must come back with the
-right project counts, one of them an empty array.
-
----
-
-### T3 — Verify the cms-admin nested form
-
-**Size**: S
-**Files**: none. Manual check by the user.
-
-This is the one thing that cannot be verified from this repository.
-
-**Acceptance criteria**
-- `cv-page-new` appears in cms-admin's content-type list.
-- Its form lets a project be added inside a role, with the role itself inside a company.
-- Saving and reloading preserves the nesting.
-
-**Verification**: manual, in the running admin.
-
----
-
-> ### CHECKPOINT A — go / no-go
->
-> If T3 fails, stop. Do not start frontend work. The fallback options, in order of preference:
-> flatten to two levels by making `roles` non-repeatable is not viable; more likely we keep depth 3
-> and enter content through GraphQL directly, or revisit the name-matching approach the spec
-> rejected. Either way it is a decision for you, not a workaround I should pick.
->
-> **Verified 2026-08-29**: T2 and T3 were originally waived on 2026-08-28 since neither had
-> infrastructure available in that session. Both were completed against the user's live dev stack
-> (cms-api on :8080, cms-admin on :5173, Postgres via Docker): 8 tables confirmed via `psql`, GraphQL
-> schema and a round-trip query confirmed via a temporary access token, and the cms-admin nested form
-> confirmed via browser automation logged in as super admin (save + reload preserved the nesting). The
-> depth-3 code trace in "Corrections found during planning" above is now a confirmed fact, not an
-> assumption.
->
-> **Commit 1** — `feat(cms-api): add cv-page-new content type with role-nested projects`
-
----
-
-## Phase 1 — Frontend data layer and first render
-
-### T4 — Types, queries, service
-
-**Size**: M
-**Files**: `apps/frontend/src/views/cv-new/cv-new.types.ts`, `cv-new.queries.ts`, `cv-new.service.ts` (all new)
-
-Mirror `cv-elegant.types.ts` with `projects` moved onto `role`, removed from the document root, and
-`period` added to the experience entry. Queries mirror `cv-elegant.queries.ts` against `cvPageNews`
-and `cvPageNew`, selecting the nested `projects` inside `roles`. Service mirrors
-`cv-elegant.service.ts` with keys `cv-new.main`, `cv-new.list`, `cv-new.by-id`, `selectKey`
-`cvPageNews.items`, and `next: { revalidate: 300, tags: ["cv"] }`.
-
-**Acceptance criteria**
-- `role.projects` is typed as an array and marked optional, so a role with none type-checks.
-- The list query selects the document-root `name` field (renamed from `company` per T1, change 4),
-  and the list item type calls the field `name` — not `companyName`. This is the cv-elegant defect
-  the spec says not to inherit (`GET_CV_ELEGANT_LIST` selects `company`, `CvElegantListItemType`
-  calls it `companyName`, so the dropdown label is blank).
-- `experience.company` (the per-job employer) keeps its own name unchanged throughout.
-- Nothing imports from `@/views/cv-elegant`.
-
-**Verification**: `bun run build` from `apps/frontend` type-checks the new files.
-
----
-
-### T5 — Mocks
-
-**Size**: M
-**Files**: `apps/frontend/src/mocks/cv-page-new.ts`, `cv-new-main.ts`, `cv-new-list.ts` (new);
-`apps/frontend/src/mocks/mock-all.ts` (modified)
-
-Content adapted from `src/mocks/cv-elegant-main.ts`, restructured so each role owns its projects.
-
-**Acceptance criteria**
-- At least one role has `projects: []`. The empty case must be exercised on every local run.
-- At least one role has two or more projects.
-- `"cv-new-main"` and `"cv-new-list"` are registered in `MockView`.
-- `mock-all.ts` gains only import lines and two map entries.
-
-**Verification**: `bun run build`, plus the data appearing in T6.
-
----
-
-### T6 — Route, frame, header, summary
-
-**Size**: M
-**Files**: `apps/frontend/src/app/[locale]/(main)/cv-3/page.tsx`,
-`src/views/cv-new/CvNewPage.tsx`, `CvNewPageContent.tsx`,
-`shared/CvNewSection.tsx`, `header/CvNewHeader.tsx`, `header/CvNewHeader.module.css`,
-`summary/CvNewSummary.tsx` (all new)
-
-The frame per the spec: outer `relative mx-auto max-w-[800px] bg-background text-foreground/90`, the
-full-bleed header immediately inside it, then an inner `px-5 py-6 sm:px-8 sm:py-8` wrapper holding
-the sections. Header and summary are straight forks of their cv-elegant counterparts.
-
-**Acceptance criteria**
-- `/en/cv-3` renders the header bar and the About Me section from mock data.
-- Contact and section titles come from the shared `cv-contact` and `common-text` services.
-- The header is full-bleed. No horizontal padding on the outer container.
-- `/cv` and `/cv-2` are unchanged.
-
-**Verification**
-```
-cd apps/frontend && bun run dev
-```
-Open `http://localhost:4000/en/cv-3`. Then `git status` shows no modification under `src/views/cv`
-or `src/views/cv-elegant`.
-
----
-
-> ### CHECKPOINT B — first render
->
-> The route, the service, the mock registry, and the frame are proven end to end before any of the
-> real layout work starts.
->
-> **Commit 2** — `feat(frontend): scaffold /cv-3 page with cv-page-new data layer`
-
----
-
-## Phase 2 — The experience section
-
-### T7 — Company strip and role blocks
-
-**Size**: M
-**Files**: `apps/frontend/src/views/cv-new/experience/CvNewExperience.tsx` (new);
-`CvNewPageContent.tsx` (modified)
-
-Rebuild from `new.html`, projects deliberately deferred to T8. Per company, a header strip with
-name, location, and `period` on a muted background with a left accent border. Per role: title line
-with position and period, `responsibilities` through `HTMLParser`, then tech chips.
-
-**Acceptance criteria**
-- `new.html`'s navy and blue map onto theme tokens. No hard-coded hex values.
-- The section reads correctly in light and dark theme.
-- Companies without a `period` render without an empty separator.
-
-**Verification**: visual check at `/en/cv-3`, both themes.
-
----
-
-### T8 — Nested project cards
-
-**Size**: M
-**Files**: `apps/frontend/src/views/cv-new/experience/CvNewExperience.tsx` (modified)
-
-Each project in `role.projects` renders as a card matching `new.html`'s `.project-card`: name, role
-and `Team of N` when `teamSize > 1`, `responsibilities` bullets, a tech line, and live and repository
-links when present. Muted background, left accent border.
-
-**Acceptance criteria**
-- Every card sits under the role it belongs to.
-- A role with an empty `projects` array renders its title, responsibilities, and tech stack and then
-  stops. No heading, no empty container, no extra vertical gap.
-- No standalone Projects section exists anywhere on the page.
-- Cards avoid breaking across pages in print (`print:break-inside-avoid`).
-
-**Verification**: visual check that the mock's empty-projects role from T5 renders with no gap.
-Inspect it in devtools to confirm no empty wrapper element is emitted.
-
----
-
-> ### CHECKPOINT C — the core feature
->
-> This is the reason the content type changed. Everything after this is finishing work.
->
-> **Commit 3** — `feat(frontend): render role-nested project cards on /cv-3`
-
----
-
-## Phase 3 — Remaining sections and frame completion
-
-### T9 — Skills, education, languages, references
-
-**Size**: M
-**Files**: `apps/frontend/src/views/cv-new/skills/CvNewSkills.tsx`,
-`education/CvNewEducation.tsx`, `languages/CvNewLanguages.tsx`,
-`references/CvNewReferences.tsx` (all new); `CvNewPageContent.tsx` (modified)
-
-Straight forks of the cv-elegant components. No layout changes.
-
-**Acceptance criteria**
-- Final order: Header, About Me, Work Experience & Key Projects, Technical Skills, Education,
-  Languages, References.
-- Section ids are `about-me`, `experience`, `skills`, `education`, `languages`, `references`.
-- References and any empty optional array render `null`, not an empty section.
-
-**Verification**: visual check of order and ids at `/en/cv-3`.
-
----
-
-### T10 — Anchor nav and action bar
-
-**Size**: S
-**Files**: `apps/frontend/src/views/cv-new/footer/CvNewCompanyDropdown.tsx` (new);
-`CvNewPageContent.tsx` (modified)
-
-`/cv`'s anchor nav strip, hidden below `sm` and in print, linking to the six section ids. Action bar
-with the dropdown and the existing `PrintButton` reused from `@/views/cv/footer/PrintButton`.
-
-**Acceptance criteria**
-- Every anchor scrolls to a section that exists.
-- The dropdown shows correct company labels and navigates to `/{locale}/cv-3/{documentId}`.
-- The dropdown renders nothing when the list is empty.
-
-**Verification**: click each anchor and one dropdown entry at `/en/cv-3`.
-
----
-
-### T11 — Per-company route
-
-**Size**: S
-**Files**: `apps/frontend/src/app/[locale]/(main)/cv-3/[documentId]/page.tsx` (new)
-
-Mirrors `/cv/[documentId]`: fetch by id alongside contact and common text, `notFound()` on failure.
-
-**Acceptance criteria**
-- A valid id renders that company's CV without the dropdown.
-- An unknown id yields a 404.
-
-**Verification**: visit a mock id and a junk id.
-
----
-
-## Phase 4 — Print and tests
-
-### T12 — Print stylesheet
-
-**Size**: M
-**Files**: `apps/frontend/src/views/cv-new/CvNewPage.module.css` (new or completed)
-
-Start from `/cv`'s `CvPage.module.css`: `@page { margin: 8mm 14mm }`, `.printHide`, the forced
-light-mode variable block, `font-size: 12.5px`, `line-height: 1.3`. Add `print-color-adjust: exact`
-on the header. Drop `/cv`'s rule appending `attr(href)` under header links, since the cv-elegant
-header already prints URLs as visible text.
-
-**Acceptance criteria**
-- Print preview is light-on-white in both light and dark theme.
-- The dark header bar keeps its background.
-- Anchor nav and action bar are absent from print.
-- No duplicated URLs under the header links.
-- Project cards do not split across a page break.
-
-**Verification**: print `/en/cv-3` to PDF in both themes and read the output.
-
----
-
-### T13 — End-to-end layout test
-
-**Size**: M
-**Files**: `apps/frontend/e2e/cv-3-layout.test.ts` (new)
-
-Modeled on `e2e/cv-spacing.test.ts`: navigate, screenshot full page, capture each section.
-
-**Acceptance criteria**
-- Asserts the seven sections appear in the specified order.
-- Asserts no element with a Projects section id exists.
-- Asserts the empty-projects role emits no project card.
-- Screenshots land in `e2e/screenshots/`.
-
-**Verification**
-```
-cd apps/frontend && bunx playwright test e2e/cv-3-layout.test.ts
-```
-
----
-
-> ### CHECKPOINT D — feature complete against mocks
->
-> Full gate before touching live content:
-> ```
-> cd apps/frontend && bun run lint && bun run build && bun test src
-> bunx playwright test e2e/cv-3-layout.test.ts
-> cd ../cms-api && bun run lint && bun run test
-> git status   # nothing outside the spec's file lists
-> ```
->
-> **Commit 4** — `feat(frontend): complete /cv-3 sections, print styles and layout test`
-
----
-
-## Phase 5 — Live content and closeout
-
-### T14 — Enter real content and verify against the live API
-
-**Size**: M, mostly manual
-**Files**: none
-
-Create the main `cv-page-new` entry in cms-admin from the existing `/cv-2` content, restructured so
-each project sits under its role, and publish it.
-
-**Acceptance criteria**
-- `/en/cv-3` renders live data with mocks disabled.
-- At least one role with no projects exists in the real content and renders cleanly.
-- The company dropdown lists real entries.
-
-**Verification**: load `/en/cv-3` against the live API and print it to PDF.
-
----
-
-### T15 — Closeout
-
-**Size**: S
-**Files**: `SPEC.md` (modified), `tasks/todo.md` (modified), `new.html` (removal proposed)
-
-Per the workflow's full step list, finishing the task list is not the same as being done.
-
-**Acceptance criteria**
-- `SPEC.md` status moves to SHIPPED with the date, and its risk table is corrected to match what the
-  planning pass found.
-- The open question about the `cv-page-new` slug is resolved in the spec, not left dangling.
-- `new.html` is proposed for deletion as a spent scratch file. I will ask before removing it.
-- A grep for `cv-3`, `cv-page-new`, and `CvPageNew` across the repository turns up no stale or
-  contradictory documentation.
-
-**Verification**: `grep -rn "cv-3\|cv-page-new" --exclude-dir=node_modules .`
-
----
-
-> **Commit 5** — `docs: mark /cv-3 spec shipped`
-
----
-
-## Commit protocol
-
-Five commits, one per checkpoint, as listed above. Per your standing preferences:
-
-- Commits batch at phase boundaries, never per file.
-- Each phase's `tasks/todo.md` checkbox updates go in that same phase's commit, never separately.
-- I show you the staged file list and the message and wait for your go-ahead before every commit.
-- No `Co-Authored-By` trailer.
-
-## Estimates
-
-| Phase | Tasks | Size |
+| Tool | Status | Used for |
 | --- | --- | --- |
-| 0 — data model | T1–T3 | S, plus one manual admin check |
-| 1 — data layer and first render | T4–T6 | M |
-| 2 — experience section | T7–T8 | M, the real work |
-| 3 — remaining sections and frame | T9–T11 | M |
-| 4 — print and tests | T12–T13 | M |
-| 5 — content and closeout | T14–T15 | M, mostly manual |
+| `kubectl kustomize` | installed | offline renders only, never against a cluster |
+| `envsubst` | installed | Flux postBuild substitution check |
+| `python3` + PyYAML | installed | assert scripts for cluster files, templates and the `ci.yml` diff |
+| `docker` | installed | local image builds and smoke runs. Images build natively as arm64 on this Mac, and CI builds amd64. The Dockerfiles are arch-neutral. |
+| `shellcheck` | **not installed** | `bash -n` is the required check. shellcheck runs only if the owner installs it; it's not a gate. |
+| Bump harness | from the last spec | re-created in the scratchpad: throwaway bare origin with `master` and `deployment`, BSD sed |
+
+## Risks and mitigations
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| Moving the bump script changes behaviour and breaks cms-api deploys | High | T1 is behaviour-only. The dry-run harness runs the old inline block and the new script against the same fixture and compares the resulting `deployment` trees and commits before T2 starts. |
+| frontend `next build` fails on `oven/bun:1-alpine`: musl native binaries (lightningcss, sharp, SWC), `reactCompiler` babel, or a network font fetch | Med | T8 builds it locally first. The fallbacks, in order: `oven/bun:1` (Debian) builder, then `node:24-alpine` for the builder with `bun` installed. Either one gets recorded as a spec decision change. |
+| Standalone tracing misses files in the Bun `node_modules` layout, and the container crashes at runtime | Med | T8 smoke-runs the image and hits `/api/health` plus one locale page, not just `docker build`. |
+| `output: "standalone"` leaks into Vercel builds | Med | It's enabled only by `NEXT_OUTPUT`. T8 checks that a plain `bun run build` creates no `.next/standalone`. |
+| `.env.local` in `apps/frontend` gets copied into the image | High | `.dockerignore` excludes `.env*`. T8 lists the image filesystem (`ls -a` on `/app`) and asserts no `.env*` file. The agent never opens `.env.local` itself. |
+| One GitHub concurrency group drops a pending bump for another app | Med | Groups are per app (spec decision). T11's `ci.yml` assert checks that the three group names differ. |
+| cms-admin `tsc -b` inside Docker behaves differently from local | Low | T4 builds the image, and `bun run build` passes locally first. |
+| `deployment` still has vm-dev files after the owner merges, and Flux on the old VM keeps reconciling | Low | This is an owner step in the spec (merge and delete vm-dev on `deployment`, then `flux uninstall` on the VM). The bump no longer targets vm-dev, so no CI failure depends on it. |
+| cms-admin login breaks on `admin.<domain>` because of CORS or cookies | Med (live only) | Owner steps 2 and 5 in the spec. The docs in T13 spell out the exact CORS origins. It's verified manually after the deploy, since it can't be checked offline. |
+
+## Parallelization
+
+T3 can run alongside T4–T11, since it's one `ci.yml` hunk. Phase 2 and Phase 3 run sequentially on
+purpose, because both edit `ci.yml` and the same cluster `kustomization.yaml`. One agent does it all,
+so nothing is gained by parallelizing.
+
+## Open questions (from SPEC.md; none block tasks)
+
+1. Is the bare `<domain>` on Vercel production now? This only affects the owner's cutover step and the
+   docs in T13.
+2. Stray `apps/abyssdev-cms-api-prod/`: T12 asks the owner whether to delete it (ask first) and leaves
+   it if the answer is no.
+3. frontend's cms-api URL: the default above is used in T10.

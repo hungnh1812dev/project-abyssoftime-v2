@@ -1,0 +1,45 @@
+# cms-admin Deployment: the static SPA on nginx (apps/cms-admin/Dockerfile). The cms-api URL is baked
+# into the image at build time (VITE_API_URL), so the pod needs no config or Secret at runtime.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APP_NAME}-${APP_SERVICE_NAME}-${APP_ENV}
+  namespace: ${APP_NAMESPACE}-${APP_ENV}
+  labels:
+    app.kubernetes.io/name: ${APP_NAME}-${APP_SERVICE_NAME}-${APP_ENV}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ${APP_NAME}-${APP_SERVICE_NAME}-${APP_ENV}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ${APP_NAME}-${APP_SERVICE_NAME}-${APP_ENV}
+    spec:
+      containers:
+        - name: app
+          image: ${APP_IMAGE_REPO}:${APP_IMAGE_TAG}
+          # nginx listens on 80 (apps/cms-admin/nginx.conf); an image fact, not a project value.
+          ports:
+            - name: http
+              containerPort: 80
+          # /healthz is answered by nginx itself (no file or upstream involved).
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
