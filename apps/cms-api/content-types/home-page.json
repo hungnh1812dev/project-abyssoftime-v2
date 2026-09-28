@@ -1,0 +1,22 @@
+{
+  "slug": "home-page",
+  "name": "Home Page",
+  "kind": "single",
+  "draftToPublish": true,
+  "fields": [
+    {
+      "name": "pages",
+      "type": "component",
+      "component": "page",
+      "repeatable": true,
+      "fields": [
+        { "name": "href", "type": "text" },
+        { "name": "iconName", "type": "text" },
+        { "name": "title", "type": "text" },
+        { "name": "subtitle", "type": "text" },
+        { "name": "description", "type": "text" },
+        { "name": "tags", "type": "json" }
+      ]
+    }
+  ]
+}
